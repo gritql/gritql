@@ -1,0 +1,22 @@
+{
+  "name": "gql-json-slicer",
+  "version": "1.0.4",
+  "main": "gql-json-slicer.js",
+  "types": "gql-json-slicer.d.ts",
+  "repository": "git@github.com:edjafarov/gql-json-slicer.git",
+  "author": "Eldar Djafarov <djkojb@gmail.com>",
+  "license": "MIT",
+  "scripts": {
+    "test": "node ./node_modules/jest/bin/jest.js",
+    "test-dev": "node ./node_modules/jest/bin/jest.js --watch"
+  },
+  "dependencies": {
+    "graphql": "^14.1.1",
+    "graphql-tag": "^2.10.1",
+    "knex": "^0.95.1",
+    "pg": "^8.5.1"
+  },
+  "devDependencies": {
+    "jest": "^24.1.0"
+  }
+}

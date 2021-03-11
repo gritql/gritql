@@ -1,0 +1,122 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`gqlBuilder basic example works 1`] = `"select \\"device\\", \\"date\\", sum(\\"no_baskets\\") as \\"no_baskets\\", sum(\\"no_all_baskets\\") as \\"no_all_baskets\\", sum(\\"no_unique_products\\") as \\"no_unique_products\\", sum(\\"no_brand_products\\") as \\"no_brand_products\\", sum(\\"no_uniqie_brand_products\\") as \\"no_uniqie_brand_products\\", sum(\\"total_revenue\\") as \\"total_revenue\\", sum(\\"brand_revenue\\") as \\"brand_revenue\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\""`;
+
+exports[`gqlBuilder dimension functions 1`] = `"select \\"device\\", \\"date\\", sum(\\"aggrAverage\\")/\\"max(no_all_baskets)\\" as position_aggrAverage from (select \\"device\\", \\"date\\", \\"position\\", sum(\\"no_baskets\\") as \\"no_baskets\\", sum(\\"no_all_baskets\\") as \\"no_all_baskets\\", \\"position\\"*sum(\\"no_baskets\\") as \\"aggrAverage\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\", \\"position\\") group by \\"device\\", \\"date\\""`;
+
+exports[`gqlBuilder metric functions 1`] = `"select \\"device\\", \\"date\\", sum(\\"no_unique_products\\") as \\"no_unique_products\\", sum(\\"no_brand_products\\") as \\"no_brand_products\\", sum(\\"no_baskets\\")/sum(\\"no_all_baskets\\") as \\"average\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\""`;
+
+exports[`merge basic example works 1`] = `
+Object {
+  "desktop": Array [
+    Object {
+      "brand_revenue": 206,
+      "date": "2020-1-1",
+      "no_all_baskets": 201,
+      "no_baskets": 200,
+      "no_brand_products": 203,
+      "no_uniqie_brand_products": 204,
+      "no_unique_products": 202,
+      "total_revenue": 205,
+    },
+    Object {
+      "brand_revenue": 213,
+      "date": "2020-1-2",
+      "no_all_baskets": 207,
+      "no_baskets": 209,
+      "no_brand_products": 210,
+      "no_uniqie_brand_products": 211,
+      "no_unique_products": 208,
+      "total_revenue": 212,
+    },
+  ],
+  "mobile": Array [
+    Object {
+      "brand_revenue": 106,
+      "date": "2020-1-1",
+      "no_all_baskets": 101,
+      "no_baskets": 100,
+      "no_brand_products": 103,
+      "no_uniqie_brand_products": 104,
+      "no_unique_products": 102,
+      "total_revenue": 105,
+    },
+    Object {
+      "brand_revenue": 113,
+      "date": "2020-1-2",
+      "no_all_baskets": 107,
+      "no_baskets": 109,
+      "no_brand_products": 110,
+      "no_uniqie_brand_products": 111,
+      "no_unique_products": 108,
+      "total_revenue": 112,
+    },
+  ],
+}
+`;
+
+exports[`merge dimension functions 1`] = `
+Object {
+  "desktop": Array [
+    Object {
+      "date": "2020-1-1",
+      "no_all_baskets": 201,
+      "no_baskets": 200,
+      "position_aggrAverage": 202,
+    },
+    Object {
+      "date": "2020-1-2",
+      "no_all_baskets": 207,
+      "no_baskets": 209,
+      "position_aggrAverage": 208,
+    },
+  ],
+  "mobile": Array [
+    Object {
+      "date": "2020-1-1",
+      "no_all_baskets": 101,
+      "no_baskets": 100,
+      "position_aggrAverage": 102,
+    },
+    Object {
+      "date": "2020-1-2",
+      "no_all_baskets": 107,
+      "no_baskets": 109,
+      "position_aggrAverage": 108,
+    },
+  ],
+}
+`;
+
+exports[`merge metric functions 1`] = `
+Object {
+  "desktop": Array [
+    Object {
+      "average": 202,
+      "date": "2020-1-1",
+      "no_brand_products": 201,
+      "no_unique_products": 200,
+    },
+    Object {
+      "average": 208,
+      "date": "2020-1-2",
+      "no_brand_products": 207,
+      "no_unique_products": 209,
+    },
+  ],
+  "mobile": Array [
+    Object {
+      "average": 102,
+      "date": "2020-1-1",
+      "no_brand_products": 101,
+      "no_unique_products": 100,
+    },
+    Object {
+      "average": 108,
+      "date": "2020-1-2",
+      "no_brand_products": 107,
+      "no_unique_products": 109,
+    },
+  ],
+}
+`;
