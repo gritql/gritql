@@ -1,11 +1,15 @@
 const gql = require('graphql-tag');
-const knex = require('knex')({ client: 'pg' });;
+const knexConstructor = require('knex');
+let knex = knexConstructor({ client: 'pg' });
+module.exports = function init(opts = { client: 'pg' }) {
+  knex = knexConstructor(opts);
+}
 
-module.exports = function gqlBuild(gqlQuery) {
+module.exports.gqlBuild = function gqlBuild(gqlQuery, table) {
   const definitions = gql(gqlQuery).definitions;
-  const { query } = buildQueryUp(definitions[0])[0];
+  const { query, queryPromise } = buildQueryUp(definitions[0], table)[0];
 
-  return { query, definition: definitions[0] };
+  return { query, queryPromise, definition: definitions[0] };
 }
 module.exports.merge = function merge(definition, result) {
   const { metrics, dimensions, dimensionTypes } = buildQueryUp(definition)[0];
@@ -13,16 +17,16 @@ module.exports.merge = function merge(definition, result) {
   return result.reduce((o, row) => {
     let rowRes = o;
     dimensions.forEach((dimName, i) => {
-      const dimValue = row[i];
+      const dimValue = row[dimName.toLowerCase()];
 
       if (!rowRes[dimValue] && dimensionTypes[i] !== 'Array') rowRes[dimValue] = dimensionTypes[i + 1] === 'Array' ? [] : {};
 
 
       if (dimensionTypes[i] === 'Array') {
-        const idx = rowRes.find(r => r[dimName] === dimValue);
+        const idx = rowRes.find(r => r[dimName.toLowerCase()] === dimValue);
         if (!!idx || idx === 0) return rowRes = rowRes[idx];
         let newRes = {};
-        newRes[dimName] = dimValue;
+        newRes[dimName.toLowerCase()] = dimValue;
         rowRes.push(newRes)
         return rowRes = newRes;;
       }
@@ -31,17 +35,17 @@ module.exports.merge = function merge(definition, result) {
     })
 
     metrics.forEach((m, i) => {
-      rowRes[m] = +row[dimensions.length + i]
+      if (row[m.toLowerCase()]) rowRes[m] = +row[m.toLowerCase()]
     })
     return o;
   }, {})
 
 }
 
-function buildQueryUp(def) {
+function buildQueryUp(def, table) {
   const { operation, selectionSet: { selections } } = def;
   if (operation === 'query') {
-    return selections.map(newQuery)
+    return selections.map((s) => newQuery(s, table))
   }
   return null;
 }
@@ -63,13 +67,15 @@ function withMetrics(metrics) {
   }
 }
 
-function buildQuery(filters, metrics, groupings, table) {
+function buildQuery(filters, metrics, groupings, table, as) {
   return function () {
-    return withFilters(filters)(withMetrics(metrics)(this.select(groupings)).from(table)).groupBy(groupings)
+    let result = withFilters(filters)(withMetrics(metrics)(this.select(knex.raw(groupings.map(r => r.startsWith('_') ? r.slice(1) : `"${r}"`).join(', ')))).from(table)).groupByRaw(groupings.map(r => r.startsWith('_') ? r.slice(1) : `"${r}"`).map(r => r.split(' as ')[0]).join(', '));
+    if (!!as) result = result.as(as);
+    return result;
   }
 }
-function newQuery(section) {
-  const table = 'table';
+function newQuery(section, table = 'table') {
+
   const { arguments: args } = section;
 
   const filters = args.reduce((res, arg) => {
@@ -93,8 +99,8 @@ function newQuery(section) {
   if (!!aggregationHandler && aggregationHandler[1]) {
     return aggregationHandler[1](aggregationHandler[0], table, filters, metrics, groupings, dimensionTypes, metricNames);
   }
-
-  return { query: buildQuery(filters, metrics, groupings, table).call(knex).toString(), dimensions: dimensionNames, metrics: metricNames, dimensionTypes };
+  const resultQuery = buildQuery(filters, metrics, groupings, table).call(knex);
+  return { query: resultQuery.toString(), queryPromise: resultQuery, dimensions: dimensionNames, metrics: metricNames, dimensionTypes };
 }
 
 const metricHandlers = {
@@ -109,11 +115,12 @@ const dimenstionHandlers = {
     metricNames.push(`${s.alias.value}_aggrAverage`)
     const outer_dimensions = groupings.filter(g => g !== s.alias.value);
     dimensionTypes.splice(groupings.indexOf(s.alias.value), 1);
-
+    const resultQuery = knex.select(outer_dimensions).select(knex.raw(`sum("aggrAverage")/max("${s.arguments[1].value.value}") as ${s.alias.value}_aggrAverage`))
+      .from(buildQuery(filters, metrics, groupings, table, 'middleTable'))
+      .groupBy(outer_dimensions)
     return {
-      query: knex.select(outer_dimensions).select(knex.raw(`sum("aggrAverage")/"max(${s.arguments[1].value.value})" as ${s.alias.value}_aggrAverage`))
-        .from(buildQuery(filters, metrics, groupings, table))
-        .groupBy(outer_dimensions).toString(),
+      query: resultQuery.toString(),
+      queryPromise: resultQuery,
       metrics: metricNames,
       dimensions: outer_dimensions,
       dimensionTypes
@@ -155,11 +162,19 @@ function extractDimensionNames(set, arr = []) {
 }
 function extractGroupings(set, arr = []) {
   if (!set.selections[0].selectionSet) return arr;
-  if (!!set.selections[0].alias && !!set.selections[0].alias.value) return arr.concat(set.selections[0].alias.value, extractGroupings(set.selections[0].selectionSet, arr))
+
+  if (!!set.selections[0].alias && !!set.selections[0].alias.value) {
+    return arr.concat(set.selections[0].alias.value, extractGroupings(set.selections[0].selectionSet, arr))
+  }
+  const idxGroupBy = set.selections[0].arguments.map(a => a.name.value).indexOf('groupBy');
+  if (!!~idxGroupBy) {
+    const fieldName = set.selections[0].name.value;
+    const groupType = set.selections[0].arguments[idxGroupBy].value.value;
+    return arr.concat(`_date_trunc('${groupType}', "${fieldName}") as "${fieldName}"`, extractGroupings(set.selections[0].selectionSet, arr))
+  }
   return arr.concat(set.selections[0].name.value, extractGroupings(set.selections[0].selectionSet, arr))
 }
 function extractAggregationHandler(set, result) {
-
   if (!set.selections[0].selectionSet) return null;
   if (!!set.selections[0].alias && !!set.selections[0].alias.value && dimenstionHandlers[set.selections[0].name.value]) return [set.selections[0], dimenstionHandlers[set.selections[0].name.value]];
   return extractAggregationHandler(set.selections[0].selectionSet, result);

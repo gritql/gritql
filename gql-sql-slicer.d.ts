@@ -1,4 +1,4 @@
 declare module "gql-json-slicer" {
-  export default function gqlSlice(query: string, object: any): any;
-  export function _(object: any): any;
+  export function gqlBuild(query: string): any;
+  export function merge(definition: any, result: Array): any;
 }

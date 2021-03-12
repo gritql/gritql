@@ -2,7 +2,9 @@
 
 exports[`gqlBuilder basic example works 1`] = `"select \\"device\\", \\"date\\", sum(\\"no_baskets\\") as \\"no_baskets\\", sum(\\"no_all_baskets\\") as \\"no_all_baskets\\", sum(\\"no_unique_products\\") as \\"no_unique_products\\", sum(\\"no_brand_products\\") as \\"no_brand_products\\", sum(\\"no_uniqie_brand_products\\") as \\"no_uniqie_brand_products\\", sum(\\"total_revenue\\") as \\"total_revenue\\", sum(\\"brand_revenue\\") as \\"brand_revenue\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\""`;
 
-exports[`gqlBuilder dimension functions 1`] = `"select \\"device\\", \\"date\\", sum(\\"aggrAverage\\")/\\"max(no_all_baskets)\\" as position_aggrAverage from (select \\"device\\", \\"date\\", \\"position\\", sum(\\"no_baskets\\") as \\"no_baskets\\", sum(\\"no_all_baskets\\") as \\"no_all_baskets\\", \\"position\\"*sum(\\"no_baskets\\") as \\"aggrAverage\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\", \\"position\\") group by \\"device\\", \\"date\\""`;
+exports[`gqlBuilder dimension functions 1`] = `"select \\"device\\", \\"date\\", sum(\\"aggrAverage\\")/max(\\"no_all_baskets\\") as position_aggrAverage from (select \\"device\\", \\"date\\", \\"position\\", sum(\\"no_baskets\\") as \\"no_baskets\\", sum(\\"no_all_baskets\\") as \\"no_all_baskets\\", \\"position\\"*sum(\\"no_baskets\\") as \\"aggrAverage\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\", \\"position\\") as \\"middleTable\\" group by \\"device\\", \\"date\\""`;
+
+exports[`gqlBuilder group date by month 1`] = `"select \\"device\\", date_trunc('month', \\"date\\") as \\"date\\", sum(\\"no_unique_products\\") as \\"no_unique_products\\", sum(\\"no_brand_products\\") as \\"no_brand_products\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", date_trunc('month', \\"date\\")"`;
 
 exports[`gqlBuilder metric functions 1`] = `"select \\"device\\", \\"date\\", sum(\\"no_unique_products\\") as \\"no_unique_products\\", sum(\\"no_brand_products\\") as \\"no_brand_products\\", sum(\\"no_baskets\\")/sum(\\"no_all_baskets\\") as \\"average\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\""`;
 
@@ -11,7 +13,7 @@ Object {
   "desktop": Array [
     Object {
       "brand_revenue": 206,
-      "date": "2020-1-1",
+      "date": "2020-01-01T23:00:00.000Z",
       "no_all_baskets": 201,
       "no_baskets": 200,
       "no_brand_products": 203,
@@ -21,7 +23,7 @@ Object {
     },
     Object {
       "brand_revenue": 213,
-      "date": "2020-1-2",
+      "date": "2020-01-02T23:00:00.000Z",
       "no_all_baskets": 207,
       "no_baskets": 209,
       "no_brand_products": 210,
@@ -33,7 +35,7 @@ Object {
   "mobile": Array [
     Object {
       "brand_revenue": 106,
-      "date": "2020-1-1",
+      "date": "2020-01-01T23:00:00.000Z",
       "no_all_baskets": 101,
       "no_baskets": 100,
       "no_brand_products": 103,
@@ -43,7 +45,7 @@ Object {
     },
     Object {
       "brand_revenue": 113,
-      "date": "2020-1-2",
+      "date": "2020-01-02T23:00:00.000Z",
       "no_all_baskets": 107,
       "no_baskets": 109,
       "no_brand_products": 110,
@@ -59,30 +61,26 @@ exports[`merge dimension functions 1`] = `
 Object {
   "desktop": Array [
     Object {
-      "date": "2020-1-1",
-      "no_all_baskets": 201,
-      "no_baskets": 200,
-      "position_aggrAverage": 202,
+      "date": "2020-01-01T23:00:00.000Z",
+      "no_all_baskets": 202,
+      "no_baskets": 201,
     },
     Object {
-      "date": "2020-1-2",
-      "no_all_baskets": 207,
-      "no_baskets": 209,
-      "position_aggrAverage": 208,
+      "date": "2020-01-02T23:00:00.000Z",
+      "no_all_baskets": 208,
+      "no_baskets": 207,
     },
   ],
   "mobile": Array [
     Object {
-      "date": "2020-1-1",
-      "no_all_baskets": 101,
-      "no_baskets": 100,
-      "position_aggrAverage": 102,
+      "date": "2020-01-01T23:00:00.000Z",
+      "no_all_baskets": 102,
+      "no_baskets": 101,
     },
     Object {
-      "date": "2020-1-2",
-      "no_all_baskets": 107,
-      "no_baskets": 109,
-      "position_aggrAverage": 108,
+      "date": "2020-01-02T23:00:00.000Z",
+      "no_all_baskets": 108,
+      "no_baskets": 107,
     },
   ],
 }
@@ -93,13 +91,13 @@ Object {
   "desktop": Array [
     Object {
       "average": 202,
-      "date": "2020-1-1",
+      "date": "2020-01-01T23:00:00.000Z",
       "no_brand_products": 201,
       "no_unique_products": 200,
     },
     Object {
       "average": 208,
-      "date": "2020-1-2",
+      "date": "2020-01-02T23:00:00.000Z",
       "no_brand_products": 207,
       "no_unique_products": 209,
     },
@@ -107,13 +105,13 @@ Object {
   "mobile": Array [
     Object {
       "average": 102,
-      "date": "2020-1-1",
+      "date": "2020-01-01T23:00:00.000Z",
       "no_brand_products": 101,
       "no_unique_products": 100,
     },
     Object {
       "average": 108,
-      "date": "2020-1-2",
+      "date": "2020-01-02T23:00:00.000Z",
       "no_brand_products": 107,
       "no_unique_products": 109,
     },
