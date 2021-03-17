@@ -6,7 +6,7 @@ exports[`gqlBuilder dimension functions 1`] = `"select \\"device\\", \\"date\\",
 
 exports[`gqlBuilder group date by month 1`] = `"select \\"device\\", date_trunc('month', \\"date\\") as \\"date\\", sum(\\"no_unique_products\\") as \\"no_unique_products\\", sum(\\"no_brand_products\\") as \\"no_brand_products\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", date_trunc('month', \\"date\\")"`;
 
-exports[`gqlBuilder metric functions 1`] = `"select \\"device\\", \\"date\\", sum(\\"no_unique_products\\") as \\"no_unique_products\\", sum(\\"no_brand_products\\") as \\"no_brand_products\\", sum(\\"no_baskets\\")/sum(\\"no_all_baskets\\") as \\"average\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\""`;
+exports[`gqlBuilder metric functions 1`] = `"select \\"device\\", \\"date\\", sum(\\"no_unique_products\\") as \\"no_unique_products\\", sum(\\"no_brand_products\\") as \\"no_brand_products\\", cast(sum(\\"no_baskets\\") as float)/cast(sum(\\"no_all_baskets\\") as float) as \\"average\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\""`;
 
 exports[`merge basic example works 1`] = `
 Object {
@@ -52,6 +52,35 @@ Object {
       "no_uniqie_brand_products": 111,
       "no_unique_products": 108,
       "total_revenue": 112,
+    },
+  ],
+}
+`;
+
+exports[`merge date formatting 1`] = `
+Object {
+  "desktop": Array [
+    Object {
+      "date": "2020-01-01T23:00:00.000Z",
+      "no_all_baskets": 202,
+      "no_baskets": 201,
+    },
+    Object {
+      "date": "2020-01-02T23:00:00.000Z",
+      "no_all_baskets": 208,
+      "no_baskets": 207,
+    },
+  ],
+  "mobile": Array [
+    Object {
+      "date": "2020-01-01T23:00:00.000Z",
+      "no_all_baskets": 102,
+      "no_baskets": 101,
+    },
+    Object {
+      "date": "2020-01-02T23:00:00.000Z",
+      "no_all_baskets": 108,
+      "no_baskets": 107,
     },
   ],
 }
@@ -118,3 +147,37 @@ Object {
   ],
 }
 `;
+
+exports[`new array on top position 1`] = `
+Array [
+  Object {
+    "country": "FR",
+  },
+  Object {
+    "country": "MX",
+  },
+  Object {
+    "country": "PL",
+  },
+  Object {
+    "country": "ES",
+  },
+  Object {
+    "country": "PT",
+  },
+  Object {
+    "country": "US",
+  },
+  Object {
+    "country": "IT",
+  },
+  Object {
+    "country": "GB",
+  },
+  Object {
+    "country": "DE",
+  },
+]
+`;
+
+exports[`new distinct 1`] = `"select distinct \\"device\\" from \\"table\\""`;

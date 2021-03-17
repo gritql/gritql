@@ -77,6 +77,7 @@ function withMetrics(metrics) {
 
 function buildQuery(filters, metrics, groupings, table, as, dimensionsGrouping) {
   return function () {
+
     let result = null;
     if (!groupings.length) {
       result = withFilters(filters)(withMetrics(metrics)(this.select().from(table)));

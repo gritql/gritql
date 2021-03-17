@@ -1,9 +1,65 @@
 const { gqlBuild, merge } = require("./gql-sql-slicer");
 
 
-
+describe('new', () => {
+  test('distinct', () => {
+    expect(gqlBuild(`{
+      query{
+        device: distinct {
+          device
+        }
+      }
+    }
+    `).query).toMatchSnapshot();
+  })
+  test('array on top position', () => {
+    const table = [
+      {
+        "country": "FR"
+      },
+      {
+        "country": "MX"
+      },
+      {
+        "country": "PL"
+      },
+      {
+        "country": "ES"
+      },
+      {
+        "country": "PT"
+      },
+      {
+        "country": "US"
+      },
+      {
+        "country": "FR"
+      },
+      {
+        "country": "IT"
+      },
+      {
+        "country": "GB"
+      },
+      {
+        "country": "DE"
+      }
+    ]
+    const { query, definition } = gqlBuild(`{
+      query{
+        country: distinct(type: Array) {
+            tezt
+        }
+      }
+    }
+    `)
+    expect(merge(definition, table)).toMatchSnapshot()
+  })
+})
 
 describe('gqlBuilder', () => {
+
+
 
   test('basic example works', () => {
     expect(gqlBuild(`{
@@ -232,5 +288,54 @@ describe('merge', () => {
     `)
     expect(merge(definition, table)).toMatchSnapshot()
   })
+  test('date formatting', () => {
+    const table = [
+      {
+        device: 'mobile',
+        date: '2020-01-01T23:00:00.000Z',
+        position_aggrAverage: '100',
+        no_baskets: '101',
+        no_all_baskets: '102'
+      },
+      {
+        device: 'mobile',
+        date: '2020-01-02T23:00:00.000Z',
+        position_aggrAverage: '109',
+        no_baskets: '107',
+        no_all_baskets: '108'
+      },
+      {
+        device: 'desktop',
+        date: '2020-01-01T23:00:00.000Z',
+        position_aggrAverage: '200',
+        no_baskets: '201',
+        no_all_baskets: '202'
+      },
+      {
+        device: 'desktop',
+        date: '2020-01-02T23:00:00.000Z',
+        position_aggrAverage: '209',
+        no_baskets: '207',
+        no_all_baskets: '208'
+      }
+    ]
+    const { query, definition } = gqlBuild(`{
+      query: test(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
+        device {
+          date(type: Array, format: "Mon yy"){
+            position: aggrAverage(to:no_baskets, by:no_all_baskets) {
+              no_baskets 
+              no_all_baskets
+            }
+          }
+        }
+      }
+    }
+    `)
+    expect(merge(definition, table)).toMatchSnapshot()
+  })
+
+
+
 })
 
