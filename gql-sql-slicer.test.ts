@@ -37,10 +37,10 @@ describe('builder for mulyquery requests', () => {
     const { queries, definitions } = gqlBuild(`{
       query(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
         device {
+          no_baskets
           date(type: Array){
             no_baskets
           }
-          no_baskets
         }
       }
     }
@@ -51,7 +51,7 @@ describe('builder for mulyquery requests', () => {
 
 })
 
-xdescribe('builder for mulyquery requests', () => {
+describe('builder for mulyquery requests', () => {
 
 
   test('basic example works', () => {
@@ -74,8 +74,8 @@ xdescribe('builder for mulyquery requests', () => {
     }
  
     `, 'table').sql).toMatchSnapshot();
-  })
-  expect(gqlBuild(`{
+
+    expect(gqlBuild(`{
     query1: query(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
       device {
         date(type: Array) {
@@ -103,11 +103,29 @@ xdescribe('builder for mulyquery requests', () => {
     }
   }
   `, 'table').sql).toMatchSnapshot();
+  })
+  test('basic example works', () => {
+
+
+    expect(gqlBuild(`{
+      query(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
+        device {
+          avg: divide(a:no_of_baskets, by:no_all_baskets) 
+          date(type: Array) {
+            avg: divide(a:no_of_baskets, by:no_all_baskets) 
+          }
+        }
+      }
+      
+    }
+ 
+    `, 'table').sql).toMatchSnapshot();
+  })
 })
 
 
 
-xdescribe('gqlBuilder single query', () => {
+describe('gqlBuilder single query', () => {
   test('distinct', () => {
     expect(gqlBuild(`{
       query{
@@ -181,7 +199,7 @@ xdescribe('gqlBuilder single query', () => {
 })
 
 
-xdescribe('merge', () => {
+describe('merge', () => {
 
   test('basic example works', () => {
     const tables = [[

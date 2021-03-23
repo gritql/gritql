@@ -43,11 +43,13 @@ function queryBuilder(table, tree, queries = [], idx = undefined) {
   if (query.name === undefined) throw "Cant find query in the payload";
 
   if (!!tree.selectionSet?.selections) {
-    const [haveMetric, haveDimension] = tree.selectionSet.selections.reduce((r, s) => {
+    const selections = tree.selectionSet.selections;
+    const [haveMetric, haveDimension] = selections.reduce((r, s) => {
       return [r[0] || !!s.selectionSet, r[1] || !s.selectionSet];
     }, [false, false])
     if (tree.name?.value !== 'query') parseDimension(tree, query);
-    return tree.selectionSet.selections.reduce((queries, t, i) => {
+    selections.sort((a, b) => !b.selectionSet ? -1 : 1);
+    return selections.reduce((queries, t, i) => {
       if (!!t.selectionSet && haveMetric && haveDimension) {
         const newIdx = queries.length;
         queries[newIdx] = { ...queries[idx] };
@@ -76,8 +78,8 @@ function parseDimension(tree, query) {
 
   const args = argumentsToObject(tree.arguments);
   if (args?.groupBy) {
-    query.promise = query.promise.select(knex.raw(`date_trunc(:groupBy, :name) as :name`, { ...args, name: tree.name.value }));
-    query.promise = query.promise.groupBy(knex.raw(`date_trunc(:groupBy, :name)`, { ...args, name: tree.name.value }));
+    query.promise = query.promise.select(knex.raw(`date_trunc(?, ??) as ??`, [args?.groupBy, tree.name.value, tree.name.value]));
+    query.promise = query.promise.groupBy(knex.raw(`??`, [tree.name.value]));
   } else {
     query.promise = query.promise.select(tree.name.value);
     query.promise = query.promise.groupBy(tree.name.value);
@@ -102,7 +104,7 @@ const metricResolvers = {
     const args = argumentsToObject(tree.arguments);
     if (!args.a) throw "Divide function requires 'a' as argument";
     if (!args.by) throw "Divide function requires 'by' as argument";
-    query.promise = query.promise.select(knex.raw(`cast(sum(:a) as float)/cast(sum(:by) as float) as :alias`, { ...args, alias: tree.alias.value }));
+    query.promise = query.promise.select(knex.raw(`cast(sum(??) as float)/cast(sum(??) as float) as ??`, [args.a, args.by, tree.alias.value]));
   },
   aggrAverage: (tree, query) => {
     if (!tree.arguments) throw "AggrAverage function requires arguments";
@@ -112,22 +114,30 @@ const metricResolvers = {
     const internal = query.promise.select(tree.alias.value)
       .sum(`${args.to} as ${args.to}`)
       .sum(`${args.by} as ${args.by}`)
-      .select(knex.raw(`:alias * sum(:to) as "aggrAverage"`, { ...args, alias: tree.alias?.value }))
+      .select(knex.raw(`?? * sum(??) as "aggrAverage"`, [tree.alias?.value, args.to]))
       .groupBy(tree.alias?.value)
     query.promise = knex.select(query.dimensions)
-      .select(knex.raw(`sum("aggrAverage")/max(:by) as "${tree.alias?.value}_aggrAverage"`, { ...args }))
-      .from(internal)
-      .groupBy(query.dimensions)
+      .select(knex.raw(`sum("aggrAverage")/max(??) as "${tree.alias?.value}_aggrAverage"`, [args.by]))
+      .from(internal.as('middleTable'))
+
+    if (!!query.dimensions && query.dimensions.length > 0) {
+      query.promise = query.promise.groupBy(query.dimensions);
+    }
   },
   distinct: (tree, query) => {
+
     query.promise = query.promise.distinct(tree.alias.value);
   }
 }
 
 function copyKnex(knexObject) {
   const result = knex(knexObject._single.table);
+
   return Object.keys(knexObject).reduce((k, key) => {
-    if (key.startsWith("_") && !!knexObject[key]) k[key] = JSON.parse(JSON.stringify(knexObject[key]))
+    if (key.startsWith("_") && !!knexObject[key]) {
+
+      k[key] = JSON.parse(JSON.stringify(knexObject[key]))
+    }
     return k;
   }, result)
 }
@@ -162,9 +172,11 @@ function replVars(str, obj) {
 }
 
 function shieldSeparator(str) {
+  if (typeof (str) !== 'string') return str;
   return str.replace(/\./g, "$#@#");
 }
 function unshieldSeparator(str) {
+  if (typeof (str) !== 'string') return str;
   return str.replace(/\$#@#/, '.');
 }
 
@@ -191,11 +203,13 @@ function getMergeStrings(tree, queries = [], idx = undefined) {
   if (query.name === undefined) throw "Cant find query in the payload";
 
   if (!!tree.selectionSet?.selections) {
-    const [haveMetric, haveDimension] = tree.selectionSet.selections.reduce((r, s) => {
+    const selections = tree.selectionSet.selections;
+    const [haveMetric, haveDimension] = selections.reduce((r, s) => {
       return [r[0] || !!s.selectionSet, r[1] || !s.selectionSet];
     }, [false, false])
     if (tree.name?.value !== 'query') mergeDimension(tree, query);
-    return tree.selectionSet.selections.reduce((queries, t, i) => {
+    selections.sort((a, b) => !b.selectionSet ? -1 : 1);
+    return selections.reduce((queries, t, i) => {
       if (!!t.selectionSet && haveMetric && haveDimension) {
         const newIdx = queries.length;
         queries[newIdx] = { ...queries[idx], metrics: {} };

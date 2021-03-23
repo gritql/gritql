@@ -1,17 +1,24 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
-exports[` 1`] = `
+exports[`builder for mulyquery requests basic example works 1`] = `
 Array [
-  "select \\"device\\", sum(\\"ano_no_baskets\\") as \\"ano_no_baskets\\", sum(\\"ano_no_all_baskets\\") as \\"ano_no_all_baskets\\", sum(\\"ano_no_unique_products\\") as \\"ano_no_unique_products\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\"",
-  "select \\"device\\", \\"date\\", sum(\\"no_baskets\\") as \\"no_baskets\\", sum(\\"no_all_baskets\\") as \\"no_all_baskets\\", sum(\\"no_unique_products\\") as \\"no_unique_products\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\"",
-  "select \\"device\\", \\"date\\", sum(\\"no_brand_products\\") as \\"no_brand_products\\", sum(\\"no_uniqie_brand_products\\") as \\"no_uniqie_brand_products\\", sum(\\"total_revenue\\") as \\"total_revenue\\", sum(\\"brand_revenue\\") as \\"brand_revenue\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\"",
+  "select \\"device\\", sum(\\"ano_no_unique_products\\") as \\"ano_no_unique_products\\", sum(\\"ano_no_all_baskets\\") as \\"ano_no_all_baskets\\", sum(\\"ano_no_baskets\\") as \\"ano_no_baskets\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\"",
+  "select \\"device\\", \\"date\\", sum(\\"no_unique_products\\") as \\"no_unique_products\\", sum(\\"no_all_baskets\\") as \\"no_all_baskets\\", sum(\\"no_baskets\\") as \\"no_baskets\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\"",
 ]
 `;
 
-exports[`builder for mulyquery requests basic example works 1`] = `
+exports[`builder for mulyquery requests basic example works 2`] = `
 Array [
-  "select \\"device\\", sum(\\"ano_no_baskets\\") as \\"ano_no_baskets\\", sum(\\"ano_no_all_baskets\\") as \\"ano_no_all_baskets\\", sum(\\"ano_no_unique_products\\") as \\"ano_no_unique_products\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\"",
-  "select \\"device\\", \\"date\\", sum(\\"no_baskets\\") as \\"no_baskets\\", sum(\\"no_all_baskets\\") as \\"no_all_baskets\\", sum(\\"no_unique_products\\") as \\"no_unique_products\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\"",
+  "select \\"device\\", sum(\\"ano_no_unique_products\\") as \\"ano_no_unique_products\\", sum(\\"ano_no_all_baskets\\") as \\"ano_no_all_baskets\\", sum(\\"ano_no_baskets\\") as \\"ano_no_baskets\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\"",
+  "select \\"device\\", \\"date\\", sum(\\"no_unique_products\\") as \\"no_unique_products\\", sum(\\"no_all_baskets\\") as \\"no_all_baskets\\", sum(\\"no_baskets\\") as \\"no_baskets\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\"",
+  "select \\"device\\", \\"date\\", sum(\\"brand_revenue\\") as \\"brand_revenue\\", sum(\\"total_revenue\\") as \\"total_revenue\\", sum(\\"no_uniqie_brand_products\\") as \\"no_uniqie_brand_products\\", sum(\\"no_brand_products\\") as \\"no_brand_products\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\"",
+]
+`;
+
+exports[`builder for mulyquery requests basic example works 3`] = `
+Array [
+  "select \\"device\\", cast(sum(\\"no_of_baskets\\") as float)/cast(sum(\\"no_all_baskets\\") as float) as \\"avg\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\"",
+  "select \\"device\\", \\"date\\", cast(sum(\\"no_of_baskets\\") as float)/cast(sum(\\"no_all_baskets\\") as float) as \\"avg\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\"",
 ]
 `;
 
@@ -48,13 +55,13 @@ Object {
 
 exports[`gqlBuilder single query basic example works 1`] = `
 Array [
-  "select \\"device\\", \\"date\\", sum(\\"no_baskets\\") as \\"no_baskets\\", sum(\\"no_all_baskets\\") as \\"no_all_baskets\\", sum(\\"no_unique_products\\") as \\"no_unique_products\\", sum(\\"no_brand_products\\") as \\"no_brand_products\\", sum(\\"no_uniqie_brand_products\\") as \\"no_uniqie_brand_products\\", sum(\\"total_revenue\\") as \\"total_revenue\\", sum(\\"brand_revenue\\") as \\"brand_revenue\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\"",
+  "select \\"device\\", \\"date\\", sum(\\"brand_revenue\\") as \\"brand_revenue\\", sum(\\"total_revenue\\") as \\"total_revenue\\", sum(\\"no_uniqie_brand_products\\") as \\"no_uniqie_brand_products\\", sum(\\"no_brand_products\\") as \\"no_brand_products\\", sum(\\"no_unique_products\\") as \\"no_unique_products\\", sum(\\"no_all_baskets\\") as \\"no_all_baskets\\", sum(\\"no_baskets\\") as \\"no_baskets\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\"",
 ]
 `;
 
 exports[`gqlBuilder single query dimension functions 1`] = `
 Array [
-  "select \\"device\\", \\"date\\", sum(\\"aggrAverage\\")/max('no_all_baskets') as \\"position_aggrAverage\\" from (select \\"device\\", \\"date\\", \\"position\\", sum(\\"no_baskets\\") as \\"no_baskets\\", sum(\\"no_all_baskets\\") as \\"no_all_baskets\\", 'position' * sum('no_baskets') as \\"aggrAverage\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\", \\"position\\") group by \\"device\\", \\"date\\"",
+  "select \\"device\\", \\"date\\", sum(\\"aggrAverage\\")/max(\\"no_all_baskets\\") as \\"position_aggrAverage\\" from (select \\"device\\", \\"date\\", \\"position\\", sum(\\"no_baskets\\") as \\"no_baskets\\", sum(\\"no_all_baskets\\") as \\"no_all_baskets\\", \\"position\\" * sum(\\"no_baskets\\") as \\"aggrAverage\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\", \\"position\\") as \\"middleTable\\" group by \\"device\\", \\"date\\"",
 ]
 `;
 
@@ -66,13 +73,13 @@ Array [
 
 exports[`gqlBuilder single query group date by month 1`] = `
 Array [
-  "select \\"device\\", date_trunc('month', 'date') as 'date', sum(\\"no_unique_products\\") as \\"no_unique_products\\", sum(\\"no_brand_products\\") as \\"no_brand_products\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", date_trunc('month', 'date')",
+  "select \\"device\\", date_trunc('month', \\"date\\") as \\"date\\", sum(\\"no_brand_products\\") as \\"no_brand_products\\", sum(\\"no_unique_products\\") as \\"no_unique_products\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\"",
 ]
 `;
 
 exports[`gqlBuilder single query metric functions 1`] = `
 Array [
-  "select \\"device\\", \\"date\\", sum(\\"no_unique_products\\") as \\"no_unique_products\\", sum(\\"no_brand_products\\") as \\"no_brand_products\\", cast(sum('no_baskets') as float)/cast(sum('no_all_baskets') as float) as 'average' from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\"",
+  "select \\"device\\", \\"date\\", cast(sum(\\"no_baskets\\") as float)/cast(sum(\\"no_all_baskets\\") as float) as \\"average\\", sum(\\"no_brand_products\\") as \\"no_brand_products\\", sum(\\"no_unique_products\\") as \\"no_unique_products\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\"",
 ]
 `;
 
