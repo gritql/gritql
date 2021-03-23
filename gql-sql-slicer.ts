@@ -1,5 +1,7 @@
 const gql = require('graphql-tag');
 const knexConstructor = require('knex');
+var set = require('lodash.set');
+var get = require('lodash.get');
 
 let knex = knexConstructor({ client: 'pg' });
 module.exports = function init(opts = { client: 'pg' }) {
@@ -7,56 +9,306 @@ module.exports = function init(opts = { client: 'pg' }) {
 }
 
 module.exports.gqlBuild = function gqlBuild(gqlQuery, table) {
+  if (!table) throw "Table is not defined";
   const definitions = gql(gqlQuery).definitions;
-  const { query, queryPromise } = buildQueryUp(definitions[0], table)[0];
-
-  return { query, queryPromise, definition: definitions[0] };
+  const queries = queryBuilder(table, definitions).map(convertRaw)
+  const sql = queries.map(q => q.promise.toString())
+  return { queries, sql, definitions }
 }
-module.exports.merge = function merge(definition, result) {
-  const { metrics, dimensions, dimensionTypes, dimensionFormats } = buildQueryUp(definition, null)[0];
 
-  return result.reduce((o, row) => {
-    let rowRes = o;
+function convertRaw(query) {
+  return query;
+}
 
+function queryBuilder(table, tree, queries = [], idx = undefined) {
+  //console.log(queries.map(q => q.promise._statements))
+  //console.log(tree, idx, queries)
+  //console.log(queries, idx, tree.length)
+  if (!!~idx && idx !== undefined && !queries[idx]) queries[idx] = { idx, name: undefined };
+  const query = queries[idx];
+  if (Array.isArray(tree)) {
+    //we replace query with next level
+    return tree.reduce((queries, t, i) => queryBuilder(table, t, queries, queries.length - 1), queries);
+  }
+  if (tree.kind === 'OperationDefinition' && !!tree.selectionSet) {
+    return tree.selectionSet.selections.reduce((queries, t, i) => queryBuilder(table, t, queries, queries.length), queries);
+  }
+  if (!query.filters && tree.name.value === 'query') {
+    query.name = tree.alias?.value || null;
+    query.filters = parseFilters(tree);
+    query.promise = knex.select().from(table);
+    query.promise = withFilters(query.filters)(query.promise)
+    if (!tree.selectionSet?.selections) throw "The query is empty, you need specify metrics or dimensions";
+  }
+  if (query.name === undefined) throw "Cant find query in the payload";
 
-    dimensions.forEach((dimName, i) => {
-      if (!!~dimName.indexOf(" as ")) dimName = dimName.split(" as ")[1].slice(1, -1);
-      let dimValue = row[dimName.toLowerCase()];
+  if (!!tree.selectionSet?.selections) {
+    const [haveMetric, haveDimension] = tree.selectionSet.selections.reduce((r, s) => {
+      return [r[0] || !!s.selectionSet, r[1] || !s.selectionSet];
+    }, [false, false])
+    if (tree.name?.value !== 'query') parseDimension(tree, query);
+    return tree.selectionSet.selections.reduce((queries, t, i) => {
+      if (!!t.selectionSet && haveMetric && haveDimension) {
+        const newIdx = queries.length;
+        queries[newIdx] = { ...queries[idx] };
+        if (!!query.metrics) queries[newIdx].metrics = JSON.parse(JSON.stringify(query.metrics));
+        if (!!query.dimensions) queries[newIdx].dimensions = JSON.parse(JSON.stringify(query.dimensions));
+        queries[newIdx].promise = copyKnex(query.promise);
+        queries[newIdx].idx = newIdx;
+        return queryBuilder(table, t, queries, newIdx);
+      }
+      return queryBuilder(table, t, queries, idx)
+    }, queries);
+  }
+  parseMetric(tree, query);
+  return queries
+}
+function parseMetric(tree, query) {
+  const { metrics = [] } = query;
+  if (tree.alias && metricResolvers[tree.name?.value]) return metricResolvers[tree.name?.value](tree, query)
+  query.promise = query.promise.sum(`${tree.name.value} as ${tree.name.value}`)
+  metrics.push(tree.name.value);
+  query.metrics = metrics;
+}
 
-      if (!rowRes[dimValue] && dimensionTypes[i] !== 'Array') rowRes[dimValue] = dimensionTypes[i + 1] === 'Array' ? [] : {};
+function parseDimension(tree, query) {
+  const { dimensions = [] } = query;
 
+  const args = argumentsToObject(tree.arguments);
+  if (args?.groupBy) {
+    query.promise = query.promise.select(knex.raw(`date_trunc(:groupBy, :name) as :name`, { ...args, name: tree.name.value }));
+    query.promise = query.promise.groupBy(knex.raw(`date_trunc(:groupBy, :name)`, { ...args, name: tree.name.value }));
+  } else {
+    query.promise = query.promise.select(tree.name.value);
+    query.promise = query.promise.groupBy(tree.name.value);
+  }
+  dimensions.push(tree.name.value);
+  query.dimensions = dimensions;
+}
 
-      if (dimensionTypes[i] === 'Array') {
-        if (i === 0 && !Array.isArray(o)) {
-          o = [];
-          rowRes = o;
+function parseFilters(tree) {
+  const { arguments: args } = tree;
+  return args.reduce((res, arg) => {
+    if (arg.name.value.endsWith('_gt')) return res.concat([[arg.name.value.replace('_gt', ''), '>', arg.value.value]]);
+    if (arg.name.value.endsWith('_gte')) return res.concat([[arg.name.value.replace('_gte', ''), '>=', arg.value.value]]);
+    if (arg.name.value.endsWith('_lt')) return res.concat([[arg.name.value.replace('_lt', ''), '<', arg.value.value]]);
+    if (arg.name.value.endsWith('_lte')) return res.concat([[arg.name.value.replace('_lte', ''), '<=', arg.value.value]]);
+    return res.concat([[arg.name.value, '=', arg.value.value]]);
+  }, []);
+}
+const metricResolvers = {
+  divide: (tree, query) => {
+    if (!tree.arguments) throw "Divide function requires arguments";
+    const args = argumentsToObject(tree.arguments);
+    if (!args.a) throw "Divide function requires 'a' as argument";
+    if (!args.by) throw "Divide function requires 'by' as argument";
+    query.promise = query.promise.select(knex.raw(`cast(sum(:a) as float)/cast(sum(:by) as float) as :alias`, { ...args, alias: tree.alias.value }));
+  },
+  aggrAverage: (tree, query) => {
+    if (!tree.arguments) throw "AggrAverage function requires arguments";
+    const args = argumentsToObject(tree.arguments);
+    if (!args.to) throw "Divide function requires 'to' as argument";
+    if (!args.by) throw "Divide function requires 'by' as argument";
+    const internal = query.promise.select(tree.alias.value)
+      .sum(`${args.to} as ${args.to}`)
+      .sum(`${args.by} as ${args.by}`)
+      .select(knex.raw(`:alias * sum(:to) as "aggrAverage"`, { ...args, alias: tree.alias?.value }))
+      .groupBy(tree.alias?.value)
+    query.promise = knex.select(query.dimensions)
+      .select(knex.raw(`sum("aggrAverage")/max(:by) as "${tree.alias?.value}_aggrAverage"`, { ...args }))
+      .from(internal)
+      .groupBy(query.dimensions)
+  },
+  distinct: (tree, query) => {
+    query.promise = query.promise.distinct(tree.alias.value);
+  }
+}
+
+function copyKnex(knexObject) {
+  const result = knex(knexObject._single.table);
+  return Object.keys(knexObject).reduce((k, key) => {
+    if (key.startsWith("_") && !!knexObject[key]) k[key] = JSON.parse(JSON.stringify(knexObject[key]))
+    return k;
+  }, result)
+}
+module.exports.merge = function merge(tree, data) {
+  const queries = getMergeStrings(tree);
+
+  const res = queries.reduce((result, q, i) => {
+    const resultData = data[i];
+    for (var j = 0; j < resultData.length; j++) {
+      const keys = Object.keys(resultData[j]);
+
+      for (var key in keys) {
+        if (q.metrics[keys[key]]) {
+          const value = isNaN(+resultData[j][keys[key]]) ? resultData[j][keys[key]] : +resultData[j][keys[key]];
+          result = progressiveSet(result, replVars(q.metrics[keys[key]], resultData[j]), value)
         }
-        const idx = rowRes.find(r => r[dimName.toLowerCase()] === dimValue);
-        if (!!idx || idx === 0) return rowRes = rowRes[idx];
-        let newRes = {};
-        newRes[dimName.toLowerCase()] = dimValue;
-        rowRes.push(newRes)
-        return rowRes = newRes;
+      }
+    }
+    return result;
+
+  }, {})
+  return res;
+}
+
+
+function replVars(str, obj) {
+  const keys = Object.keys(obj);
+  for (var key in keys) {
+    str = str.replace(`:${keys[key]}`, shieldSeparator(obj[keys[key]]));
+  }
+  return str;
+}
+
+function shieldSeparator(str) {
+  return str.replace(/\./g, "$#@#");
+}
+function unshieldSeparator(str) {
+  return str.replace(/\$#@#/, '.');
+}
+
+
+function getMergeStrings(tree, queries = [], idx = undefined) {
+
+  if (!!~idx && idx !== undefined && !queries[idx]) queries[idx] = { idx, name: undefined };
+  const query = queries[idx];
+  if (Array.isArray(tree)) {
+
+    return tree.reduce((queries, t, i) => getMergeStrings(t, queries, queries.length - 1), queries);
+  }
+  if (tree.kind === 'OperationDefinition' && !!tree.selectionSet) {
+    return tree.selectionSet.selections.reduce((queries, t, i) => getMergeStrings(t, queries, queries.length), queries);
+  }
+
+  if (!query.filters && tree.name.value === 'query') {
+    query.name = tree.alias?.value || null;
+    query.metrics = {};
+    query.path = '';
+
+    if (!tree.selectionSet?.selections) throw "The query is empty, you need specify metrics or dimensions";
+  }
+  if (query.name === undefined) throw "Cant find query in the payload";
+
+  if (!!tree.selectionSet?.selections) {
+    const [haveMetric, haveDimension] = tree.selectionSet.selections.reduce((r, s) => {
+      return [r[0] || !!s.selectionSet, r[1] || !s.selectionSet];
+    }, [false, false])
+    if (tree.name?.value !== 'query') mergeDimension(tree, query);
+    return tree.selectionSet.selections.reduce((queries, t, i) => {
+      if (!!t.selectionSet && haveMetric && haveDimension) {
+        const newIdx = queries.length;
+        queries[newIdx] = { ...queries[idx], metrics: {} };
+        queries[newIdx].path = query.path + '';
+        queries[newIdx].idx = newIdx;
+        return getMergeStrings(t, queries, newIdx);
       }
 
-      rowRes = rowRes[dimValue];
-    })
-
-    metrics.forEach((m, i) => {
-      if (row[m.toLowerCase()]) rowRes[m] = +row[m.toLowerCase()]
-    })
-    return o;
-  }, {})
-
-}
-
-function buildQueryUp(def, table) {
-  const { operation, selectionSet: { selections } } = def;
-  if (operation === 'query') {
-    return selections.map((s) => newQuery(s, table))
+      return getMergeStrings(t, queries, idx)
+    }, queries);
   }
-  return null;
+  mergeMetric(tree, query);
+  return queries
 }
+
+function mergeMetric(tree, query) {
+  let name = tree.name.value;
+  const args = argumentsToObject(tree.arguments);
+  if (args?.type === 'Array') {
+    if (tree.alias?.value) name = tree.alias?.value;
+    query.path += `${!!query.path ? '.' : ''}[@${name}=:${name}]`
+    query.metrics[`${name}`] = `${query.path}${!!query.path ? '.' : ''}${name}`;
+  } else {
+    if (tree.alias && metricResolversData[tree.name?.value]) return metricResolversData[tree.name?.value](tree, query)
+    if (tree.alias?.value) name = tree.alias?.value;
+    query.metrics[`${name}`] = `${query.path}${!!query.path ? '.' : ''}${name}`;
+  }
+}
+
+function mergeDimension(tree, query) {
+  const args = argumentsToObject(tree.arguments);
+
+  if (args?.type === 'Array') {
+    query.path += `${!!query.path ? '.' : ''}[@${tree.name.value}=:${tree.name.value}]`
+  } else {
+    query.path += `${!!query.path ? '.' : ''}:${tree.name.value}`
+  }
+}
+
+const metricResolversData = {
+  aggrAverage: (tree, query) => {
+    const name = `${tree.alias?.value}_aggrAverage`;
+    query.metrics[`${name}`] = `${query.path}${!!query.path ? '.' : ''}${name}`;
+  }
+}
+/*
+var k = {};
+progressiveSet(k, 'book.test.one', 1)
+progressiveSet(k, 'book.two.one', 3)
+progressiveSet(k, 'book.dumbo.[].one', 3)
+progressiveSet(k, 'book.dumbo.[].twenty', 434)
+progressiveSet(k, 'book.dumbo.[].second', '3dqd25')
+progressiveSet(k, 'book.dumbo.[1].leela', 'fry')
+progressiveSet(k, 'book.dumbo.[@one=3].leela', 'fry')
+console.log(JSON.stringify(k))
+*/
+function progressiveSet(object, queryPath, value) {
+
+  const pathArray = queryPath.split(/\./).map(p => unshieldSeparator(p));
+  const property = pathArray.splice(-1);
+  if (queryPath.startsWith("[") && !Array.isArray(object) && Object.keys(object).length === 0) object = [];
+  let leaf = object;
+
+  pathArray.forEach((pathStep, i) => {
+    if (pathStep.startsWith('[') && !Array.isArray(leaf)) {
+      let key = pathStep.slice(1, pathStep.length - 1);
+      if (key !== 0 && !key || Number.isInteger(+key)) {
+        leaf['arr'] = [];
+        leaf = leaf['arr'];
+      } else if (key.startsWith = "@") {
+        key = key.slice(1);
+        const filterBy = key.split('=');
+        if (!leaf[filterBy[0]]) leaf[filterBy[0]] = [];
+        leaf = leaf[filterBy[0]];
+      }
+
+    }
+    if (Array.isArray(leaf)) {
+      let key = pathStep.slice(1, pathStep.length - 1);
+      if (key !== 0 && !key) {
+        leaf.push({});
+        leaf = leaf[leaf.length - 1];
+      } else if (Number.isInteger(+key)) {
+        leaf = leaf[+key];
+      } else if (key.startsWith = "@") {
+
+        key = key.slice(1);
+
+        const filterBy = key.split('=');
+        const found = leaf.find((a) => a[filterBy[0]] == ('' + filterBy[1]))
+        if (!!found) {
+          leaf = found;
+        } else {
+          leaf.push({ [filterBy[0]]: filterBy[1] });
+          leaf = leaf[leaf.length - 1];
+        }
+
+      }
+    } else {
+      const nextStep = pathArray[i + 1];
+      if (!!nextStep && nextStep.startsWith('[') && nextStep.endsWith(']') && !leaf[pathStep]) {
+        leaf[pathStep] = [];
+      }
+      if (!leaf[pathStep]) leaf[pathStep] = {};
+      leaf = leaf[pathStep];
+    }
+  })
+
+
+  leaf[property] = value;
+  return object;
+}
+
 function withFilters(filters) {
   return (knexPipe) => {
     return filters.reduce((knexNext, filter, i) => {
@@ -65,191 +317,6 @@ function withFilters(filters) {
     }, knexPipe)
   }
 }
-function withMetrics(metrics) {
-  return (knexPipe) => {
-
-    return metrics.reduce((knexNext, metric, i) => {
-      if (metric.startsWith('_')) return knexNext.select(knex.raw(metric.slice(1)));
-      return knexNext.sum.call(knexNext, `${metric} as ${metric}`);
-    }, knexPipe)
-  }
-}
-
-function buildQuery(filters, metrics, groupings, table, as, dimensionsGrouping) {
-  return function () {
-
-    let result = null;
-    if (!groupings.length) {
-      result = withFilters(filters)(withMetrics(metrics)(this.select().from(table)));
-    } else {
-      result = withFilters(filters)(withMetrics(metrics)(this.select(knex.raw(groupings.map(r => r.startsWith('_') ? r.slice(1) : `"${r}"`).join(', ')))).from(table)).groupByRaw(dimensionsGrouping.map(r => r.startsWith('_') ? r.slice(1) : `"${r}"`).map(r => r.split(' as ')[0]).join(', '));
-    }
-
-    if (!!as) result = result.as(as);
-    return result;
-  }
-}
-
-function newQuery(section, table = 'table') {
-
-  const { arguments: args } = section;
-
-  const filters = args.reduce((res, arg) => {
-    if (arg.name.value.endsWith('_gt')) return res.concat([[arg.name.value.replace('_gt', ''), '>', arg.value.value]]);
-    if (arg.name.value.endsWith('_gte')) return res.concat([[arg.name.value.replace('_gte', ''), '>=', arg.value.value]]);
-    if (arg.name.value.endsWith('_lt')) return res.concat([[arg.name.value.replace('_lt', ''), '<', arg.value.value]]);
-    if (arg.name.value.endsWith('_lte')) return res.concat([[arg.name.value.replace('_lte', ''), '<=', arg.value.value]]);
-    return res.concat([[arg.name.value, '=', arg.value.value]]);
-  }, []);
-
-
-  const groupings = extractGroupings(section.selectionSet);
-  const dimensionsGrouping = extractDimensionGroupings(section.selectionSet);
-  const metrics = extractMetrics(section.selectionSet);
-  const metricNames = extractMetricNames(section.selectionSet);
-  const dimensionTypes = extractDimensionTypes(section.selectionSet);
-  const dimensionNames = extractDimensionNames(section.selectionSet);
-  const dimensionFormats = extractDimensionFormats(section.selectionSet);
-
-  const aggregationHandler = extractAggregationHandler(section.selectionSet, null);
-
-  if (!!aggregationHandler && aggregationHandler[1]) {
-    return aggregationHandler[1](aggregationHandler[0], table, filters, metrics, groupings, dimensionTypes, metricNames, dimensionFormats, dimensionsGrouping);
-  }
-  const resultQuery = buildQuery(filters, metrics, groupings, table, null, dimensionsGrouping).call(knex);
-  return { query: resultQuery.toString(), queryPromise: resultQuery, dimensions: dimensionNames, metrics: metricNames, dimensionTypes, dimensionFormats };
-}
-
-const metricHandlers = {
-  divide: (s) => {
-    return `_cast(sum("${s.arguments[0].value.value}") as float)/cast(sum("${s.arguments[1].value.value}") as float) as "${s.alias.value}"`;
-  }
-}
-
-const dimenstionHandlers = {
-  aggrAverage: (s, table, filters, metrics, groupings, dimensionTypes, metricNames, dimensionFormats, dimensionsGrouping) => {
-    metrics.push(`_"${s.alias.value}"*sum("${s.arguments[0].value.value}") as "aggrAverage"`)
-    metricNames.push(`${s.alias.value}_aggrAverage`)
-    const outer_dimensions = groupings.filter(g => g !== s.alias.value).map(g => !!~g.indexOf(' as ') ? g.split(" as ")[1].slice(1, -1) : g);
-    dimensionTypes.splice(groupings.indexOf(s.alias.value), 1);
-    const resultQuery = knex.select(outer_dimensions).select(knex.raw(`sum("aggrAverage")/max("${s.arguments[1].value.value}") as ${s.alias.value}_aggrAverage`))
-      .from(buildQuery(filters, metrics, groupings, table, 'middleTable', dimensionsGrouping))
-      .groupBy(outer_dimensions)
-    return {
-      query: resultQuery.toString(),
-      queryPromise: resultQuery,
-      metrics: metricNames,
-      dimensions: outer_dimensions,
-      dimensionTypes,
-      dimensionFormats
-    };
-  },
-  distinct: (s, table, filters, metrics, groupings, dimensionTypes, metricNames, dimensionFormats, dimensionsGrouping) => {
-
-    const resultQuery = knex(table).distinct(s.alias.value);
-    return {
-      query: resultQuery.toString(),
-      queryPromise: resultQuery,
-      metrics: metricNames,
-      dimensions: groupings,
-      dimensionTypes,
-      dimensionFormats
-    };
-  }
-}
-
-function extractMetrics(set, arr = []) {
-  if (!set.selections[0].selectionSet) {
-    return set.selections.map((s) => {
-      if (s.alias && metricHandlers[s.name.value]) return metricHandlers[s.name.value](s)
-      return s.name.value
-    });
-  }
-  return extractMetrics(set.selections[0].selectionSet, arr);
-}
-function extractMetricNames(set, arr = []) {
-  if (!set.selections[0].selectionSet) {
-    return set.selections.map((s) => {
-      if (s.alias && metricHandlers[s.name.value]) return s.alias.value;
-      return s.name.value
-    });
-  }
-  return extractMetricNames(set.selections[0].selectionSet, arr);
-}
-function extractDimensionTypes(set, arr = []) {
-  if (!set.selections[0].selectionSet) return arr;
-  const type = !!set.selections[0].arguments.length && set.selections[0].arguments[0].name.value === 'type' ? set.selections[0].arguments[0].value.value : null;
-  if (!!set.selections[0].alias && !!set.selections[0].alias.value) {
-    return arr.concat(type, extractDimensionTypes(set.selections[0].selectionSet, arr))
-  }
-  return arr.concat(type, extractDimensionTypes(set.selections[0].selectionSet, arr))
-}
-function extractDimensionFormats(set, arr = []) {
-  if (!set.selections[0].selectionSet) return arr;
-
-  const allArguments = !!set.selections[0].arguments.length && set.selections[0].arguments.map(a => ({ name: a.name.value, value: a.value.value })) || [];
-
-  const format = allArguments.filter(a => a.name == 'format')[0];
-
-  if (!!set.selections[0].alias && !!set.selections[0].alias.value) {
-    return arr.concat(format && format.value, extractDimensionFormats(set.selections[0].selectionSet, arr))
-  }
-  return arr.concat(format && format.value, extractDimensionFormats(set.selections[0].selectionSet, arr))
-}
-
-
-function extractDimensionNames(set, arr = []) {
-  if (!set.selections[0].selectionSet) return arr;
-  if (!!set.selections[0].alias && !!set.selections[0].alias.value) return arr.concat([set.selections[0].alias.value, set.selections[0].name.value].join('_'), extractDimensionNames(set.selections[0].selectionSet, arr))
-  return arr.concat(set.selections[0].name.value, extractDimensionNames(set.selections[0].selectionSet, arr))
-}
-
-function extractDimensionGroupings(set, arr = []) {
-  if (!set.selections[0].selectionSet) return arr;
-
-  if (!!set.selections[0].alias && !!set.selections[0].alias.value) {
-    return arr.concat(set.selections[0].alias.value, extractDimensionGroupings(set.selections[0].selectionSet, arr))
-  }
-  const idxGroupBy = set.selections[0].arguments.map(a => a.name.value).indexOf('groupBy');
-  const idxFormat = set.selections[0].arguments.map(a => a.name.value).indexOf('format');
-  if (!!~idxGroupBy) {
-    const fieldName = set.selections[0].name.value;
-    const groupType = set.selections[0].arguments[idxGroupBy].value.value;
-
-    return arr.concat(`_date_trunc('${groupType}', "${fieldName}") as "${fieldName}"`, extractDimensionGroupings(set.selections[0].selectionSet, arr))
-  }
-
-  return arr.concat(set.selections[0].name.value, extractDimensionGroupings(set.selections[0].selectionSet, arr))
-}
-function extractGroupings(set, arr = []) {
-  if (!set.selections[0].selectionSet) return arr;
-
-  if (!!set.selections[0].alias && !!set.selections[0].alias.value) {
-    return arr.concat(set.selections[0].alias.value, extractGroupings(set.selections[0].selectionSet, arr))
-  }
-  const idxGroupBy = set.selections[0].arguments.map(a => a.name.value).indexOf('groupBy');
-  const idxFormat = set.selections[0].arguments.map(a => a.name.value).indexOf('format');
-  if (!!~idxGroupBy) {
-    const fieldName = set.selections[0].name.value;
-    const groupType = set.selections[0].arguments[idxGroupBy].value.value;
-    if (!!~idxFormat) {
-      const format = set.selections[0].arguments[idxFormat].value.value;
-      return arr.concat(`_to_char(date_trunc('${groupType}', "${fieldName}"), '${format}') as "${fieldName}"`, extractGroupings(set.selections[0].selectionSet, arr))
-    }
-    return arr.concat(`_date_trunc('${groupType}', "${fieldName}") as "${fieldName}"`, extractGroupings(set.selections[0].selectionSet, arr))
-  }
-  if (!!~idxFormat) {
-    const fieldName = set.selections[0].name.value;
-    const format = set.selections[0].arguments[idxFormat].value.value;
-    return arr.concat(`_to_char(${fieldName}, '${format}') as "${fieldName}"`, extractGroupings(set.selections[0].selectionSet, arr))
-  }
-  return arr.concat(set.selections[0].name.value, extractGroupings(set.selections[0].selectionSet, arr))
-}
-function extractAggregationHandler(set, result) {
-  if (!set.selections[0].selectionSet) return null;
-  if (!!set.selections[0].alias && !!set.selections[0].alias.value && dimenstionHandlers[set.selections[0].name.value]) return [set.selections[0], dimenstionHandlers[set.selections[0].name.value]];
-  return extractAggregationHandler(set.selections[0].selectionSet, result);
-}
 
 function flattenObject(o) {
   const keys = Object.keys(o);
@@ -257,5 +324,6 @@ function flattenObject(o) {
 }
 
 function argumentsToObject(args) {
+  if (!args) return null;
   return args.reduce((r, a) => ({ ...r, [a.name.value]: a.value.value }), {})
 }
