@@ -48,11 +48,58 @@ describe('builder for mulyquery requests', () => {
 
     expect(merge(definitions, table)).toMatchSnapshot()
   })
+  test('two queries to object', () => {
+    const table = [[
+      {
+        device: 'mobile',
+        date: '2020-01-01T23:00:00.000Z',
+        no_baskets: '101'
+      },
+      {
+        device: 'mobile',
+        date: '2020-01-02T23:00:00.000Z',
+        no_baskets: '107'
+      },
+      {
+        device: 'desktop',
+        date: '2020-01-01T23:00:00.000Z',
+        no_baskets: '201'
+      },
+      {
+        device: 'desktop',
+        date: '2020-01-02T23:00:00.000Z',
+        no_baskets: '207'
+      }
+    ], [
+      {
+        device: 'mobile',
+        no_baskets: '1070'
+      },
+      {
+        device: 'desktop',
+        no_baskets: '2010'
+      },
+    ]]
+    const { queries, definitions } = gqlBuild(`{
+      byDate: query(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
+        device {
+          date(type: Array){
+            no_baskets
+          }
+        }
+      }
+    }
+    {
+      byDevice: query(brand: Amd, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
+        device {
+          no_baskets
+        }
+      }
+    }
+    `, 'table')
 
-})
-
-describe('builder for mulyquery requests', () => {
-
+    expect(merge(definitions, table)).toMatchSnapshot()
+  })
 
   test('basic example works', () => {
 
@@ -74,7 +121,8 @@ describe('builder for mulyquery requests', () => {
     }
  
     `, 'table').sql).toMatchSnapshot();
-
+  })
+  test('two queries', () => {
     expect(gqlBuild(`{
     query1: query(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
       device {

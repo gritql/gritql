@@ -12,6 +12,7 @@ module.exports.gqlBuild = function gqlBuild(gqlQuery, table) {
   if (!table) throw "Table is not defined";
   const definitions = gql(gqlQuery).definitions;
   const queries = queryBuilder(table, definitions).map(convertRaw)
+
   const sql = queries.map(q => q.promise.toString())
   return { queries, sql, definitions }
 }
@@ -144,21 +145,40 @@ function copyKnex(knexObject) {
 module.exports.merge = function merge(tree, data) {
   const queries = getMergeStrings(tree);
 
-  const res = queries.reduce((result, q, i) => {
-    const resultData = data[i];
-    for (var j = 0; j < resultData.length; j++) {
-      const keys = Object.keys(resultData[j]);
+  const batches = queries.reduce((r, q, i) => {
+    const key = q.name || "___query";
+    if (!r[key]) r[key] = [];
+    q.bid = i;
+    r[key].push(q);
+    return r;
+  }, {})
 
-      for (var key in keys) {
-        if (q.metrics[keys[key]]) {
-          const value = isNaN(+resultData[j][keys[key]]) ? resultData[j][keys[key]] : +resultData[j][keys[key]];
-          result = progressiveSet(result, replVars(q.metrics[keys[key]], resultData[j]), value)
+  function getMergedObject(quer) {
+    return quer.reduce((result, q, i) => {
+      const resultData = data[q.bid];
+      for (var j = 0; j < resultData.length; j++) {
+        const keys = Object.keys(resultData[j]);
+
+        for (var key in keys) {
+          if (q.metrics[keys[key]]) {
+            const value = isNaN(+resultData[j][keys[key]]) ? resultData[j][keys[key]] : +resultData[j][keys[key]];
+            result = progressiveSet(result, replVars(q.metrics[keys[key]], resultData[j]), value)
+          }
         }
       }
-    }
-    return result;
+      return result;
 
+    }, {})
+  }
+
+  if (Object.keys(batches).length === 1 && !!batches["___query"]) {
+    return getMergedObject(queries);
+  }
+  const res = Object.keys(batches).reduce((r, k) => {
+    r[k.replace('___query', '')] = getMergedObject(batches[k])
+    return r;
   }, {})
+
   return res;
 }
 

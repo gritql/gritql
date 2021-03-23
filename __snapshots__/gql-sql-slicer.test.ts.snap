@@ -9,14 +9,6 @@ Array [
 
 exports[`builder for mulyquery requests basic example works 2`] = `
 Array [
-  "select \\"device\\", sum(\\"ano_no_unique_products\\") as \\"ano_no_unique_products\\", sum(\\"ano_no_all_baskets\\") as \\"ano_no_all_baskets\\", sum(\\"ano_no_baskets\\") as \\"ano_no_baskets\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\"",
-  "select \\"device\\", \\"date\\", sum(\\"no_unique_products\\") as \\"no_unique_products\\", sum(\\"no_all_baskets\\") as \\"no_all_baskets\\", sum(\\"no_baskets\\") as \\"no_baskets\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\"",
-  "select \\"device\\", \\"date\\", sum(\\"brand_revenue\\") as \\"brand_revenue\\", sum(\\"total_revenue\\") as \\"total_revenue\\", sum(\\"no_uniqie_brand_products\\") as \\"no_uniqie_brand_products\\", sum(\\"no_brand_products\\") as \\"no_brand_products\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\"",
-]
-`;
-
-exports[`builder for mulyquery requests basic example works 3`] = `
-Array [
   "select \\"device\\", cast(sum(\\"no_of_baskets\\") as float)/cast(sum(\\"no_all_baskets\\") as float) as \\"avg\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\"",
   "select \\"device\\", \\"date\\", cast(sum(\\"no_of_baskets\\") as float)/cast(sum(\\"no_all_baskets\\") as float) as \\"avg\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\"",
 ]
@@ -49,6 +41,49 @@ Object {
       },
     ],
     "no_baskets": 1070,
+  },
+}
+`;
+
+exports[`builder for mulyquery requests two queries 1`] = `
+Array [
+  "select \\"device\\", sum(\\"ano_no_unique_products\\") as \\"ano_no_unique_products\\", sum(\\"ano_no_all_baskets\\") as \\"ano_no_all_baskets\\", sum(\\"ano_no_baskets\\") as \\"ano_no_baskets\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\"",
+  "select \\"device\\", \\"date\\", sum(\\"no_unique_products\\") as \\"no_unique_products\\", sum(\\"no_all_baskets\\") as \\"no_all_baskets\\", sum(\\"no_baskets\\") as \\"no_baskets\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\"",
+  "select \\"device\\", \\"date\\", sum(\\"brand_revenue\\") as \\"brand_revenue\\", sum(\\"total_revenue\\") as \\"total_revenue\\", sum(\\"no_uniqie_brand_products\\") as \\"no_uniqie_brand_products\\", sum(\\"no_brand_products\\") as \\"no_brand_products\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\"",
+]
+`;
+
+exports[`builder for mulyquery requests two queries to object 1`] = `
+Object {
+  "byDate": Object {
+    "desktop": Array [
+      Object {
+        "date": "2020-01-01T23:00:00.000Z",
+        "no_baskets": 201,
+      },
+      Object {
+        "date": "2020-01-02T23:00:00.000Z",
+        "no_baskets": 207,
+      },
+    ],
+    "mobile": Array [
+      Object {
+        "date": "2020-01-01T23:00:00.000Z",
+        "no_baskets": 101,
+      },
+      Object {
+        "date": "2020-01-02T23:00:00.000Z",
+        "no_baskets": 107,
+      },
+    ],
+  },
+  "byDevice": Object {
+    "desktop": Object {
+      "no_baskets": 2010,
+    },
+    "mobile": Object {
+      "no_baskets": 1070,
+    },
   },
 }
 `;
