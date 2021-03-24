@@ -1,7 +1,5 @@
 const gql = require('graphql-tag');
 const knexConstructor = require('knex');
-var set = require('lodash.set');
-var get = require('lodash.get');
 
 let knex = knexConstructor({ client: 'pg' });
 module.exports = function init(opts = { client: 'pg' }) {
