@@ -7,10 +7,8 @@ module.exports = function init(opts = { client: 'pg' }) {
 }
 
 module.exports.gqlBuild = function gqlBuild(gqlQuery, table) {
-  if (!table) throw "Table is not defined";
   const definitions = gql(gqlQuery).definitions;
   const queries = queryBuilder(table, definitions).map(convertRaw)
-
   const sql = queries.map(q => q.promise.toString())
   return { queries, sql, definitions }
 }
@@ -67,7 +65,7 @@ function queryBuilder(table, tree, queries = [], idx = undefined) {
 function parseMetric(tree, query) {
   const { metrics = [] } = query;
   if (tree.alias && metricResolvers[tree.name?.value]) return metricResolvers[tree.name?.value](tree, query)
-  query.promise = query.promise.sum(`${tree.name.value} as ${tree.name.value}`)
+  query.promise = query.promise.select(`${tree.name.value}`)
   metrics.push(tree.name.value);
   query.metrics = metrics;
 }
@@ -98,6 +96,12 @@ function parseFilters(tree) {
   }, []);
 }
 const metricResolvers = {
+  sum: (tree, query) => {
+    if (!tree.arguments) throw "Sum function requires arguments";
+    const args = argumentsToObject(tree.arguments);
+    if (!args.a) throw "Sum function requires 'a' as argument";
+    query.promise = query.promise.sum(`${args.a} as ${tree.alias.value}`);
+  },
   divide: (tree, query) => {
     if (!tree.arguments) throw "Divide function requires arguments";
     const args = argumentsToObject(tree.arguments);
@@ -142,7 +146,6 @@ function copyKnex(knexObject) {
 }
 module.exports.merge = function merge(tree, data) {
   const queries = getMergeStrings(tree);
-
   const batches = queries.reduce((r, q, i) => {
     const key = q.name || "___query";
     if (!r[key]) r[key] = [];

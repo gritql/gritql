@@ -1,9 +1,9 @@
 {
-  "name": "gql-json-slicer",
-  "version": "1.0.4",
-  "main": "gql-json-slicer.js",
-  "types": "gql-json-slicer.d.ts",
-  "repository": "git@github.com:edjafarov/gql-json-slicer.git",
+  "name": "gql-sql-slicer",
+  "version": "1.0.1",
+  "main": "gql-sql-slicer.js",
+  "types": "gql-sql-slicer.d.ts",
+  "repository": "git@github.com:edjafarov/gql-sql-slicer.git",
   "author": "Eldar Djafarov <djkojb@gmail.com>",
   "license": "MIT",
   "scripts": {

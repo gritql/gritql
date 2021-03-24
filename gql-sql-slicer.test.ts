@@ -37,9 +37,9 @@ describe('builder for mulyquery requests', () => {
     const { queries, definitions } = gqlBuild(`{
       query(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
         device {
-          no_baskets
+          no_baskets: sum(a: no_baskets)
           date(type: Array){
-            no_baskets
+            no_baskets: sum(a: no_baskets)
           }
         }
       }
@@ -84,7 +84,7 @@ describe('builder for mulyquery requests', () => {
       byDate: query(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
         device {
           date(type: Array){
-            no_baskets
+            no_baskets: sum(a:no_baskets)
           }
         }
       }
@@ -92,7 +92,7 @@ describe('builder for mulyquery requests', () => {
     {
       byDevice: query(brand: Amd, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
         device {
-          no_baskets
+          no_baskets: sum(a:no_baskets)
         }
       }
     }
@@ -108,13 +108,13 @@ describe('builder for mulyquery requests', () => {
       query1: query(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
         device {
           date(type: Array) {
-            no_baskets
-            no_all_baskets
-            no_unique_products 
+            no_baskets: sum(a:no_baskets)
+            no_all_baskets: sum(a:no_all_baskets)
+            no_unique_products: sum(a:no_unique_products)
           }
-          ano_no_baskets
-          ano_no_all_baskets
-          ano_no_unique_products 
+          ano_no_baskets: sum(a:ano_no_baskets)
+          ano_no_all_baskets: sum(a:ano_no_all_baskets)
+          ano_no_unique_products: sum(a:ano_no_unique_products) 
         }
       }
       
@@ -127,13 +127,13 @@ describe('builder for mulyquery requests', () => {
     query1: query(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
       device {
         date(type: Array) {
-          no_baskets
-          no_all_baskets
-          no_unique_products 
+          no_baskets: sum(a:no_baskets)
+          no_all_baskets: sum(a:no_all_baskets)
+          no_unique_products: sum(a:no_unique_products)
         }
-        ano_no_baskets
-        ano_no_all_baskets
-        ano_no_unique_products 
+        ano_no_baskets: sum(a:ano_no_baskets)
+        ano_no_all_baskets: sum(a:ano_no_all_baskets)
+        ano_no_unique_products: sum(a:ano_no_unique_products) 
       }
     }
     
@@ -142,10 +142,10 @@ describe('builder for mulyquery requests', () => {
     query(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
       device {
         date(type: Array) {
-          no_brand_products
-          no_uniqie_brand_products 
-          total_revenue
-          brand_revenue
+          no_brand_products: sum(a:no_brand_products)
+          no_uniqie_brand_products: sum(a:no_uniqie_brand_products)
+          total_revenue: sum(a:total_revenue)
+          brand_revenue: sum(a:brand_revenue)
         }
       }
     }
@@ -189,13 +189,13 @@ describe('gqlBuilder single query', () => {
       query(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
         device {
           date(type: Array) {
-            no_baskets
-            no_all_baskets
-            no_unique_products 
-            no_brand_products
-            no_uniqie_brand_products 
-            total_revenue
-            brand_revenue
+            no_baskets: sum(a:no_baskets)
+            no_all_baskets: sum(a:no_all_baskets)
+            no_unique_products: sum(a:no_unique_products)
+            no_brand_products: sum(a:no_brand_products)
+            no_uniqie_brand_products: sum(a:no_uniqie_brand_products) 
+            total_revenue: sum(a:total_revenue)
+            brand_revenue: sum(a:brand_revenue)
           }
         }
       }
@@ -209,8 +209,8 @@ describe('gqlBuilder single query', () => {
       query(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
         device {
           date(type: Array) {
-            no_unique_products 
-            no_brand_products
+            no_unique_products: sum(a:no_unique_products)
+            no_brand_products: sum(a:no_brand_products)
             average: divide(a:no_baskets, by:no_all_baskets)
           }
         }
@@ -236,8 +236,8 @@ describe('gqlBuilder single query', () => {
       query(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
         device {
           date(type: Array, groupBy:month){
-            no_unique_products 
-            no_brand_products
+            no_unique_products: sum(a:no_unique_products)
+            no_brand_products: sum(a:no_brand_products)
           }
         }
       }
@@ -437,7 +437,7 @@ describe('merge', () => {
       }
     ]
     const { query, definition } = gqlBuild(`{
-      query: test(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
+      query(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
         device {
           date(type: Array, format: "Mon yy"){
             position: aggrAverage(to:no_baskets, by:no_all_baskets) {
