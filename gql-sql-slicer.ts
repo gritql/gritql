@@ -29,23 +29,24 @@ function queryBuilder(table, tree, queries = [], idx = undefined) {
     return tree.reduce((queries, t, i) => queryBuilder(table, t, queries, queries.length - 1), queries);
   }
   if (tree.kind === 'OperationDefinition' && !!tree.selectionSet) {
+    if (tree.operation === 'query' && !!tree.name?.value) table = tree.name?.value
     return tree.selectionSet.selections.reduce((queries, t, i) => queryBuilder(table, t, queries, queries.length), queries);
   }
   if (!query.filters && tree.name.value === 'query') {
-    query.name = tree.alias ?.value || null;
+    query.name = tree.alias?.value || null;
     query.filters = parseFilters(tree);
     query.promise = knex.select().from(table);
     query.promise = withFilters(query.filters)(query.promise)
-    if (!tree.selectionSet ?.selections) throw "The query is empty, you need specify metrics or dimensions";
+    if (!tree.selectionSet?.selections) throw "The query is empty, you need specify metrics or dimensions";
   }
   if (query.name === undefined) throw "Cant find query in the payload";
 
-  if (!!tree.selectionSet ?.selections) {
+  if (!!tree.selectionSet?.selections) {
     const selections = tree.selectionSet.selections;
     const [haveMetric, haveDimension] = selections.reduce((r, s) => {
       return [r[0] || !!s.selectionSet, r[1] || !s.selectionSet];
     }, [false, false])
-    if (tree.name ?.value !== 'query') parseDimension(tree, query);
+    if (tree.name?.value !== 'query') parseDimension(tree, query);
     selections.sort((a, b) => !b.selectionSet ? -1 : 1);
     return selections.reduce((queries, t, i) => {
       if (!!t.selectionSet && haveMetric && haveDimension) {
@@ -65,8 +66,8 @@ function queryBuilder(table, tree, queries = [], idx = undefined) {
 }
 function parseMetric(tree, query) {
   const { metrics = [] } = query;
-  if (tree.alias && metricResolvers[tree.name ?.value]) return metricResolvers[tree.name ?.value](tree, query)
-  if (!tree.alias ?.value) {
+  if (tree.alias && metricResolvers[tree.name?.value]) return metricResolvers[tree.name?.value](tree, query)
+  if (!tree.alias?.value) {
     query.promise = query.promise.select(`${tree.name.value}`)
   } else {
     query.promise = query.promise.select(`${tree.name.value} as ${tree.alias.value}`)
@@ -80,13 +81,16 @@ function parseDimension(tree, query) {
   const { dimensions = [] } = query;
 
   const args = argumentsToObject(tree.arguments);
-  if (args ?.groupBy) {
-    query.promise = query.promise.select(knex.raw(`date_trunc(?, ??) as ??`, [args ?.groupBy, tree.name.value, tree.name.value]));
+
+  if (args?.groupBy) {
+    query.promise = query.promise.select(knex.raw(`date_trunc(?, ??) as ??`, [args?.groupBy, tree.name.value, tree.name.value]));
     query.promise = query.promise.groupBy(knex.raw(`??`, [tree.name.value]));
   } else {
     query.promise = query.promise.select(tree.name.value);
     query.promise = query.promise.groupBy(tree.name.value);
   }
+  if (!!args?.sort_desc) query.promise.orderBy(args?.sort_desc, 'desc');
+  if (!!args?.sort_asc) query.promise.orderBy(args?.sort_asc, 'asc');
   dimensions.push(tree.name.value);
   query.dimensions = dimensions;
 }
@@ -123,10 +127,10 @@ const metricResolvers = {
     const internal = query.promise.select(tree.alias.value)
       .sum(`${args.to} as ${args.to}`)
       .sum(`${args.by} as ${args.by}`)
-      .select(knex.raw(`?? * sum(??) as "aggrAverage"`, [tree.alias ?.value, args.to]))
-      .groupBy(tree.alias ?.value)
+      .select(knex.raw(`?? * sum(??) as "aggrAverage"`, [tree.alias?.value, args.to]))
+      .groupBy(tree.alias?.value)
     query.promise = knex.select(query.dimensions)
-      .select(knex.raw(`sum("aggrAverage")/max(??) as "${tree.alias ?.value}_aggrAverage"`, [args.by]))
+      .select(knex.raw(`sum("aggrAverage")/max(??) as "${tree.alias?.value}_aggrAverage"`, [args.by]))
       .from(internal.as('middleTable'))
 
     if (!!query.dimensions && query.dimensions.length > 0) {
@@ -221,20 +225,20 @@ function getMergeStrings(tree, queries = [], idx = undefined) {
   }
 
   if (!query.filters && tree.name.value === 'query') {
-    query.name = tree.alias ?.value || null;
+    query.name = tree.alias?.value || null;
     query.metrics = {};
     query.path = '';
 
-    if (!tree.selectionSet ?.selections) throw "The query is empty, you need specify metrics or dimensions";
+    if (!tree.selectionSet?.selections) throw "The query is empty, you need specify metrics or dimensions";
   }
   if (query.name === undefined) throw "Cant find query in the payload";
 
-  if (!!tree.selectionSet ?.selections) {
+  if (!!tree.selectionSet?.selections) {
     const selections = tree.selectionSet.selections;
     const [haveMetric, haveDimension] = selections.reduce((r, s) => {
       return [r[0] || !!s.selectionSet, r[1] || !s.selectionSet];
     }, [false, false])
-    if (tree.name ?.value !== 'query') mergeDimension(tree, query);
+    if (tree.name?.value !== 'query') mergeDimension(tree, query);
     selections.sort((a, b) => !b.selectionSet ? -1 : 1);
     return selections.reduce((queries, t, i) => {
       if (!!t.selectionSet && haveMetric && haveDimension) {
@@ -255,13 +259,13 @@ function getMergeStrings(tree, queries = [], idx = undefined) {
 function mergeMetric(tree, query) {
   let name = tree.name.value;
   const args = argumentsToObject(tree.arguments);
-  if (args ?.type === 'Array') {
-    if (tree.alias ?.value) name = tree.alias ?.value;
+  if (args?.type === 'Array') {
+    if (tree.alias?.value) name = tree.alias?.value;
     query.path += `${!!query.path ? '.' : ''}[@${name}=:${name}]`
     query.metrics[`${name}`] = `${query.path}${!!query.path ? '.' : ''}${name}`;
   } else {
-    if (tree.alias && metricResolversData[tree.name ?.value]) return metricResolversData[tree.name ?.value](tree, query)
-    if (tree.alias ?.value) name = tree.alias ?.value;
+    if (tree.alias && metricResolversData[tree.name?.value]) return metricResolversData[tree.name?.value](tree, query)
+    if (tree.alias?.value) name = tree.alias?.value;
     query.metrics[`${name}`] = `${query.path}${!!query.path ? '.' : ''}${name}`;
   }
 }
@@ -269,7 +273,7 @@ function mergeMetric(tree, query) {
 function mergeDimension(tree, query) {
   const args = argumentsToObject(tree.arguments);
 
-  if (args ?.type === 'Array') {
+  if (args?.type === 'Array') {
     query.path += `${!!query.path ? '.' : ''}[@${tree.name.value}=:${tree.name.value}]`
   } else {
     query.path += `${!!query.path ? '.' : ''}:${tree.name.value}`
@@ -278,7 +282,7 @@ function mergeDimension(tree, query) {
 
 const metricResolversData = {
   aggrAverage: (tree, query) => {
-    const name = `${tree.alias ?.value}_aggrAverage`;
+    const name = `${tree.alias?.value}_aggrAverage`;
     query.metrics[`${name}`] = `${query.path}${!!query.path ? '.' : ''}${name}`;
   }
 }

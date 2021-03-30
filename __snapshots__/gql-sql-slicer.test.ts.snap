@@ -94,6 +94,12 @@ Object {
 }
 `;
 
+exports[`gqlBuilder single query basic Array with sorting works 1`] = `
+Array [
+  "select \\"channel\\", cast(sum(\\"revenue\\") as float)/cast(sum(\\"sessions\\") as float) as \\"session_value\\" from \\"table\\" where \\"category\\" = 'whatever' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"channel\\" order by \\"session_value\\" desc",
+]
+`;
+
 exports[`gqlBuilder single query basic example works 1`] = `
 Array [
   "select \\"device\\", \\"date\\", sum(\\"brand_revenue\\") as \\"brand_revenue\\", sum(\\"total_revenue\\") as \\"total_revenue\\", sum(\\"no_uniqie_brand_products\\") as \\"no_uniqie_brand_products\\", sum(\\"no_brand_products\\") as \\"no_brand_products\\", sum(\\"no_unique_products\\") as \\"no_unique_products\\", sum(\\"no_all_baskets\\") as \\"no_all_baskets\\", sum(\\"no_baskets\\") as \\"no_baskets\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\"",
@@ -115,6 +121,13 @@ Array [
 exports[`gqlBuilder single query group date by month 1`] = `
 Array [
   "select \\"device\\", date_trunc('month', \\"date\\") as \\"date\\", sum(\\"no_brand_products\\") as \\"no_brand_products\\", sum(\\"no_unique_products\\") as \\"no_unique_products\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\"",
+]
+`;
+
+exports[`gqlBuilder single query handle table name in query 1`] = `
+Array [
+  "select \\"custom_name\\", \\"device\\" from \\"some_table_name\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"custom_name\\"",
+  "select \\"custom_name_second\\", \\"device_second\\" from \\"some_other_table_name\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"custom_name_second\\"",
 ]
 `;
 

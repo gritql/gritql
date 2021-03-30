@@ -212,7 +212,16 @@ describe('gqlBuilder single query', () => {
     `, 'table').sql).toMatchSnapshot();
   })
 
-
+  test('basic Array with sorting works', () => {
+    expect(gqlBuild(`{
+      query(category: whatever, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
+        channel(type: Array, sort_desc: session_value) {
+            session_value: divide(a:revenue, by:sessions)
+        }
+      }
+    }
+    `, 'table').sql).toMatchSnapshot();
+  })
   test('metric functions', () => {
     expect(gqlBuild(`{
       query(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
@@ -505,3 +514,24 @@ describe('merge', () => {
 
 })
 
+
+
+describe('gqlBuilder single query', () => {
+  test('handle table name in query', () => {
+    expect(gqlBuild(`query some_table_name{
+      query(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
+        custom_name {
+          device
+        }
+      }
+    }
+    query some_other_table_name{
+      query(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
+        custom_name_second {
+          device_second
+        }
+      }
+    }
+    `, 'table').sql).toMatchSnapshot();
+  })
+})
