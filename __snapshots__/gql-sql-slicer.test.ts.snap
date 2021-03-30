@@ -14,6 +14,12 @@ Array [
 ]
 `;
 
+exports[`builder for mulyquery requests basic example works 3`] = `
+Array [
+  "select \\"device\\" as \\"custom_name\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12'",
+]
+`;
+
 exports[`builder for mulyquery requests mixing the object 1`] = `
 Object {
   "desktop": Object {

@@ -169,6 +169,15 @@ describe('builder for mulyquery requests', () => {
  
     `, 'table').sql).toMatchSnapshot();
   })
+
+  test('basic example works', () => {
+    expect(gqlBuild(`{
+      query(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
+        custom_name: device
+      }
+    }
+    `, 'table').sql).toMatchSnapshot();
+  })
 })
 
 
