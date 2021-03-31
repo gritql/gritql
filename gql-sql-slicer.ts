@@ -1,24 +1,70 @@
 const gql = require('graphql-tag');
 const knexConstructor = require('knex');
 
-let knex = knexConstructor({ client: 'pg' });
-module.exports = function init(opts = { client: 'pg' }) {
-  knex = knexConstructor(opts);
+
+type TagObject = {
+  kind: 'OperationDefinition'
+  operation: 'query'
+  name: any
+  variableDefenitions: any
+  derictives: any
+  selectionSet: any
+}
+type GqlQuery = {
+  promise: Promise<any>
+  name: string
+  filters: Array<string>
 }
 
-module.exports.gqlBuild = function gqlBuild(gqlQuery, table) {
-  const definitions = gql(gqlQuery).definitions;
-  const queries = queryBuilder(table, definitions).map(convertRaw)
-  const sql = queries.map(q => q.promise.toString())
-  return { queries, sql, definitions }
+type gqlBuildObject = {
+  queries: Array<GqlQuery>
+  sql: Array<string>
+  definitions: Array<TagObject>
+}
+interface BeforeDbHandler {
+  (QueryObject: gqlBuildObject): Promise<gqlBuildObject>
+}
+interface DbHandler {
+  (QueryObject: gqlBuildObject): Promise<any>
 }
 
-function convertRaw(query) {
+export const gqlToDb = (opts = { client: 'pg' }) => {
+  const knex = knexConstructor(opts);
+  let beforeDbHandler: BeforeDbHandler = (r) => Promise.resolve(r);
+  let dbHandler: DbHandler = ({ queries }) => Promise.all(queries.map(q => q.promise))
 
-  return query;
+  const gqlFetch = async (gqlQuery: string): Promise<any> => {
+
+    try {
+      const definitions = gql(gqlQuery).definitions;
+
+      const queries = queryBuilder(null, definitions, undefined, undefined, knex);
+      const sql = queries.map(q => q.promise.toString())
+      const preparedGqlQuery = await beforeDbHandler({ queries, sql, definitions });
+      if (!preparedGqlQuery) return null;
+      const resultFromDb = await dbHandler(preparedGqlQuery);
+      if (!resultFromDb) return null;
+      return await merge(definitions, resultFromDb)
+    } catch (e) {
+      throw Error(e)
+      return null;
+    }
+
+  }
+  gqlFetch.beforeDbFetch = (fn: BeforeDbHandler) => {
+    beforeDbHandler = fn;
+    return gqlFetch;
+  }
+  gqlFetch.dbFetch = (fn: DbHandler) => {
+    dbHandler = fn;
+    return gqlFetch;
+  }
+
+  return gqlFetch;
 }
 
-function queryBuilder(table, tree, queries = [], idx = undefined) {
+
+function queryBuilder(table, tree, queries: Array<any> | undefined = [], idx: number | undefined = undefined, knex) {
   //console.log(queries.map(q => q.promise._statements))
   //console.log(tree, idx, queries)
   //console.log(queries, idx, tree.length)
@@ -26,27 +72,30 @@ function queryBuilder(table, tree, queries = [], idx = undefined) {
   const query = queries[idx];
   if (Array.isArray(tree)) {
     //we replace query with next level
-    return tree.reduce((queries, t, i) => queryBuilder(table, t, queries, queries.length - 1), queries);
+    return tree.reduce((queries, t, i) => queryBuilder(table, t, queries, queries.length - 1, knex), queries);
   }
   if (tree.kind === 'OperationDefinition' && !!tree.selectionSet) {
     if (tree.operation === 'query' && !!tree.name?.value) table = tree.name?.value
-    return tree.selectionSet.selections.reduce((queries, t, i) => queryBuilder(table, t, queries, queries.length), queries);
+    return tree.selectionSet.selections.reduce((queries, t, i) => queryBuilder(table, t, queries, queries.length, knex), queries);
   }
-  if (!query.filters && tree.name.value === 'query') {
+  if (!query.filters && tree.name.value === 'fetch') {
+
     query.name = tree.alias?.value || null;
+
     query.filters = parseFilters(tree);
     query.promise = knex.select().from(table);
     query.promise = withFilters(query.filters)(query.promise)
     if (!tree.selectionSet?.selections) throw "The query is empty, you need specify metrics or dimensions";
   }
-  if (query.name === undefined) throw "Cant find query in the payload";
+
+  if (query.name === undefined) throw "Builder: Cant find fetch in the payload";
 
   if (!!tree.selectionSet?.selections) {
     const selections = tree.selectionSet.selections;
     const [haveMetric, haveDimension] = selections.reduce((r, s) => {
       return [r[0] || !!s.selectionSet, r[1] || !s.selectionSet];
     }, [false, false])
-    if (tree.name?.value !== 'query') parseDimension(tree, query);
+    if (tree.name?.value !== 'fetch') parseDimension(tree, query, knex);
     selections.sort((a, b) => !b.selectionSet ? -1 : 1);
     return selections.reduce((queries, t, i) => {
       if (!!t.selectionSet && haveMetric && haveDimension) {
@@ -54,19 +103,19 @@ function queryBuilder(table, tree, queries = [], idx = undefined) {
         queries[newIdx] = { ...queries[idx] };
         if (!!query.metrics) queries[newIdx].metrics = JSON.parse(JSON.stringify(query.metrics));
         if (!!query.dimensions) queries[newIdx].dimensions = JSON.parse(JSON.stringify(query.dimensions));
-        queries[newIdx].promise = copyKnex(query.promise);
+        queries[newIdx].promise = copyKnex(query.promise, knex);
         queries[newIdx].idx = newIdx;
-        return queryBuilder(table, t, queries, newIdx);
+        return queryBuilder(table, t, queries, newIdx, knex);
       }
-      return queryBuilder(table, t, queries, idx)
+      return queryBuilder(table, t, queries, idx, knex)
     }, queries);
   }
-  parseMetric(tree, query);
+  parseMetric(tree, query, knex);
   return queries
 }
-function parseMetric(tree, query) {
+function parseMetric(tree, query, knex) {
   const { metrics = [] } = query;
-  if (tree.alias && metricResolvers[tree.name?.value]) return metricResolvers[tree.name?.value](tree, query)
+  if (tree.alias && metricResolvers[tree.name?.value]) return metricResolvers[tree.name?.value](tree, query, knex)
   if (!tree.alias?.value) {
     query.promise = query.promise.select(`${tree.name.value}`)
   } else {
@@ -77,7 +126,7 @@ function parseMetric(tree, query) {
   query.metrics = metrics;
 }
 
-function parseDimension(tree, query) {
+function parseDimension(tree, query, knex) {
   const { dimensions = [] } = query;
 
   const args = argumentsToObject(tree.arguments);
@@ -106,20 +155,20 @@ function parseFilters(tree) {
   }, []);
 }
 const metricResolvers = {
-  sum: (tree, query) => {
+  sum: (tree, query, knex) => {
     if (!tree.arguments) throw "Sum function requires arguments";
     const args = argumentsToObject(tree.arguments);
     if (!args.a) throw "Sum function requires 'a' as argument";
     query.promise = query.promise.sum(`${args.a} as ${tree.alias.value}`);
   },
-  divide: (tree, query) => {
+  divide: (tree, query, knex) => {
     if (!tree.arguments) throw "Divide function requires arguments";
     const args = argumentsToObject(tree.arguments);
     if (!args.a) throw "Divide function requires 'a' as argument";
     if (!args.by) throw "Divide function requires 'by' as argument";
     query.promise = query.promise.select(knex.raw(`cast(sum(??) as float)/cast(sum(??) as float) as ??`, [args.a, args.by, tree.alias.value]));
   },
-  aggrAverage: (tree, query) => {
+  aggrAverage: (tree, query, knex) => {
     if (!tree.arguments) throw "AggrAverage function requires arguments";
     const args = argumentsToObject(tree.arguments);
     if (!args.to) throw "Divide function requires 'to' as argument";
@@ -137,13 +186,13 @@ const metricResolvers = {
       query.promise = query.promise.groupBy(query.dimensions);
     }
   },
-  distinct: (tree, query) => {
+  distinct: (tree, query, knex) => {
 
     query.promise = query.promise.distinct(tree.alias.value);
   }
 }
 
-function copyKnex(knexObject) {
+function copyKnex(knexObject, knex) {
   const result = knex(knexObject._single.table);
 
   return Object.keys(knexObject).reduce((k, key) => {
@@ -154,7 +203,7 @@ function copyKnex(knexObject) {
     return k;
   }, result)
 }
-module.exports.merge = function merge(tree, data) {
+export const merge = (tree: Array<TagObject>, data: Array<any>): any => {
   const queries = getMergeStrings(tree);
   const batches = queries.reduce((r, q, i) => {
     const key = q.name || "___query";
@@ -224,21 +273,21 @@ function getMergeStrings(tree, queries = [], idx = undefined) {
     return tree.selectionSet.selections.reduce((queries, t, i) => getMergeStrings(t, queries, queries.length), queries);
   }
 
-  if (!query.filters && tree.name.value === 'query') {
+  if (!query.filters && tree.name.value === 'fetch') {
     query.name = tree.alias?.value || null;
     query.metrics = {};
     query.path = '';
 
     if (!tree.selectionSet?.selections) throw "The query is empty, you need specify metrics or dimensions";
   }
-  if (query.name === undefined) throw "Cant find query in the payload";
+  if (query.name === undefined) throw "Cant find fetch in the payload";
 
   if (!!tree.selectionSet?.selections) {
     const selections = tree.selectionSet.selections;
     const [haveMetric, haveDimension] = selections.reduce((r, s) => {
       return [r[0] || !!s.selectionSet, r[1] || !s.selectionSet];
     }, [false, false])
-    if (tree.name?.value !== 'query') mergeDimension(tree, query);
+    if (tree.name?.value !== 'fetch') mergeDimension(tree, query);
     selections.sort((a, b) => !b.selectionSet ? -1 : 1);
     return selections.reduce((queries, t, i) => {
       if (!!t.selectionSet && haveMetric && haveDimension) {
@@ -307,10 +356,11 @@ function progressiveSet(object, queryPath, value) {
   pathArray.forEach((pathStep, i) => {
     if (pathStep.startsWith('[') && !Array.isArray(leaf)) {
       let key = pathStep.slice(1, pathStep.length - 1);
+
       if (key !== 0 && !key || Number.isInteger(+key)) {
         leaf['arr'] = [];
         leaf = leaf['arr'];
-      } else if (key.startsWith = "@") {
+      } else if (key.startsWith("@")) {
         key = key.slice(1);
         const filterBy = key.split('=');
         if (!leaf[filterBy[0]]) leaf[filterBy[0]] = [];
@@ -325,7 +375,7 @@ function progressiveSet(object, queryPath, value) {
         leaf = leaf[leaf.length - 1];
       } else if (Number.isInteger(+key)) {
         leaf = leaf[+key];
-      } else if (key.startsWith = "@") {
+      } else if (key.startsWith("@")) {
 
         key = key.slice(1);
 
