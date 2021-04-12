@@ -38,7 +38,7 @@ describe('builder for mulyquery requests', () => {
       return table;
     })
 
-    querier(`query table{
+    return querier(`query table{
       fetch(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
         device {
           no_baskets: sum(a: no_baskets)
@@ -90,7 +90,7 @@ describe('builder for mulyquery requests', () => {
       return table;
     })
 
-    querier(`query table{
+    return querier(`query table{
       byDate: fetch(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
         device {
           date(type: Array){
@@ -117,7 +117,7 @@ describe('builder for mulyquery requests', () => {
       expect(sql).toMatchSnapshot();
     })
 
-    querier(`query table{
+    return querier(`query table{
       query1: fetch(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
         device {
           date(type: Array) {
@@ -139,7 +139,7 @@ describe('builder for mulyquery requests', () => {
     const querier = gqlToDb().beforeDbFetch(({ sql }) => {
       expect(sql).toMatchSnapshot();
     })
-    querier(`query table{
+    return querier(`query table{
     query1: fetch(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
       device {
         date(type: Array) {
@@ -173,7 +173,7 @@ describe('builder for mulyquery requests', () => {
     const querier = gqlToDb().beforeDbFetch(({ sql }) => {
       expect(sql).toMatchSnapshot();
     })
-    querier(`query table{
+    return querier(`query table{
       fetch(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
         device {
           avg: divide(a:no_of_baskets, by:no_all_baskets) 
@@ -192,7 +192,7 @@ describe('builder for mulyquery requests', () => {
     const querier = gqlToDb().beforeDbFetch(({ sql }) => {
       expect(sql).toMatchSnapshot();
     })
-    querier(`query table{
+    return querier(`query table{
       fetch(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
         custom_name: device
       }
@@ -208,7 +208,7 @@ describe('gqlBuilder single query', () => {
     const querier = gqlToDb().beforeDbFetch(({ sql }) => {
       expect(sql).toMatchSnapshot();
     })
-    querier(`query table{
+    return querier(`query table{
       fetch{
         device: distinct
       }
@@ -221,7 +221,7 @@ describe('gqlBuilder single query', () => {
     const querier = gqlToDb().beforeDbFetch(({ sql }) => {
       expect(sql).toMatchSnapshot();
     })
-    querier(`query table{
+    return querier(`query table{
       fetch(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
         device {
           date(type: Array) {
@@ -243,7 +243,7 @@ describe('gqlBuilder single query', () => {
     const querier = gqlToDb().beforeDbFetch(({ sql }) => {
       expect(sql).toMatchSnapshot();
     })
-    querier(`query table{
+    return querier(`query table{
       fetch(category: whatever, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
         channel(type: Array, sort_desc: session_value) {
             session_value: divide(a:revenue, by:sessions)
@@ -256,7 +256,7 @@ describe('gqlBuilder single query', () => {
     const querier = gqlToDb().beforeDbFetch(({ sql }) => {
       expect(sql).toMatchSnapshot();
     })
-    querier(`query table{
+    return querier(`query table{
       fetch(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
         device {
           date(type: Array) {
@@ -274,7 +274,7 @@ describe('gqlBuilder single query', () => {
     const querier = gqlToDb().beforeDbFetch(({ sql }) => {
       expect(sql).toMatchSnapshot();
     })
-    querier(`query table{
+    return querier(`query table{
       fetch(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
         device {
           date(type: Array){
@@ -289,7 +289,7 @@ describe('gqlBuilder single query', () => {
     const querier = gqlToDb().beforeDbFetch(({ sql }) => {
       expect(sql).toMatchSnapshot();
     })
-    querier(`query table{
+    return querier(`query table{
       fetch(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
         device {
           date(type: Array, groupBy:month){
@@ -359,7 +359,7 @@ describe('merge', () => {
     })
 
 
-    querier(`query table{
+    return querier(`query table{
       fetch(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
         device {
           date(type: Array) {
@@ -413,7 +413,7 @@ describe('merge', () => {
       return table
     })
 
-    querier(`query table{
+    return querier(`query table{
       fetch(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
         device {
           date(type: Array) {
@@ -462,7 +462,7 @@ describe('merge', () => {
     const querier = gqlToDb().dbFetch(() => {
       return table
     })
-    querier(`query table{
+    return querier(`query table{
       fetch(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
         device {
           date(type: Array){
@@ -508,7 +508,7 @@ describe('merge', () => {
     const querier = gqlToDb().dbFetch(() => {
       return table
     })
-    querier(`query table{
+    return querier(`query table{
       fetch(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
         device {
           date(type: Array, format: "Mon yy"){
@@ -560,7 +560,7 @@ describe('merge', () => {
     const querier = gqlToDb().dbFetch(() => {
       return table
     })
-    querier(`query table{
+    return querier(`query table{
       fetch{
         country: distinct(type: Array)
       }
@@ -579,7 +579,7 @@ describe('gqlBuilder single query', () => {
       expect(sql).toMatchSnapshot();
     })
 
-    querier(`query some_table_name{
+    return querier(`query some_table_name{
       fetch(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
         custom_name {
           device
