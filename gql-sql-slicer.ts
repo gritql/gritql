@@ -186,6 +186,24 @@ const metricResolvers = {
       query.promise = query.promise.groupBy(query.dimensions);
     }
   },
+  weightAvg: (tree, query, knex) => {
+    if (!tree.arguments) throw "weightAvg function requires arguments";
+    const args = argumentsToObject(tree.arguments);
+    if (!args.to) throw "Divide function requires 'to' as argument";
+    if (!args.by) throw "Divide function requires 'by' as argument";
+    const internal = query.promise.select(tree.alias.value)
+      .sum(`${args.to} as ${args.to}`)
+      .sum(`${args.by} as ${args.by}`)
+      .select(knex.raw(`?? * sum(??) as "weightAvg"`, [tree.alias?.value, args.to]))
+      .groupBy(tree.alias?.value)
+    query.promise = knex.select(query.dimensions)
+      .select(knex.raw(`sum("weightAvg")/sum(??) as "${tree.alias?.value}_weightAvg"`, [args.by]))
+      .from(internal.as('middleTable'))
+
+    if (!!query.dimensions && query.dimensions.length > 0) {
+      query.promise = query.promise.groupBy(query.dimensions);
+    }
+  },
   distinct: (tree, query, knex) => {
 
     query.promise = query.promise.distinct(tree.alias.value);
