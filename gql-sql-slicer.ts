@@ -214,8 +214,8 @@ const metricResolvers = {
   aggrAverage: (tree, query, knex) => {
     if (!tree.arguments) throw "AggrAverage function requires arguments";
     const args = argumentsToObject(tree.arguments);
-    if (!args.to) throw "Divide function requires 'to' as argument";
-    if (!args.by) throw "Divide function requires 'by' as argument";
+    if (!args.to) throw "aggrAverage function requires 'to' as argument";
+    if (!args.by) throw "aggrAverage function requires 'by' as argument";
     let internal = query.promise.select(tree.alias.value)
       .sum(`${args.to} as ${args.to}`)
       .sum(`${args.by} as ${args.by}`)
@@ -233,8 +233,8 @@ const metricResolvers = {
   weightAvg: (tree, query, knex) => {
     if (!tree.arguments) throw "weightAvg function requires arguments";
     const args = argumentsToObject(tree.arguments);
-    if (!args.a) throw "Divide function requires 'a' as argument";
-    if (!args.by) throw "Divide function requires 'by' as argument";
+    if (!args.a) throw "weightAvg function requires 'a' as argument";
+    if (!args.by) throw "weightAvg function requires 'by' as argument";
     let internal = query.promise.select(tree.alias.value)
       .sum(`${args.to} as ${args.to}`)
       .select(knex.raw(`?? * sum(??) as "weightAvg"`, [args.a, args.to]))

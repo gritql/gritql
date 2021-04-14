@@ -98,7 +98,7 @@ var gqlToDb = function (opts) {
 };
 exports.gqlToDb = gqlToDb;
 function queryBuilder(table, tree, queries, idx, knex) {
-    var _a, _b, _c, _d, _e, _f, _g, _h;
+    var _a, _b, _c, _d, _e, _f, _g;
     if (queries === void 0) { queries = []; }
     if (idx === void 0) { idx = undefined; }
     //console.log(queries.map(q => q.promise._statements))
@@ -136,12 +136,12 @@ function queryBuilder(table, tree, queries, idx, knex) {
             }
             return true;
         });
-        var _j = selections.reduce(function (r, s) {
+        var _h = selections.reduce(function (r, s) {
             //check multiple dimensions we also need to split queries in the case
             if (r[1] && !!s.selectionSet)
                 return [true, true];
             return [r[0] || !s.selectionSet, r[1] || !!s.selectionSet];
-        }, [false, false]), haveMetric_1 = _j[0], haveDimension_1 = _j[1];
+        }, [false, false]), haveMetric_1 = _h[0], haveDimension_1 = _h[1];
         if (((_f = tree.name) === null || _f === void 0 ? void 0 : _f.value) !== 'fetch' && !tree["with"])
             parseDimension(tree, query, knex);
         selections.sort(function (a, b) { return !b.selectionSet ? -1 : 1; });
@@ -156,17 +156,18 @@ function queryBuilder(table, tree, queries, idx, knex) {
             //todo: play out injected
             queries[idx].injected.push(name_1);
         }
-        if (tree.leftJoin) {
-            var name_2 = (_h = tree.name) === null || _h === void 0 ? void 0 : _h.value;
-            var fromQuery = queries.find(function (q) { return q.name === name_2; });
-            fromQuery.skip = true;
-            if (!queries[idx].injected)
-                queries[idx].injected = [];
-            //todo: if many injected, reduce and build proper from
-            query.promise = query.promise.from(knex.raw(table + ", (" + fromQuery.promise.toString() + ") as \"" + name_2 + "\""));
-            //todo: play out injected
-            queries[idx].injected.push(name_2);
-        }
+        /*
+            if (tree.leftJoin) {
+              const name = tree.name?.value;
+              const fromQuery = queries.find((q) => q.name === name);
+              fromQuery.skip = true;
+              if (!queries[idx].injected) queries[idx].injected = [];
+              //todo: if many injected, reduce and build proper from
+              query.promise = query.promise.from(knex.raw(`${table}, (${fromQuery.promise.toString()}) as "${name}"`));
+              //todo: play out injected
+              queries[idx].injected.push(name)
+            }
+            */
         return selections.reduce(function (queries, t, i) {
             if (!!t.selectionSet && haveMetric_1 && haveDimension_1) {
                 var newIdx = queries.length;
@@ -264,9 +265,9 @@ var metricResolvers = {
             throw "AggrAverage function requires arguments";
         var args = argumentsToObject(tree.arguments);
         if (!args.to)
-            throw "Divide function requires 'to' as argument";
+            throw "aggrAverage function requires 'to' as argument";
         if (!args.by)
-            throw "Divide function requires 'by' as argument";
+            throw "aggrAverage function requires 'by' as argument";
         var internal = query.promise.select(tree.alias.value)
             .sum(args.to + " as " + args.to)
             .sum(args.by + " as " + args.by)
@@ -282,22 +283,22 @@ var metricResolvers = {
         }
     },
     weightAvg: function (tree, query, knex) {
-        var _a, _b, _c;
+        var _a;
         if (!tree.arguments)
             throw "weightAvg function requires arguments";
         var args = argumentsToObject(tree.arguments);
-        if (!args.to)
-            throw "Divide function requires 'to' as argument";
+        if (!args.a)
+            throw "weightAvg function requires 'a' as argument";
         if (!args.by)
-            throw "Divide function requires 'by' as argument";
+            throw "weightAvg function requires 'by' as argument";
         var internal = query.promise.select(tree.alias.value)
             .sum(args.to + " as " + args.to)
-            .select(knex.raw("?? * sum(??) as \"weightAvg\"", [(_a = tree.alias) === null || _a === void 0 ? void 0 : _a.value, args.to]))
-            .groupBy((_b = tree.alias) === null || _b === void 0 ? void 0 : _b.value);
+            .select(knex.raw("?? * sum(??) as \"weightAvg\"", [args.a, args.to]))
+            .groupBy(args.a);
         if (args.to !== args.by)
             internal = internal.sum(args.by + " as " + args.by);
         query.promise = knex.select(query.dimensions)
-            .select(knex.raw("sum(\"weightAvg\")/sum(??) as \"" + ((_c = tree.alias) === null || _c === void 0 ? void 0 : _c.value) + "\"", [args.by]))
+            .select(knex.raw("sum(\"weightAvg\")/sum(??) as \"" + ((_a = tree.alias) === null || _a === void 0 ? void 0 : _a.value) + "\"", [args.by]))
             .from(internal.as('middleTable'));
         if (!!query.dimensions && query.dimensions.length > 0) {
             query.promise = query.promise.groupBy(query.dimensions);
