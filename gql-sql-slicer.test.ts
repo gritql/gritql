@@ -571,8 +571,6 @@ xdescribe('merge', () => {
 
 })
 
-
-
 xdescribe('gqlBuilder single query', () => {
   test('handle table name in query', () => {
     const querier = gqlToDb().beforeDbFetch(({ sql }) => {
@@ -659,3 +657,26 @@ describe('gqlBuilder joins and complex queries', () => {
     `);
   })
 })
+// test('simple use of the result of different query', () => {
+//   const querier = gqlToDb().beforeDbFetch(({ sql }) => {
+//     console.log(sql)
+//     // expect(sql).toMatchSnapshot();
+//   })
+
+//   querier(`
+//   query temp_brand_basket_position_table {
+//     byDevice: fetch(brand: adidas, country: us) {
+//             date (type: Array, groupBy: week) {            
+//                     device {
+//                         value: weightAvg(a:position, by:no_of_baskets)
+//                     }
+//             }
+//     }
+//     all: fetch(brand: adidas, country: us) {
+//         date (type: Array, groupBy: week) {            
+//                 value: weightAvg(a:position, by:no_of_baskets)
+//         }
+// }
+// }
+//   `);
+// })

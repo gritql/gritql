@@ -235,11 +235,11 @@ const metricResolvers = {
     const args = argumentsToObject(tree.arguments);
     if (!args.a) throw "weightAvg function requires 'a' as argument";
     if (!args.by) throw "weightAvg function requires 'by' as argument";
-    let internal = query.promise.select(tree.alias.value)
-      .sum(`${args.to} as ${args.to}`)
-      .select(knex.raw(`?? * sum(??) as "weightAvg"`, [args.a, args.to]))
-      .groupBy(args.a)
-    if (args.to !== args.by) internal = internal.sum(`${args.by} as ${args.by}`);
+    let internal = query.promise.select(args.a)
+      .sum(`${args.by} as ${args.by}`)
+      .select(knex.raw(`?? * sum(??) as "weightAvg"`, [args.a, args.by]))
+      .groupBy(args.a);
+
     query.promise = knex.select(query.dimensions)
       .select(knex.raw(`sum("weightAvg")/sum(??) as "${tree.alias?.value}"`, [args.by]))
       .from(internal.as('middleTable'))
