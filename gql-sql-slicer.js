@@ -204,17 +204,29 @@ function parseDimension(tree, query, knex) {
     var _a = query.dimensions, dimensions = _a === void 0 ? [] : _a;
     var args = argumentsToObject(tree.arguments);
     if (args === null || args === void 0 ? void 0 : args.groupBy) {
-        query.promise = query.promise.select(knex.raw("date_trunc(?, ??) as ??", [args === null || args === void 0 ? void 0 : args.groupBy, tree.name.value, tree.name.value]));
-        query.promise = query.promise.groupBy(knex.raw("??", [tree.name.value]));
+        query.promise = query.promise.select(knex.raw("date_trunc(?, ??) as ??", [args === null || args === void 0 ? void 0 : args.groupBy, tree.name.value, tree.name.value + "_tr"]));
+        query.promise = query.promise.groupBy(knex.raw("??", [tree.name.value + "_tr"]));
     }
     else {
         query.promise = query.promise.select(tree.name.value);
         query.promise = query.promise.groupBy(tree.name.value);
     }
-    if (!!(args === null || args === void 0 ? void 0 : args.sort_desc))
-        query.promise.orderBy(args === null || args === void 0 ? void 0 : args.sort_desc, 'desc');
-    if (!!(args === null || args === void 0 ? void 0 : args.sort_asc))
-        query.promise.orderBy(args === null || args === void 0 ? void 0 : args.sort_asc, 'asc');
+    if (!!(args === null || args === void 0 ? void 0 : args.sort_desc)) {
+        if ((args === null || args === void 0 ? void 0 : args.groupBy) && (args === null || args === void 0 ? void 0 : args.sort_desc) === tree.name.value) {
+            query.promise.orderBy(tree.name.value + "_tr", 'desc');
+        }
+        else {
+            query.promise.orderBy(args === null || args === void 0 ? void 0 : args.sort_desc, 'desc');
+        }
+    }
+    if (!!(args === null || args === void 0 ? void 0 : args.sort_asc)) {
+        if ((args === null || args === void 0 ? void 0 : args.groupBy) && (args === null || args === void 0 ? void 0 : args.sort_asc) === tree.name.value) {
+            query.promise.orderBy(tree.name.value + "_tr", 'asc');
+        }
+        else {
+            query.promise.orderBy(args === null || args === void 0 ? void 0 : args.sort_asc, 'asc');
+        }
+    }
     dimensions.push(tree.name.value);
     query.dimensions = dimensions;
 }
