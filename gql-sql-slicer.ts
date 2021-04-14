@@ -118,17 +118,18 @@ function queryBuilder(table, tree, queries: Array<any> | undefined = [], idx: nu
       //todo: play out injected
       queries[idx].injected.push(name)
     }
-
-    if (tree.leftJoin) {
-      const name = tree.name?.value;
-      const fromQuery = queries.find((q) => q.name === name);
-      fromQuery.skip = true;
-      if (!queries[idx].injected) queries[idx].injected = [];
-      //todo: if many injected, reduce and build proper from
-      query.promise = query.promise.from(knex.raw(`${table}, (${fromQuery.promise.toString()}) as "${name}"`));
-      //todo: play out injected
-      queries[idx].injected.push(name)
-    }
+    /*
+        if (tree.leftJoin) {
+          const name = tree.name?.value;
+          const fromQuery = queries.find((q) => q.name === name);
+          fromQuery.skip = true;
+          if (!queries[idx].injected) queries[idx].injected = [];
+          //todo: if many injected, reduce and build proper from
+          query.promise = query.promise.from(knex.raw(`${table}, (${fromQuery.promise.toString()}) as "${name}"`));
+          //todo: play out injected
+          queries[idx].injected.push(name)
+        }
+        */
     return selections.reduce((queries, t, i) => {
       if (!!t.selectionSet && haveMetric && haveDimension) {
         const newIdx = queries.length;
@@ -215,11 +216,12 @@ const metricResolvers = {
     const args = argumentsToObject(tree.arguments);
     if (!args.to) throw "Divide function requires 'to' as argument";
     if (!args.by) throw "Divide function requires 'by' as argument";
-    const internal = query.promise.select(tree.alias.value)
+    let internal = query.promise.select(tree.alias.value)
       .sum(`${args.to} as ${args.to}`)
       .sum(`${args.by} as ${args.by}`)
       .select(knex.raw(`?? * sum(??) as "aggrAverage"`, [tree.alias?.value, args.to]))
       .groupBy(tree.alias?.value)
+    if (args.to !== args.by) internal = internal.sum(`${args.by} as ${args.by}`);
     query.promise = knex.select(query.dimensions)
       .select(knex.raw(`sum("aggrAverage")/max(??) as "${tree.alias?.value}_aggrAverage"`, [args.by]))
       .from(internal.as('middleTable'))
@@ -233,13 +235,13 @@ const metricResolvers = {
     const args = argumentsToObject(tree.arguments);
     if (!args.to) throw "Divide function requires 'to' as argument";
     if (!args.by) throw "Divide function requires 'by' as argument";
-    const internal = query.promise.select(tree.alias.value)
+    let internal = query.promise.select(tree.alias.value)
       .sum(`${args.to} as ${args.to}`)
-      .sum(`${args.by} as ${args.by}`)
       .select(knex.raw(`?? * sum(??) as "weightAvg"`, [tree.alias?.value, args.to]))
       .groupBy(tree.alias?.value)
+    if (args.to !== args.by) internal = internal.sum(`${args.by} as ${args.by}`);
     query.promise = knex.select(query.dimensions)
-      .select(knex.raw(`sum("weightAvg")/sum(??) as "${tree.alias?.value}_weightAvg"`, [args.by]))
+      .select(knex.raw(`sum("weightAvg")/sum(??) as "${tree.alias?.value}"`, [args.by]))
       .from(internal.as('middleTable'))
 
     if (!!query.dimensions && query.dimensions.length > 0) {
@@ -265,6 +267,7 @@ function copyKnex(knexObject, knex) {
 }
 export const merge = (tree: Array<TagObject>, data: Array<any>): any => {
   const queries = getMergeStrings(tree);
+
   const batches = queries.reduce((r, q, i) => {
     const key = q.name || "___query";
     if (!r[key]) r[key] = [];
@@ -393,7 +396,11 @@ const metricResolversData = {
   aggrAverage: (tree, query) => {
     const name = `${tree.alias?.value}_aggrAverage`;
     query.metrics[`${name}`] = `${query.path}${!!query.path ? '.' : ''}${name}`;
-  }
+  },
+  weightAvg: (tree, query) => {
+    const name = `${tree.alias?.value}`;
+    query.metrics[`${name}`] = `${query.path}${!!query.path ? '.' : ''}${name}`;
+  },
 }
 /*
 var k = {};
