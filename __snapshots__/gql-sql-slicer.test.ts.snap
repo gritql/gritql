@@ -94,6 +94,26 @@ Object {
 }
 `;
 
+exports[`gqlBuilder joins and complex queries simple use of the result of different query 1`] = `
+Array [
+  "select cast(\\"sum\\"(\\"no_of_baskets\\") as float)/cast(\\"max\\"(\\"position1\\".\\"position1_baskets\\") as float) as \\"result\\" from TEMP_BRAND_BASKET_POSITION_TABLE, (select sum(\\"no_of_baskets\\") as \\"position1_baskets\\" from \\"TEMP_BRAND_BASKET_POSITION_TABLE\\" where \\"brand\\" = 'adidas' and \\"country\\" = 'us' and \\"position\\" = '1') as \\"position1\\" where \\"brand\\" = 'adidas' and \\"country\\" = 'us'",
+]
+`;
+
+exports[`gqlBuilder joins and complex queries simple use of the result of different query 2`] = `
+Array [
+  "select cast(\\"sum\\"(\\"no_of_baskets\\") as float)/cast(\\"max\\"(\\"position1\\".\\"position1_baskets\\") as float) as \\"result\\" from TEMP_BRAND_BASKET_POSITION_TABLE, (select sum(\\"no_of_baskets\\") as \\"position1_baskets\\" from \\"OTHER_TABLE\\" where \\"brand\\" = 'adidas' and \\"country\\" = 'us' and \\"position\\" = '1') as \\"position1\\" where \\"brand\\" = 'adidas' and \\"country\\" = 'us'",
+]
+`;
+
+exports[`gqlBuilder joins and complex queries simple use of the result of different query 3`] = `
+Array [
+  "select sum(\\"no_of_baskets\\") as \\"position1_baskets\\" from \\"OTHER_TABLE\\" where \\"brand\\" = 'adidas' and \\"country\\" = 'us' and \\"position\\" = '1'",
+  "select \\"joinLeft\\" from \\"TEMP_BRAND_BASKET_POSITION_TABLE\\" where \\"brand\\" = 'adidas' and \\"country\\" = 'us'",
+  "select \\"position1\\", cast(\\"sum\\"(\\"no_of_baskets\\") as float)/cast(\\"sum\\"(\\"position1\\".\\"position1_baskets\\") as float) as \\"result\\" from \\"TEMP_BRAND_BASKET_POSITION_TABLE\\" where \\"brand\\" = 'adidas' and \\"country\\" = 'us' group by \\"position1\\"",
+]
+`;
+
 exports[`gqlBuilder single query basic Array with sorting works 1`] = `
 Array [
   "select \\"channel\\", cast(sum(\\"revenue\\") as float)/cast(sum(\\"sessions\\") as float) as \\"session_value\\" from \\"table\\" where \\"category\\" = 'whatever' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"channel\\" order by \\"session_value\\" desc",

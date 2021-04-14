@@ -38,7 +38,7 @@ export const gqlToDb = (opts = { client: 'pg' }) => {
     try {
       const definitions = gql(gqlQuery).definitions;
 
-      const queries = queryBuilder(null, definitions, undefined, undefined, knex);
+      const queries = queryBuilder(null, definitions, undefined, undefined, knex).filter(q => !q.skip);
       const sql = queries.map(q => q.promise.toString())
       const preparedGqlQuery = await beforeDbHandler({ queries, sql, definitions });
       if (!preparedGqlQuery) return null;
@@ -87,16 +87,48 @@ function queryBuilder(table, tree, queries: Array<any> | undefined = [], idx: nu
     query.promise = withFilters(query.filters)(query.promise)
     if (!tree.selectionSet?.selections) throw "The query is empty, you need specify metrics or dimensions";
   }
-
+  //console.log(JSON.stringify(tree, null, 2))
   if (query.name === undefined) throw "Builder: Cant find fetch in the payload";
 
   if (!!tree.selectionSet?.selections) {
-    const selections = tree.selectionSet.selections;
+    const selections = tree.selectionSet.selections.filter((t, i) => {
+      if (t.name?.value === "with") {
+        tree.selectionSet.selections[i + 1].with = true;
+        return false;
+      }
+      return true
+    });
+
     const [haveMetric, haveDimension] = selections.reduce((r, s) => {
-      return [r[0] || !!s.selectionSet, r[1] || !s.selectionSet];
+      //check multiple dimensions we also need to split queries in the case
+      if (r[1] && !!s.selectionSet) return [true, true];
+      return [r[0] || !s.selectionSet, r[1] || !!s.selectionSet];
     }, [false, false])
-    if (tree.name?.value !== 'fetch') parseDimension(tree, query, knex);
+
+    if (tree.name?.value !== 'fetch' && !tree.with) parseDimension(tree, query, knex);
     selections.sort((a, b) => !b.selectionSet ? -1 : 1);
+
+    if (tree.with) {
+      const name = tree.name?.value;
+      const fromQuery = queries.find((q) => q.name === name);
+      fromQuery.skip = true;
+      if (!queries[idx].injected) queries[idx].injected = [];
+      //todo: if many injected, reduce and build proper from
+      query.promise = query.promise.from(knex.raw(`${table}, (${fromQuery.promise.toString()}) as "${name}"`));
+      //todo: play out injected
+      queries[idx].injected.push(name)
+    }
+
+    if (tree.leftJoin) {
+      const name = tree.name?.value;
+      const fromQuery = queries.find((q) => q.name === name);
+      fromQuery.skip = true;
+      if (!queries[idx].injected) queries[idx].injected = [];
+      //todo: if many injected, reduce and build proper from
+      query.promise = query.promise.from(knex.raw(`${table}, (${fromQuery.promise.toString()}) as "${name}"`));
+      //todo: play out injected
+      queries[idx].injected.push(name)
+    }
     return selections.reduce((queries, t, i) => {
       if (!!t.selectionSet && haveMetric && haveDimension) {
         const newIdx = queries.length;
@@ -164,9 +196,19 @@ const metricResolvers = {
   divide: (tree, query, knex) => {
     if (!tree.arguments) throw "Divide function requires arguments";
     const args = argumentsToObject(tree.arguments);
+    const functions = Object.keys(args).reduce((r, k) => {
+      const fns = args[k].split('|');
+      if (fns.length === 2) {
+        args[k] = fns[1];
+        r[k] = fns[0];
+      }
+      return r;
+    }, { a: 'sum', by: 'sum' });
+
     if (!args.a) throw "Divide function requires 'a' as argument";
     if (!args.by) throw "Divide function requires 'by' as argument";
-    query.promise = query.promise.select(knex.raw(`cast(sum(??) as float)/cast(sum(??) as float) as ??`, [args.a, args.by, tree.alias.value]));
+
+    query.promise = query.promise.select(knex.raw(`cast(??(??) as float)/cast(??(??) as float) as ??`, [functions.a, args.a, functions.by, args.by, tree.alias.value]));
   },
   aggrAverage: (tree, query, knex) => {
     if (!tree.arguments) throw "AggrAverage function requires arguments";
@@ -440,3 +482,45 @@ function argumentsToObject(args) {
   if (!args) return null;
   return args.reduce((r, a) => ({ ...r, [a.name.value]: a.value.value }), {})
 }
+
+/*
+
+query ecom_benchmarking{
+    fetch(category: "Adult", countryisocode: US) {
+        devicecategory {
+            date(type:Array){
+                averageSessions:sum(a:sessions)
+                averageBounces:sum(a:bounces)
+            }
+
+        }
+    }
+}
+
+
+query TEMP_BRAND_BASKET_POSITION_TABLE{
+  fetch(brand: adidas, country: us){
+    ... position1 {
+      result: divide(a:position1.POSITION1_BASKETS, by:no_of_baskets)
+    }
+  }
+  position1: fetch(brand: adidas, country: us, position: 1) {
+    POSITION1_BASKETS: SUM(a: no_of_baskets)
+  }
+}
+
+query TEMP_BRAND_BASKET_POSITION_TABLE{
+  fetch(brand: adidas, country: us){
+    brand_2 {
+      ... overal {
+        brandIntesections: divide(a:no_of_baskets, by:position1.no_of_all_baskets)
+      }
+    }
+  }
+}
+query brand1_table{
+  overal: fetch(brand: adidas, country: us){
+    no_of_all_baskets
+  }
+}
+*/
