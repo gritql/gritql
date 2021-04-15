@@ -216,6 +216,10 @@ function parseDimension(tree, query, knex) {
         query.promise.orderBy(args === null || args === void 0 ? void 0 : args.sort_desc, 'desc');
     if (!!(args === null || args === void 0 ? void 0 : args.sort_asc))
         query.promise.orderBy(args === null || args === void 0 ? void 0 : args.sort_asc, 'asc');
+    if (!!(args === null || args === void 0 ? void 0 : args.limit))
+        query.promise.limit(args === null || args === void 0 ? void 0 : args.limit);
+    if (!!(args === null || args === void 0 ? void 0 : args.offset))
+        query.promise.offset(args === null || args === void 0 ? void 0 : args.offset);
     dimensions.push(tree.name.value);
     query.dimensions = dimensions;
 }

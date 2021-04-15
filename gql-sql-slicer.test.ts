@@ -611,6 +611,77 @@ describe('gqlBuilder function', () => {
   })
 })
 
+describe('gqlBuilder request tuning', () => {
+  test('sort_desc', () => {
+    const querier = gqlToDb().beforeDbFetch(({ sql }) => {
+      expect(sql).toMatchSnapshot();
+    })
+
+    querier(`  query ecom_benchmarking {
+        fetch(category:"Travel_and_Tourism", country:"US", date_gt:"2020-10-13", date_lt:"2021-04-13") {
+            channels (type: Array, sort_desc: share) {
+                share: share(a: sessions)
+            }
+        }
+    }`);
+  })
+  test('sort_asc', () => {
+    const querier = gqlToDb().beforeDbFetch(({ sql }) => {
+      expect(sql).toMatchSnapshot();
+    })
+
+    querier(`  query ecom_benchmarking {
+        fetch(category:"Travel_and_Tourism", country:"US", date_gt:"2020-10-13", date_lt:"2021-04-13") {
+            channels (type: Array, sort_asc: share) {
+                share: share(a: sessions)
+            }
+        }
+    }`);
+  })
+
+  test('limit', () => {
+    const querier = gqlToDb().beforeDbFetch(({ sql }) => {
+      expect(sql).toMatchSnapshot();
+    })
+
+    querier(`  query ecom_benchmarking {
+        fetch(category:"Travel_and_Tourism", country:"US", date_gt:"2020-10-13", date_lt:"2021-04-13") {
+            channels (type: Array, limit: 3) {
+                share: share(a: sessions)
+            }
+        }
+    }`);
+  })
+
+  test('offset', () => {
+    const querier = gqlToDb().beforeDbFetch(({ sql }) => {
+      expect(sql).toMatchSnapshot();
+    })
+
+    querier(`  query ecom_benchmarking {
+        fetch(category:"Travel_and_Tourism", country:"US", date_gt:"2020-10-13", date_lt:"2021-04-13") {
+            channels (type: Array, offset: 5) {
+                share: share(a: sessions)
+            }
+        }
+    }`);
+  })
+
+  test('all together', () => {
+    const querier = gqlToDb().beforeDbFetch(({ sql }) => {
+      expect(sql).toMatchSnapshot();
+    })
+
+    querier(`  query ecom_benchmarking {
+        fetch(category:"Travel_and_Tourism", country:"US", date_gt:"2020-10-13", date_lt:"2021-04-13") {
+            channels (type: Array, sort_desc: share, limit: 5, offset: 3) {
+                share: share(a: sessions)
+            }
+        }
+    }`);
+  })
+})
+
 describe('gqlBuilder joins and complex queries', () => {
   test('simple use of the result of different query', () => {
     const querier = gqlToDb().beforeDbFetch(({ sql }) => {

@@ -173,6 +173,10 @@ function parseDimension(tree, query, knex) {
   }
   if (!!args?.sort_desc) query.promise.orderBy(args?.sort_desc, 'desc');
   if (!!args?.sort_asc) query.promise.orderBy(args?.sort_asc, 'asc');
+
+  if (!!args?.limit) query.promise.limit(args?.limit);
+  if (!!args?.offset) query.promise.offset(args?.offset);
+
   dimensions.push(tree.name.value);
   query.dimensions = dimensions;
 }

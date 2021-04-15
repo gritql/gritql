@@ -96,7 +96,7 @@ Object {
 
 exports[`gqlBuilder function share 1`] = `
 Array [
-  "select \\"channels\\", \\"share\\" as \\"share\\" from \\"ecom_benchmarking\\" where \\"date\\" = '2020-11-27' and \\"category\\" = 'Finance/Investing' group by \\"channels\\"",
+  "select \\"channels\\", sum(\\"sessions\\")/sum(sum(\\"sessions\\")) over () as \\"share\\" from \\"ecom_benchmarking\\" where \\"date\\" = '2020-11-27' and \\"category\\" = 'Finance/Investing' group by \\"channels\\"",
 ]
 `;
 
@@ -117,6 +117,36 @@ Array [
   "select sum(\\"no_of_baskets\\") as \\"position1_baskets\\" from \\"OTHER_TABLE\\" where \\"brand\\" = 'adidas' and \\"country\\" = 'us' and \\"position\\" = '1'",
   "select \\"joinLeft\\" from \\"TEMP_BRAND_BASKET_POSITION_TABLE\\" where \\"brand\\" = 'adidas' and \\"country\\" = 'us'",
   "select \\"position1\\", cast(\\"sum\\"(\\"no_of_baskets\\") as float)/cast(\\"sum\\"(\\"position1\\".\\"position1_baskets\\") as float) as \\"result\\" from \\"TEMP_BRAND_BASKET_POSITION_TABLE\\" where \\"brand\\" = 'adidas' and \\"country\\" = 'us' group by \\"position1\\"",
+]
+`;
+
+exports[`gqlBuilder request tuning all together 1`] = `
+Array [
+  "select \\"channels\\", sum(\\"sessions\\")/sum(sum(\\"sessions\\")) over () as \\"share\\" from \\"ecom_benchmarking\\" where \\"category\\" = 'Travel_and_Tourism' and \\"country\\" = 'US' and \\"date\\" > '2020-10-13' and \\"date\\" < '2021-04-13' group by \\"channels\\" order by \\"share\\" desc",
+]
+`;
+
+exports[`gqlBuilder request tuning limit 1`] = `
+Array [
+  "select \\"channels\\", sum(\\"sessions\\")/sum(sum(\\"sessions\\")) over () as \\"share\\" from \\"ecom_benchmarking\\" where \\"category\\" = 'Travel_and_Tourism' and \\"country\\" = 'US' and \\"date\\" > '2020-10-13' and \\"date\\" < '2021-04-13' group by \\"channels\\"",
+]
+`;
+
+exports[`gqlBuilder request tuning offset 1`] = `
+Array [
+  "select \\"channels\\", sum(\\"sessions\\")/sum(sum(\\"sessions\\")) over () as \\"share\\" from \\"ecom_benchmarking\\" where \\"category\\" = 'Travel_and_Tourism' and \\"country\\" = 'US' and \\"date\\" > '2020-10-13' and \\"date\\" < '2021-04-13' group by \\"channels\\"",
+]
+`;
+
+exports[`gqlBuilder request tuning sort_asc 1`] = `
+Array [
+  "select \\"channels\\", sum(\\"sessions\\")/sum(sum(\\"sessions\\")) over () as \\"share\\" from \\"ecom_benchmarking\\" where \\"category\\" = 'Travel_and_Tourism' and \\"country\\" = 'US' and \\"date\\" > '2020-10-13' and \\"date\\" < '2021-04-13' group by \\"channels\\" order by \\"share\\" asc",
+]
+`;
+
+exports[`gqlBuilder request tuning sort_desc 1`] = `
+Array [
+  "select \\"channels\\", sum(\\"sessions\\")/sum(sum(\\"sessions\\")) over () as \\"share\\" from \\"ecom_benchmarking\\" where \\"category\\" = 'Travel_and_Tourism' and \\"country\\" = 'US' and \\"date\\" > '2020-10-13' and \\"date\\" < '2021-04-13' group by \\"channels\\" order by \\"share\\" desc",
 ]
 `;
 
