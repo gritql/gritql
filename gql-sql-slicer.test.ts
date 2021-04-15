@@ -595,6 +595,22 @@ xdescribe('gqlBuilder single query', () => {
   })
 })
 
+describe('gqlBuilder function', () => {
+  test('share', () => {
+    const querier = gqlToDb().beforeDbFetch(({ sql }) => {
+      expect(sql).toMatchSnapshot();
+    })
+
+    querier(`query ecom_benchmarking {
+      fetch(date: "2020-11-27", category: "Finance/Investing") {
+          channels {
+              share: share(a:sessions)
+          }
+      }
+    }`);
+  })
+})
+
 describe('gqlBuilder joins and complex queries', () => {
   test('simple use of the result of different query', () => {
     const querier = gqlToDb().beforeDbFetch(({ sql }) => {
@@ -666,14 +682,14 @@ describe('gqlBuilder joins and complex queries', () => {
 //   querier(`
 //   query temp_brand_basket_position_table {
 //     byDevice: fetch(brand: adidas, country: us) {
-//             date (type: Array, groupBy: week) {            
+//             date (type: Array, groupBy: week) {
 //                     device {
 //                         value: weightAvg(a:position, by:no_of_baskets)
 //                     }
 //             }
 //     }
 //     all: fetch(brand: adidas, country: us) {
-//         date (type: Array, groupBy: week) {            
+//         date (type: Array, groupBy: week) {
 //                 value: weightAvg(a:position, by:no_of_baskets)
 //         }
 // }

@@ -194,6 +194,12 @@ const metricResolvers = {
     if (!args.a) throw "Sum function requires 'a' as argument";
     query.promise = query.promise.sum(`${args.a} as ${tree.alias.value}`);
   },
+  share: (tree, query, knex) => {
+    if (!tree.arguments) throw "Share function requires arguments";
+    const args = argumentsToObject(tree.arguments);
+    if (!args.a) throw "Share  function requires 'a' as argument";
+    query.promise = query.promise.select(knex.raw(`sum(??)/sum(sum(??)) over () as ??`, [args.a, args.a, tree.alias.value]));
+  },
   divide: (tree, query, knex) => {
     if (!tree.arguments) throw "Divide function requires arguments";
     const args = argumentsToObject(tree.arguments);
