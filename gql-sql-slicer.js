@@ -118,6 +118,7 @@ function queryBuilder(table, tree, queries, idx, knex) {
     }
     if (!query.filters && tree.name.value === 'fetch') {
         query.name = ((_c = tree.alias) === null || _c === void 0 ? void 0 : _c.value) || null;
+        query.table = table;
         query.filters = parseFilters(tree);
         query.promise = knex.select().from(table);
         query.promise = withFilters(query.filters)(query.promise);
@@ -205,7 +206,7 @@ function parseDimension(tree, query, knex) {
     var args = argumentsToObject(tree.arguments);
     if (args === null || args === void 0 ? void 0 : args.groupBy) {
         query.promise = query.promise.select(knex.raw("date_trunc(?, ??) as ??", [args === null || args === void 0 ? void 0 : args.groupBy, tree.name.value, tree.name.value]));
-        query.promise = query.promise.groupBy(knex.raw("??", [tree.name.value]));
+        query.promise = query.promise.groupBy(1);
     }
     else {
         query.promise = query.promise.select(tree.name.value);
@@ -240,6 +241,14 @@ var metricResolvers = {
         if (!args.a)
             throw "Sum function requires 'a' as argument";
         query.promise = query.promise.sum(args.a + " as " + tree.alias.value);
+    },
+    share: function (tree, query, knex) {
+        if (!tree.arguments)
+            throw "Share function requires arguments";
+        var args = argumentsToObject(tree.arguments);
+        if (!args.a)
+            throw "Share  function requires 'a' as argument";
+        query.promise = query.promise.select(knex.raw("sum(??)/sum(sum(??)) over () as ??", [args.a, args.a, tree.alias.value]));
     },
     divide: function (tree, query, knex) {
         if (!tree.arguments)
@@ -579,4 +588,4 @@ query brand1_table{
     no_of_all_baskets
   }
 }
-*/ 
+*/
