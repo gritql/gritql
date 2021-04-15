@@ -94,6 +94,12 @@ Object {
 }
 `;
 
+exports[`gqlBuilder function share 1`] = `
+Array [
+  "select \\"channels\\", \\"share\\" as \\"share\\" from \\"ecom_benchmarking\\" where \\"date\\" = '2020-11-27' and \\"category\\" = 'Finance/Investing' group by \\"channels\\"",
+]
+`;
+
 exports[`gqlBuilder joins and complex queries simple use of the result of different query 1`] = `
 Array [
   "select cast(\\"sum\\"(\\"no_of_baskets\\") as float)/cast(\\"max\\"(\\"position1\\".\\"position1_baskets\\") as float) as \\"result\\" from TEMP_BRAND_BASKET_POSITION_TABLE, (select sum(\\"no_of_baskets\\") as \\"position1_baskets\\" from \\"TEMP_BRAND_BASKET_POSITION_TABLE\\" where \\"brand\\" = 'adidas' and \\"country\\" = 'us' and \\"position\\" = '1') as \\"position1\\" where \\"brand\\" = 'adidas' and \\"country\\" = 'us'",
