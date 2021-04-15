@@ -28,7 +28,7 @@ interface DbHandler {
   (QueryObject: gqlBuildObject): Promise<any>
 }
 
-export const gqlToDb = (opts = { client: 'pg' }) => {
+export const gqlToDb = (opts: any = { client: 'pg' }) => {
   const knex = knexConstructor(opts);
   let beforeDbHandler: BeforeDbHandler = (r) => Promise.resolve(r);
   let dbHandler: DbHandler = ({ queries }) => Promise.all(queries.map(q => q.promise))
@@ -81,7 +81,7 @@ function queryBuilder(table, tree, queries: Array<any> | undefined = [], idx: nu
   if (!query.filters && tree.name.value === 'fetch') {
 
     query.name = tree.alias?.value || null;
-
+    query.table = table;
     query.filters = parseFilters(tree);
     query.promise = knex.select().from(table);
     query.promise = withFilters(query.filters)(query.promise)
@@ -166,7 +166,7 @@ function parseDimension(tree, query, knex) {
 
   if (args?.groupBy) {
     query.promise = query.promise.select(knex.raw(`date_trunc(?, ??) as ??`, [args?.groupBy, tree.name.value, tree.name.value]));
-    query.promise = query.promise.groupBy(knex.raw(`??`, [tree.name.value]));
+    query.promise = query.promise.groupBy(1);
   } else {
     query.promise = query.promise.select(tree.name.value);
     query.promise = query.promise.groupBy(tree.name.value);
