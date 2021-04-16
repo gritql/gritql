@@ -220,6 +220,9 @@ function parseDimension(tree, query, knex) {
         query.promise.limit(args === null || args === void 0 ? void 0 : args.limit);
     if (!!(args === null || args === void 0 ? void 0 : args.offset))
         query.promise.offset(args === null || args === void 0 ? void 0 : args.offset);
+    if (!!(args === null || args === void 0 ? void 0 : args.cutoff)) {
+        query.promise.select(knex.raw("sum(??)/sum(sum(??)) over () as cutoff", [args === null || args === void 0 ? void 0 : args.cutoff, args === null || args === void 0 ? void 0 : args.cutoff]));
+    }
     dimensions.push(tree.name.value);
     query.dimensions = dimensions;
 }
@@ -341,12 +344,20 @@ var merge = function (tree, data) {
     function getMergedObject(quer) {
         return quer.reduce(function (result, q, i) {
             var resultData = data[q.bid];
+            var skipArray = [];
             for (var j = 0; j < resultData.length; j++) {
                 var keys = Object.keys(resultData[j]);
                 for (var key in keys) {
+                    if (keys[key] === 'cutoff' && +resultData[j][keys[key]] < 0.005) {
+                        skipArray.push(replVars(q.cutoff, resultData[j]));
+                    }
                     if (q.metrics[keys[key]]) {
+                        var replacedPath = replVars(q.metrics[keys[key]], resultData[j]);
+                        var valueDir = replacedPath.slice(0, -(keys[key].length + 1));
+                        if (skipArray.includes(valueDir))
+                            continue;
                         var value = isNaN(+resultData[j][keys[key]]) ? resultData[j][keys[key]] : +resultData[j][keys[key]];
-                        result = progressiveSet(result, replVars(q.metrics[keys[key]], resultData[j]), value);
+                        result = progressiveSet(result, replacedPath, value);
                     }
                 }
             }
@@ -445,6 +456,9 @@ function mergeMetric(tree, query) {
 function mergeDimension(tree, query) {
     var args = argumentsToObject(tree.arguments);
     if ((args === null || args === void 0 ? void 0 : args.type) === 'Array') {
+        if (!!(args === null || args === void 0 ? void 0 : args.cutoff)) {
+            query.cutoff = "" + query.path + (!!query.path ? '.' : '') + "[@" + tree.name.value + "=:" + tree.name.value + "]";
+        }
         query.path += (!!query.path ? '.' : '') + "[@" + tree.name.value + "=:" + tree.name.value + "]";
     }
     else {

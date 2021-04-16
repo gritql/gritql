@@ -176,6 +176,9 @@ function parseDimension(tree, query, knex) {
 
   if (!!args?.limit) query.promise.limit(args?.limit);
   if (!!args?.offset) query.promise.offset(args?.offset);
+  if (!!args?.cutoff) {
+    query.promise.select(knex.raw(`sum(??)/sum(sum(??)) over () as cutoff`, [args?.cutoff, args?.cutoff]));
+  }
 
   dimensions.push(tree.name.value);
   query.dimensions = dimensions;
@@ -289,13 +292,20 @@ export const merge = (tree: Array<TagObject>, data: Array<any>): any => {
   function getMergedObject(quer) {
     return quer.reduce((result, q, i) => {
       const resultData = data[q.bid];
+      let skipArray = [];
       for (var j = 0; j < resultData.length; j++) {
         const keys = Object.keys(resultData[j]);
 
         for (var key in keys) {
+          if (keys[key] === 'cutoff' && +resultData[j][keys[key]] < 0.005) {
+            skipArray.push(replVars(q.cutoff, resultData[j]))
+          }
           if (q.metrics[keys[key]]) {
+            const replacedPath = replVars(q.metrics[keys[key]], resultData[j]);
+            const valueDir = replacedPath.slice(0, -(keys[key].length + 1));
+            if (skipArray.includes(valueDir)) continue;
             const value = isNaN(+resultData[j][keys[key]]) ? resultData[j][keys[key]] : +resultData[j][keys[key]];
-            result = progressiveSet(result, replVars(q.metrics[keys[key]], resultData[j]), value)
+            result = progressiveSet(result, replacedPath, value)
           }
         }
       }
@@ -385,6 +395,7 @@ function mergeMetric(tree, query) {
     if (tree.alias?.value) name = tree.alias?.value;
     query.path += `${!!query.path ? '.' : ''}[@${name}=:${name}]`
     query.metrics[`${name}`] = `${query.path}${!!query.path ? '.' : ''}${name}`;
+
   } else {
     if (tree.alias && metricResolversData[tree.name?.value]) return metricResolversData[tree.name?.value](tree, query)
     if (tree.alias?.value) name = tree.alias?.value;
@@ -396,6 +407,9 @@ function mergeDimension(tree, query) {
   const args = argumentsToObject(tree.arguments);
 
   if (args?.type === 'Array') {
+    if (!!args?.cutoff) {
+      query.cutoff = `${query.path}${!!query.path ? '.' : ''}[@${tree.name.value}=:${tree.name.value}]`
+    }
     query.path += `${!!query.path ? '.' : ''}[@${tree.name.value}=:${tree.name.value}]`
   } else {
     query.path += `${!!query.path ? '.' : ''}:${tree.name.value}`
