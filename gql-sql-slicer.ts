@@ -84,6 +84,7 @@ function queryBuilder(table, tree, queries: Array<any> | undefined = [], idx: nu
     query.table = table;
     query.filters = parseFilters(tree);
     query.promise = knex.select().from(table);
+    //if(filters)
     query.promise = withFilters(query.filters)(query.promise)
     if (!tree.selectionSet?.selections) throw "The query is empty, you need specify metrics or dimensions";
   }
@@ -91,14 +92,7 @@ function queryBuilder(table, tree, queries: Array<any> | undefined = [], idx: nu
   if (query.name === undefined) throw "Builder: Cant find fetch in the payload";
 
   if (!!tree.selectionSet?.selections) {
-    const selections = tree.selectionSet.selections.filter((t, i) => {
-      if (t.name?.value === "with") {
-        tree.selectionSet.selections[i + 1].with = true;
-        return false;
-      }
-      return true
-    });
-
+    const selections = tree.selectionSet.selections;
     const [haveMetric, haveDimension] = selections.reduce((r, s) => {
       //check multiple dimensions we also need to split queries in the case
       if (r[1] && !!s.selectionSet) return [true, true];
@@ -108,28 +102,7 @@ function queryBuilder(table, tree, queries: Array<any> | undefined = [], idx: nu
     if (tree.name?.value !== 'fetch' && !tree.with) parseDimension(tree, query, knex);
     selections.sort((a, b) => !b.selectionSet ? -1 : 1);
 
-    if (tree.with) {
-      const name = tree.name?.value;
-      const fromQuery = queries.find((q) => q.name === name);
-      fromQuery.skip = true;
-      if (!queries[idx].injected) queries[idx].injected = [];
-      //todo: if many injected, reduce and build proper from
-      query.promise = query.promise.from(knex.raw(`${table}, (${fromQuery.promise.toString()}) as "${name}"`));
-      //todo: play out injected
-      queries[idx].injected.push(name)
-    }
-    /*
-        if (tree.leftJoin) {
-          const name = tree.name?.value;
-          const fromQuery = queries.find((q) => q.name === name);
-          fromQuery.skip = true;
-          if (!queries[idx].injected) queries[idx].injected = [];
-          //todo: if many injected, reduce and build proper from
-          query.promise = query.promise.from(knex.raw(`${table}, (${fromQuery.promise.toString()}) as "${name}"`));
-          //todo: play out injected
-          queries[idx].injected.push(name)
-        }
-        */
+
     return selections.reduce((queries, t, i) => {
       if (!!t.selectionSet && haveMetric && haveDimension) {
         const newIdx = queries.length;
@@ -205,7 +178,9 @@ const metricResolvers = {
     if (!tree.arguments) throw "Share function requires arguments";
     const args = argumentsToObject(tree.arguments);
     if (!args.a) throw "Share  function requires 'a' as argument";
-    query.promise = query.promise.select(knex.raw(`sum(??)/sum(sum(??)) over () as ??`, [args.a, args.a, tree.alias.value]));
+    let partition = '';
+    if (!!args.by) partition = knex.raw(`partition by ??`, [args.by]);
+    query.promise = query.promise.select(knex.raw(`sum(??)/sum(sum(??)) over (${partition}) as ??`, [args.a, args.a, tree.alias.value]));
   },
   divide: (tree, query, knex) => {
     if (!tree.arguments) throw "Divide function requires arguments";
@@ -485,7 +460,7 @@ function progressiveSet(object, queryPath, value) {
       if (!!nextStep && nextStep.startsWith('[') && nextStep.endsWith(']') && !leaf[pathStep]) {
         leaf[pathStep] = [];
       }
-      if (!leaf[pathStep]) leaf[pathStep] = {};
+      if (!leaf[pathStep]) leaf[pathStep] = {};//todo guess if there should be an array
       leaf = leaf[pathStep];
     }
   })

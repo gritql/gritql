@@ -682,7 +682,7 @@ describe('gqlBuilder request tuning', () => {
   })
 })
 
-describe('gqlBuilder joins and complex queries', () => {
+xdescribe('gqlBuilder joins and complex queries', () => {
   test('simple use of the result of different query', () => {
     const querier = gqlToDb().beforeDbFetch(({ sql }) => {
       expect(sql).toMatchSnapshot();
