@@ -98,7 +98,7 @@ var gqlToDb = function (opts) {
 };
 exports.gqlToDb = gqlToDb;
 function queryBuilder(table, tree, queries, idx, knex) {
-    var _a, _b, _c, _d, _e, _f, _g;
+    var _a, _b, _c, _d, _e, _f;
     if (queries === void 0) { queries = []; }
     if (idx === void 0) { idx = undefined; }
     //console.log(queries.map(q => q.promise._statements))
@@ -121,6 +121,7 @@ function queryBuilder(table, tree, queries, idx, knex) {
         query.table = table;
         query.filters = parseFilters(tree);
         query.promise = knex.select().from(table);
+        //if(filters)
         query.promise = withFilters(query.filters)(query.promise);
         if (!((_d = tree.selectionSet) === null || _d === void 0 ? void 0 : _d.selections))
             throw "The query is empty, you need specify metrics or dimensions";
@@ -129,46 +130,16 @@ function queryBuilder(table, tree, queries, idx, knex) {
     if (query.name === undefined)
         throw "Builder: Cant find fetch in the payload";
     if (!!((_e = tree.selectionSet) === null || _e === void 0 ? void 0 : _e.selections)) {
-        var selections = tree.selectionSet.selections.filter(function (t, i) {
-            var _a;
-            if (((_a = t.name) === null || _a === void 0 ? void 0 : _a.value) === "with") {
-                tree.selectionSet.selections[i + 1]["with"] = true;
-                return false;
-            }
-            return true;
-        });
-        var _h = selections.reduce(function (r, s) {
+        var selections = tree.selectionSet.selections;
+        var _g = selections.reduce(function (r, s) {
             //check multiple dimensions we also need to split queries in the case
             if (r[1] && !!s.selectionSet)
                 return [true, true];
             return [r[0] || !s.selectionSet, r[1] || !!s.selectionSet];
-        }, [false, false]), haveMetric_1 = _h[0], haveDimension_1 = _h[1];
+        }, [false, false]), haveMetric_1 = _g[0], haveDimension_1 = _g[1];
         if (((_f = tree.name) === null || _f === void 0 ? void 0 : _f.value) !== 'fetch' && !tree["with"])
             parseDimension(tree, query, knex);
         selections.sort(function (a, b) { return !b.selectionSet ? -1 : 1; });
-        if (tree["with"]) {
-            var name_1 = (_g = tree.name) === null || _g === void 0 ? void 0 : _g.value;
-            var fromQuery = queries.find(function (q) { return q.name === name_1; });
-            fromQuery.skip = true;
-            if (!queries[idx].injected)
-                queries[idx].injected = [];
-            //todo: if many injected, reduce and build proper from
-            query.promise = query.promise.from(knex.raw(table + ", (" + fromQuery.promise.toString() + ") as \"" + name_1 + "\""));
-            //todo: play out injected
-            queries[idx].injected.push(name_1);
-        }
-        /*
-            if (tree.leftJoin) {
-              const name = tree.name?.value;
-              const fromQuery = queries.find((q) => q.name === name);
-              fromQuery.skip = true;
-              if (!queries[idx].injected) queries[idx].injected = [];
-              //todo: if many injected, reduce and build proper from
-              query.promise = query.promise.from(knex.raw(`${table}, (${fromQuery.promise.toString()}) as "${name}"`));
-              //todo: play out injected
-              queries[idx].injected.push(name)
-            }
-            */
         return selections.reduce(function (queries, t, i) {
             if (!!t.selectionSet && haveMetric_1 && haveDimension_1) {
                 var newIdx = queries.length;
@@ -255,7 +226,10 @@ var metricResolvers = {
         var args = argumentsToObject(tree.arguments);
         if (!args.a)
             throw "Share  function requires 'a' as argument";
-        query.promise = query.promise.select(knex.raw("sum(??)/sum(sum(??)) over () as ??", [args.a, args.a, tree.alias.value]));
+        var partition = '';
+        if (!!args.by)
+            partition = knex.raw("partition by ??", [args.by]);
+        query.promise = query.promise.select(knex.raw("sum(??)/sum(sum(??)) over (" + partition + ") as ??", [args.a, args.a, tree.alias.value]));
     },
     divide: function (tree, query, knex) {
         if (!tree.arguments)
@@ -273,7 +247,7 @@ var metricResolvers = {
             throw "Divide function requires 'a' as argument";
         if (!args.by)
             throw "Divide function requires 'by' as argument";
-        query.promise = query.promise.select(knex.raw("cast(??(??) as float)/cast(??(??) as float) as ??", [functions.a, args.a, functions.by, args.by, tree.alias.value]));
+        query.promise = query.promise.select(knex.raw("cast(??(??) as float)/NULLIF(cast(??(??) as float), 0) as ??", [functions.a, args.a, functions.by, args.by, tree.alias.value]));
     },
     aggrAverage: function (tree, query, knex) {
         var _a, _b, _c;
@@ -538,7 +512,7 @@ function progressiveSet(object, queryPath, value) {
                 leaf[pathStep] = [];
             }
             if (!leaf[pathStep])
-                leaf[pathStep] = {};
+                leaf[pathStep] = {}; //todo guess if there should be an array
             leaf = leaf[pathStep];
         }
     });

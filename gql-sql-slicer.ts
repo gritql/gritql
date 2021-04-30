@@ -197,7 +197,7 @@ const metricResolvers = {
     if (!args.a) throw "Divide function requires 'a' as argument";
     if (!args.by) throw "Divide function requires 'by' as argument";
 
-    query.promise = query.promise.select(knex.raw(`cast(??(??) as float)/cast(??(??) as float) as ??`, [functions.a, args.a, functions.by, args.by, tree.alias.value]));
+    query.promise = query.promise.select(knex.raw(`cast(??(??) as float)/NULLIF(cast(??(??) as float), 0) as ??`, [functions.a, args.a, functions.by, args.by, tree.alias.value]));
   },
   aggrAverage: (tree, query, knex) => {
     if (!tree.arguments) throw "AggrAverage function requires arguments";
