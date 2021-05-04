@@ -2,15 +2,15 @@
 
 exports[`builder for mulyquery requests basic example works 1`] = `
 Array [
-  "select \\"device\\", sum(\\"ano_no_unique_products\\") as \\"ano_no_unique_products\\", sum(\\"ano_no_all_baskets\\") as \\"ano_no_all_baskets\\", sum(\\"ano_no_baskets\\") as \\"ano_no_baskets\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\"",
-  "select \\"device\\", \\"date\\", sum(\\"no_unique_products\\") as \\"no_unique_products\\", sum(\\"no_all_baskets\\") as \\"no_all_baskets\\", sum(\\"no_baskets\\") as \\"no_baskets\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\"",
+  "select \\"device\\", sum(\\"ano_no_baskets\\") as \\"ano_no_baskets\\", sum(\\"ano_no_all_baskets\\") as \\"ano_no_all_baskets\\", sum(\\"ano_no_unique_products\\") as \\"ano_no_unique_products\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\"",
+  "select \\"device\\", \\"date\\", sum(\\"no_baskets\\") as \\"no_baskets\\", sum(\\"no_all_baskets\\") as \\"no_all_baskets\\", sum(\\"no_unique_products\\") as \\"no_unique_products\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\"",
 ]
 `;
 
 exports[`builder for mulyquery requests basic example works 2`] = `
 Array [
-  "select \\"device\\", cast(sum(\\"no_of_baskets\\") as float)/cast(sum(\\"no_all_baskets\\") as float) as \\"avg\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\"",
-  "select \\"device\\", \\"date\\", cast(sum(\\"no_of_baskets\\") as float)/cast(sum(\\"no_all_baskets\\") as float) as \\"avg\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\"",
+  "select \\"device\\", cast(\\"sum\\"(\\"no_of_baskets\\") as float)/NULLIF(cast(\\"sum\\"(\\"no_all_baskets\\") as float), 0) as \\"avg\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\"",
+  "select \\"device\\", \\"date\\", cast(\\"sum\\"(\\"no_of_baskets\\") as float)/NULLIF(cast(\\"sum\\"(\\"no_all_baskets\\") as float), 0) as \\"avg\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\"",
 ]
 `;
 
@@ -53,9 +53,9 @@ Object {
 
 exports[`builder for mulyquery requests two queries 1`] = `
 Array [
-  "select \\"device\\", sum(\\"ano_no_unique_products\\") as \\"ano_no_unique_products\\", sum(\\"ano_no_all_baskets\\") as \\"ano_no_all_baskets\\", sum(\\"ano_no_baskets\\") as \\"ano_no_baskets\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\"",
-  "select \\"device\\", \\"date\\", sum(\\"no_unique_products\\") as \\"no_unique_products\\", sum(\\"no_all_baskets\\") as \\"no_all_baskets\\", sum(\\"no_baskets\\") as \\"no_baskets\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\"",
-  "select \\"device\\", \\"date\\", sum(\\"brand_revenue\\") as \\"brand_revenue\\", sum(\\"total_revenue\\") as \\"total_revenue\\", sum(\\"no_uniqie_brand_products\\") as \\"no_uniqie_brand_products\\", sum(\\"no_brand_products\\") as \\"no_brand_products\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\"",
+  "select \\"device\\", sum(\\"ano_no_baskets\\") as \\"ano_no_baskets\\", sum(\\"ano_no_all_baskets\\") as \\"ano_no_all_baskets\\", sum(\\"ano_no_unique_products\\") as \\"ano_no_unique_products\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\"",
+  "select \\"device\\", \\"date\\", sum(\\"no_baskets\\") as \\"no_baskets\\", sum(\\"no_all_baskets\\") as \\"no_all_baskets\\", sum(\\"no_unique_products\\") as \\"no_unique_products\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\"",
+  "select \\"device\\", \\"date\\", sum(\\"no_brand_products\\") as \\"no_brand_products\\", sum(\\"no_uniqie_brand_products\\") as \\"no_uniqie_brand_products\\", sum(\\"total_revenue\\") as \\"total_revenue\\", sum(\\"brand_revenue\\") as \\"brand_revenue\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\"",
 ]
 `;
 
@@ -94,6 +94,56 @@ Object {
 }
 `;
 
+exports[`gql mutation pick 1`] = `
+Array [
+  "select \\"channels\\", sum(\\"sessions\\")/sum(sum(\\"sessions\\")) over () as \\"value\\" from \\"ecom_benchmarking\\" where \\"category\\" = 'Adult' and \\"country\\" = 'DE' group by \\"channels\\" order by \\"value\\" desc",
+  "select \\"date\\", \\"channels\\", sum(\\"transactions\\")/sum(sum(\\"transactions\\")) over (partition by \\"date\\") as \\"value\\" from \\"ecom_benchmarking\\" where \\"category\\" = 'Adult' and \\"country\\" = 'US' group by \\"date\\", \\"channels\\" order by \\"date\\" asc",
+]
+`;
+
+exports[`gql mutation pick 2`] = `
+Object {
+  "series": Array [
+    Object {
+      "Paid": Object {
+        "value": 0.2,
+      },
+      "Paidbig": Object {
+        "value": 0.2,
+      },
+      "date": "2020-01-02T23:00:00.000Z",
+    },
+    Object {
+      "Paid": Object {
+        "value": 0.4,
+      },
+      "Paidbig": Object {
+        "value": 0.8,
+      },
+      "date": "2020-01-03T23:00:00.000Z",
+    },
+  ],
+  "topChannels": Array [
+    Object {
+      "channels": "Organic",
+      "value": 0.1,
+    },
+    Object {
+      "channels": "Paid",
+      "value": 0.3,
+    },
+    Object {
+      "channels": "Organicsmall",
+      "value": 0.05,
+    },
+    Object {
+      "channels": "Paidbig",
+      "value": 0.5,
+    },
+  ],
+}
+`;
+
 exports[`gqlBuilder function share 1`] = `
 Array [
   "select \\"channels\\", sum(\\"sessions\\")/sum(sum(\\"sessions\\")) over () as \\"share\\" from \\"ecom_benchmarking\\" where \\"date\\" = '2020-11-27' and \\"category\\" = 'Finance/Investing' group by \\"channels\\"",
@@ -122,19 +172,19 @@ Array [
 
 exports[`gqlBuilder request tuning all together 1`] = `
 Array [
-  "select \\"channels\\", sum(\\"sessions\\")/sum(sum(\\"sessions\\")) over () as \\"share\\" from \\"ecom_benchmarking\\" where \\"category\\" = 'Travel_and_Tourism' and \\"country\\" = 'US' and \\"date\\" > '2020-10-13' and \\"date\\" < '2021-04-13' group by \\"channels\\" order by \\"share\\" desc",
+  "select \\"channels\\", sum(\\"sessions\\")/sum(sum(\\"sessions\\")) over () as \\"share\\" from \\"ecom_benchmarking\\" where \\"category\\" = 'Travel_and_Tourism' and \\"country\\" = 'US' and \\"date\\" > '2020-10-13' and \\"date\\" < '2021-04-13' group by \\"channels\\" order by \\"share\\" desc limit 5 offset 3",
 ]
 `;
 
 exports[`gqlBuilder request tuning limit 1`] = `
 Array [
-  "select \\"channels\\", sum(\\"sessions\\")/sum(sum(\\"sessions\\")) over () as \\"share\\" from \\"ecom_benchmarking\\" where \\"category\\" = 'Travel_and_Tourism' and \\"country\\" = 'US' and \\"date\\" > '2020-10-13' and \\"date\\" < '2021-04-13' group by \\"channels\\"",
+  "select \\"channels\\", sum(\\"sessions\\")/sum(sum(\\"sessions\\")) over () as \\"share\\" from \\"ecom_benchmarking\\" where \\"category\\" = 'Travel_and_Tourism' and \\"country\\" = 'US' and \\"date\\" > '2020-10-13' and \\"date\\" < '2021-04-13' group by \\"channels\\" limit 3",
 ]
 `;
 
 exports[`gqlBuilder request tuning offset 1`] = `
 Array [
-  "select \\"channels\\", sum(\\"sessions\\")/sum(sum(\\"sessions\\")) over () as \\"share\\" from \\"ecom_benchmarking\\" where \\"category\\" = 'Travel_and_Tourism' and \\"country\\" = 'US' and \\"date\\" > '2020-10-13' and \\"date\\" < '2021-04-13' group by \\"channels\\"",
+  "select \\"channels\\", sum(\\"sessions\\")/sum(sum(\\"sessions\\")) over () as \\"share\\" from \\"ecom_benchmarking\\" where \\"category\\" = 'Travel_and_Tourism' and \\"country\\" = 'US' and \\"date\\" > '2020-10-13' and \\"date\\" < '2021-04-13' group by \\"channels\\" offset 5",
 ]
 `;
 
@@ -152,19 +202,19 @@ Array [
 
 exports[`gqlBuilder single query basic Array with sorting works 1`] = `
 Array [
-  "select \\"channel\\", cast(sum(\\"revenue\\") as float)/cast(sum(\\"sessions\\") as float) as \\"session_value\\" from \\"table\\" where \\"category\\" = 'whatever' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"channel\\" order by \\"session_value\\" desc",
+  "select \\"channel\\", cast(\\"sum\\"(\\"revenue\\") as float)/NULLIF(cast(\\"sum\\"(\\"sessions\\") as float), 0) as \\"session_value\\" from \\"table\\" where \\"category\\" = 'whatever' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"channel\\" order by \\"session_value\\" desc",
 ]
 `;
 
 exports[`gqlBuilder single query basic example works 1`] = `
 Array [
-  "select \\"device\\", \\"date\\", sum(\\"brand_revenue\\") as \\"brand_revenue\\", sum(\\"total_revenue\\") as \\"total_revenue\\", sum(\\"no_uniqie_brand_products\\") as \\"no_uniqie_brand_products\\", sum(\\"no_brand_products\\") as \\"no_brand_products\\", sum(\\"no_unique_products\\") as \\"no_unique_products\\", sum(\\"no_all_baskets\\") as \\"no_all_baskets\\", sum(\\"no_baskets\\") as \\"no_baskets\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\"",
+  "select \\"device\\", \\"date\\", sum(\\"no_baskets\\") as \\"no_baskets\\", sum(\\"no_all_baskets\\") as \\"no_all_baskets\\", sum(\\"no_unique_products\\") as \\"no_unique_products\\", sum(\\"no_brand_products\\") as \\"no_brand_products\\", sum(\\"no_uniqie_brand_products\\") as \\"no_uniqie_brand_products\\", sum(\\"total_revenue\\") as \\"total_revenue\\", sum(\\"brand_revenue\\") as \\"brand_revenue\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\"",
 ]
 `;
 
 exports[`gqlBuilder single query dimension functions 1`] = `
 Array [
-  "select \\"device\\", \\"date\\", sum(\\"aggrAverage\\")/max(\\"no_all_baskets\\") as \\"position_aggrAverage\\" from (select \\"device\\", \\"date\\", \\"position\\", sum(\\"no_baskets\\") as \\"no_baskets\\", sum(\\"no_all_baskets\\") as \\"no_all_baskets\\", \\"position\\" * sum(\\"no_baskets\\") as \\"aggrAverage\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\", \\"position\\") as \\"middleTable\\" group by \\"device\\", \\"date\\"",
+  "select \\"device\\", \\"date\\", sum(\\"aggrAverage\\")/max(\\"no_all_baskets\\") as \\"position_aggrAverage\\" from (select \\"device\\", \\"date\\", \\"position\\", sum(\\"no_baskets\\") as \\"no_baskets\\", sum(\\"no_all_baskets\\") as \\"no_all_baskets\\", \\"position\\" * sum(\\"no_baskets\\") as \\"aggrAverage\\", sum(\\"no_all_baskets\\") as \\"no_all_baskets\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\", \\"position\\") as \\"middleTable\\" group by \\"device\\", \\"date\\"",
 ]
 `;
 
@@ -176,7 +226,7 @@ Array [
 
 exports[`gqlBuilder single query group date by month 1`] = `
 Array [
-  "select \\"device\\", date_trunc('month', \\"date\\") as \\"date\\", sum(\\"no_brand_products\\") as \\"no_brand_products\\", sum(\\"no_unique_products\\") as \\"no_unique_products\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\"",
+  "select \\"device\\", date_trunc('month', \\"date\\") as \\"date\\", sum(\\"no_unique_products\\") as \\"no_unique_products\\", sum(\\"no_brand_products\\") as \\"no_brand_products\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", 1",
 ]
 `;
 
@@ -189,7 +239,7 @@ Array [
 
 exports[`gqlBuilder single query metric functions 1`] = `
 Array [
-  "select \\"device\\", \\"date\\", cast(sum(\\"no_baskets\\") as float)/cast(sum(\\"no_all_baskets\\") as float) as \\"average\\", sum(\\"no_brand_products\\") as \\"no_brand_products\\", sum(\\"no_unique_products\\") as \\"no_unique_products\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\"",
+  "select \\"device\\", \\"date\\", sum(\\"no_unique_products\\") as \\"no_unique_products\\", sum(\\"no_brand_products\\") as \\"no_brand_products\\", cast(\\"sum\\"(\\"no_baskets\\") as float)/NULLIF(cast(\\"sum\\"(\\"no_all_baskets\\") as float), 0) as \\"average\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\"",
 ]
 `;
 

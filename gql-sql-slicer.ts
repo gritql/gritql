@@ -46,6 +46,7 @@ export const gqlToDb = (opts: any = { client: 'pg' }) => {
       if (!resultFromDb) return null;
       return await merge(definitions, resultFromDb)
     } catch (e) {
+      console.log(e)
       throw Error(e)
       return null;
     }
@@ -76,10 +77,10 @@ function queryBuilder(table, tree, queries: Array<any> | undefined = [], idx: nu
   }
   if (tree.kind === 'OperationDefinition' && !!tree.selectionSet) {
     if (tree.operation === 'query' && !!tree.name?.value) table = tree.name?.value
+    if (tree.operation === 'mutation') return queries;
     return tree.selectionSet.selections.reduce((queries, t, i) => queryBuilder(table, t, queries, queries.length, knex), queries);
   }
   if (!query.filters && tree.name.value === 'fetch') {
-
     query.name = tree.alias?.value || null;
     query.table = table;
     query.filters = parseFilters(tree);
@@ -256,7 +257,12 @@ function copyKnex(knexObject, knex) {
 export const merge = (tree: Array<TagObject>, data: Array<any>): any => {
   const queries = getMergeStrings(tree);
 
-  const batches = queries.reduce((r, q, i) => {
+  const mutations = queries.filter((q) => !!q.mutation).reduce((result, query) => {
+    result[query.filters.from] = query;
+    return result;
+  }, {});
+
+  const batches = queries.filter(q => !q.mutation).reduce((r, q, i) => {
     const key = q.name || "___query";
     if (!r[key]) r[key] = [];
     q.bid = i;
@@ -264,7 +270,7 @@ export const merge = (tree: Array<TagObject>, data: Array<any>): any => {
     return r;
   }, {})
 
-  function getMergedObject(quer) {
+  function getMergedObject(quer, mutations, fullObject) {
     return quer.reduce((result, q, i) => {
       const resultData = data[q.bid];
       let skipArray = [];
@@ -272,14 +278,27 @@ export const merge = (tree: Array<TagObject>, data: Array<any>): any => {
         const keys = Object.keys(resultData[j]);
 
         for (var key in keys) {
+
+          //todo: rm
           if (keys[key] === 'cutoff' && +resultData[j][keys[key]] < 0.005) {
             skipArray.push(replVars(q.cutoff, resultData[j]))
           }
           if (q.metrics[keys[key]]) {
             const replacedPath = replVars(q.metrics[keys[key]], resultData[j]);
+
             const valueDir = replacedPath.slice(0, -(keys[key].length + 1));
+            //todo: rm
             if (skipArray.includes(valueDir)) continue;
             const value = isNaN(+resultData[j][keys[key]]) ? resultData[j][keys[key]] : +resultData[j][keys[key]];
+            if (mutations) {
+              const checks = mutations[mutations.mutationFunction];
+
+              const skip = Object.keys(checks).reduce((r, k) => {
+                if (r) return r;
+                return !checks[k](progressiveGet(fullObject[mutations.filters.by], replVars(k, resultData[j])))
+              }, false)
+              if (skip) continue;
+            }
             result = progressiveSet(result, replacedPath, value)
           }
         }
@@ -290,10 +309,11 @@ export const merge = (tree: Array<TagObject>, data: Array<any>): any => {
   }
 
   if (Object.keys(batches).length === 1 && !!batches["___query"]) {
-    return getMergedObject(queries);
+    return getMergedObject(queries, null, null);
   }
   const res = Object.keys(batches).reduce((r, k) => {
-    r[k.replace('___query', '')] = getMergedObject(batches[k])
+    r[k.replace('___query', '')] = getMergedObject(batches[k], null, null)
+    if (mutations[k]) r[mutations[k].name] = getMergedObject(batches[k], mutations[k], r)
     return r;
   }, {})
 
@@ -328,7 +348,14 @@ function getMergeStrings(tree, queries = [], idx = undefined) {
     return tree.reduce((queries, t, i) => getMergeStrings(t, queries, queries.length - 1), queries);
   }
   if (tree.kind === 'OperationDefinition' && !!tree.selectionSet) {
-    return tree.selectionSet.selections.reduce((queries, t, i) => getMergeStrings(t, queries, queries.length), queries);
+    return tree.selectionSet.selections.reduce((queries, t, i) => {
+      if (tree.operation === 'mutation') {
+        queries.push({ idx: queries.length, name: undefined, mutation: true, metrics: {}, path: '' });
+      } else {
+        queries.push({ idx: queries.length, name: undefined });
+      }
+      return getMergeStrings(t, queries, queries.length - 1)
+    }, queries);
   }
 
   if (!query.filters && tree.name.value === 'fetch') {
@@ -338,7 +365,14 @@ function getMergeStrings(tree, queries = [], idx = undefined) {
 
     if (!tree.selectionSet?.selections) throw "The query is empty, you need specify metrics or dimensions";
   }
-  if (query.name === undefined) throw "Cant find fetch in the payload";
+
+  if (query.mutation && !query.filters) {
+    query.filters = argumentsToObject(tree.arguments);
+    query.name = tree.alias?.value || null;
+    query.mutationFunction = tree.name?.value || null;
+  }
+
+  if (query.name === undefined && !query.mutation) throw "Cant find fetch in the payload";
 
   if (!!tree.selectionSet?.selections) {
     const selections = tree.selectionSet.selections;
@@ -372,6 +406,7 @@ function mergeMetric(tree, query) {
     query.metrics[`${name}`] = `${query.path}${!!query.path ? '.' : ''}${name}`;
 
   } else {
+    if (!!query.mutation) return metricResolversData[query.mutationFunction](tree, query);
     if (tree.alias && metricResolversData[tree.name?.value]) return metricResolversData[tree.name?.value](tree, query)
     if (tree.alias?.value) name = tree.alias?.value;
     query.metrics[`${name}`] = `${query.path}${!!query.path ? '.' : ''}${name}`;
@@ -390,6 +425,12 @@ function mergeDimension(tree, query) {
     query.path += `${!!query.path ? '.' : ''}:${tree.name.value}`
   }
 }
+const comparisonFunction = {
+  'gt': (v) => (x) => +x > +v,
+  'lt': (v) => (x) => +x < +v,
+  'gte': (v) => (x) => +x >= +v,
+  'lte': (v) => (x) => +x <= +v
+}
 
 const metricResolversData = {
   aggrAverage: (tree, query) => {
@@ -400,7 +441,20 @@ const metricResolversData = {
     const name = `${tree.alias?.value}`;
     query.metrics[`${name}`] = `${query.path}${!!query.path ? '.' : ''}${name}`;
   },
+  pick: (tree, query) => {
+    const name = `${tree.name?.value}`;
+    const args = argumentsToObject(tree.arguments);
+    if (!query.pick) query.pick = {};
+    if (query.path === ':pick') query.path = '';
+    Object.keys(args).map((key) => {
+      const [keyName, operator] = key.split('_');
+      query.pick[`${query.path}${!!query.path ? '.' : ''}:${name}.${keyName}`] = comparisonFunction[operator](args[key])
+
+    })
+  }
 }
+
+
 /*
 var k = {};
 progressiveSet(k, 'book.test.one', 1)
@@ -412,6 +466,16 @@ progressiveSet(k, 'book.dumbo.[1].leela', 'fry')
 progressiveSet(k, 'book.dumbo.[@one=3].leela', 'fry')
 console.log(JSON.stringify(k))
 */
+function progressiveGet(object, queryPath) {
+  const pathArray = queryPath.split(/\./).map(p => unshieldSeparator(p));
+  return pathArray.reduce((r, pathStep, i) => {
+    if (Array.isArray(r)) {
+      return r.find((o) => Object.values(o).includes(pathStep))
+    }
+    return r[pathStep]
+  }, object)
+}
+
 function progressiveSet(object, queryPath, value) {
 
   const pathArray = queryPath.split(/\./).map(p => unshieldSeparator(p));

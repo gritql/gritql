@@ -1,6 +1,6 @@
 {
   "name": "gql-sql-slicer",
-  "version": "1.0.21",
+  "version": "1.0.22",
   "main": "gql-sql-slicer.js",
   "types": "gql-sql-slicer.ts",
   "repository": "git@github.com:edjafarov/gql-sql-slicer.git",
@@ -19,7 +19,7 @@
   },
   "devDependencies": {
     "@types/jest": "^26.0.20",
-    "jest": "^24.9.0",
+    "jest": "^26.6.3",
     "ts-jest": "^26.5.4",
     "typescript": "^4.2.3"
   }
