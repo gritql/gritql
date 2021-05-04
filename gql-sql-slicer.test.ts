@@ -1,7 +1,7 @@
 const { gqlToDb, gqlBuild } = require("./gql-sql-slicer");
 
 
-describe('builder for mulyquery requests', () => {
+xdescribe('builder for mulyquery requests', () => {
   test('mixing the object', () => {
     const table = [[
       {
@@ -203,7 +203,7 @@ describe('builder for mulyquery requests', () => {
 
 
 
-describe('gqlBuilder single query', () => {
+xdescribe('gqlBuilder single query', () => {
   test('distinct', () => {
     const querier = gqlToDb().beforeDbFetch(({ sql }) => {
       expect(sql).toMatchSnapshot();
@@ -304,7 +304,7 @@ describe('gqlBuilder single query', () => {
 })
 
 
-describe('merge', () => {
+xdescribe('merge', () => {
 
   test('basic example works', () => {
     const tables = [[
@@ -571,7 +571,7 @@ describe('merge', () => {
 
 })
 
-describe('gqlBuilder single query', () => {
+xdescribe('gqlBuilder single query', () => {
   test('handle table name in query', () => {
     const querier = gqlToDb().beforeDbFetch(({ sql }) => {
       expect(sql).toMatchSnapshot();
@@ -595,7 +595,7 @@ describe('gqlBuilder single query', () => {
   })
 })
 
-describe('gqlBuilder function', () => {
+xdescribe('gqlBuilder function', () => {
   test('share', () => {
     const querier = gqlToDb().beforeDbFetch(({ sql }) => {
       expect(sql).toMatchSnapshot();
@@ -611,7 +611,7 @@ describe('gqlBuilder function', () => {
   })
 })
 
-describe('gqlBuilder request tuning', () => {
+xdescribe('gqlBuilder request tuning', () => {
   test('sort_desc', () => {
     const querier = gqlToDb().beforeDbFetch(({ sql }) => {
       expect(sql).toMatchSnapshot();
@@ -683,6 +683,83 @@ describe('gqlBuilder request tuning', () => {
 })
 
 describe('gql mutation', () => {
+  xtest('pick', () => {
+    const tables = [
+      [{
+        channels: 'Organic',
+        value: .1
+      },
+      {
+        channels: 'Paid',
+        value: .3
+      },
+      {
+        channels: 'Organicsmall',
+        value: .05
+      }, {
+        channels: 'Paidbig',
+        value: .5
+      }], [{
+        date: '2020-01-02T23:00:00.000Z',
+        channels: 'Organic',
+        value: .2
+      }, {
+        date: '2020-01-02T23:00:00.000Z',
+        channels: 'Paid',
+        value: .2
+      }, {
+        date: '2020-01-02T23:00:00.000Z',
+        channels: 'Organicsmall',
+        value: .2
+      }, {
+        date: '2020-01-02T23:00:00.000Z',
+        channels: 'Paidbig',
+        value: .2
+      }, {
+        date: '2020-01-03T23:00:00.000Z',
+        channels: 'Organic',
+        value: .4
+      }, {
+        date: '2020-01-03T23:00:00.000Z',
+        channels: 'Paid',
+        value: .4
+      }, {
+        date: '2020-01-03T23:00:00.000Z',
+        channels: 'Organicsmall',
+        value: .8
+      }, {
+        date: '2020-01-03T23:00:00.000Z',
+        channels: 'Paidbig',
+        value: .8
+      }], []
+    ]
+    const querier = gqlToDb().dbFetch(({ sql }) => {
+      expect(sql).toMatchSnapshot();
+      return tables;
+    })
+    querier(`query ecom_benchmarking {
+      topChannels: fetch(category:"Adult", country:"DE") {
+          channels (type: Array, sort_desc: value) {
+              value: share(a: sessions)    
+        }
+      }
+      series: fetch(category:"Adult", country:"US") {
+          date (type: Array, sort_asc: date) {
+              channels {
+                  value: share(a: transactions, by: date)
+              }
+          }
+      }
+    }
+    mutation {
+      series: pick(from: series, by: topChannels){
+        channels(value_gt: 0.2)
+      }
+    }`).then((result) => {
+      expect(result).toMatchSnapshot()
+    })
+  })
+
   test('pick', () => {
     const tables = [
       [{
@@ -753,6 +830,9 @@ describe('gql mutation', () => {
     }
     mutation {
       series: pick(from: series, by: topChannels){
+        channels(value_gt: 0.2)
+      }
+      topChannels: pick(from: topChannels, by: topChannels){
         channels(value_gt: 0.2)
       }
     }`).then((result) => {

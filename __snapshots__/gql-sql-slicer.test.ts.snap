@@ -144,6 +144,13 @@ Object {
 }
 `;
 
+exports[`gql mutation pick 3`] = `
+Array [
+  "select \\"channels\\", sum(\\"sessions\\")/sum(sum(\\"sessions\\")) over () as \\"value\\" from \\"ecom_benchmarking\\" where \\"category\\" = 'Adult' and \\"country\\" = 'DE' group by \\"channels\\" order by \\"value\\" desc",
+  "select \\"date\\", \\"channels\\", sum(\\"transactions\\")/sum(sum(\\"transactions\\")) over (partition by \\"date\\") as \\"value\\" from \\"ecom_benchmarking\\" where \\"category\\" = 'Adult' and \\"country\\" = 'US' group by \\"date\\", \\"channels\\" order by \\"date\\" asc",
+]
+`;
+
 exports[`gqlBuilder function share 1`] = `
 Array [
   "select \\"channels\\", sum(\\"sessions\\")/sum(sum(\\"sessions\\")) over () as \\"share\\" from \\"ecom_benchmarking\\" where \\"date\\" = '2020-11-27' and \\"category\\" = 'Finance/Investing' group by \\"channels\\"",

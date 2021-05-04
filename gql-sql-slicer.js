@@ -526,6 +526,8 @@ function progressiveGet(object, queryPath) {
         if (Array.isArray(r)) {
             return r.find(function (o) { return Object.values(o).includes(pathStep); });
         }
+        if (!r)
+            return NaN;
         return r[pathStep];
     }, object);
 }

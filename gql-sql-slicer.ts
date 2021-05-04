@@ -472,6 +472,7 @@ function progressiveGet(object, queryPath) {
     if (Array.isArray(r)) {
       return r.find((o) => Object.values(o).includes(pathStep))
     }
+    if (!r) return NaN;
     return r[pathStep]
   }, object)
 }
