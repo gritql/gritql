@@ -232,7 +232,7 @@ var metricResolvers = {
         var partition = '';
         if (!!args.by)
             partition = knex.raw("partition by ??", [args.by]);
-        query.promise = query.promise.select(knex.raw("sum(??)/sum(sum(??)) over (" + partition + ") as ??", [args.a, args.a, tree.alias.value]));
+        query.promise = query.promise.select(knex.raw("sum(??)/NULLIF(sum(sum(??)) over (" + partition + "), 0) as ??", [args.a, args.a, tree.alias.value]));
     },
     divide: function (tree, query, knex) {
         if (!tree.arguments)
