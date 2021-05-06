@@ -545,7 +545,7 @@ function withFilters(filters) {
         if (filter[1] === 'in') return knexNext.whereIn.apply(knexNext, filter.filter(a => a !== 'in'));
         return knexNext.where.apply(knexNext, filter);
       }
-      if (filter[1] === 'in') return knexNext.andWhereIn.apply(knexNext, filter.filter(a => a !== 'in'));
+      if (filter[1] === 'in') return knexNext.whereIn.apply(knexNext, filter.filter(a => a !== 'in'));
       return knexNext.andWhere.apply(knexNext, filter);
     }, knexPipe)
   }

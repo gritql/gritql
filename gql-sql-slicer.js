@@ -602,7 +602,7 @@ function withFilters(filters) {
                 return knexNext.where.apply(knexNext, filter);
             }
             if (filter[1] === 'in')
-                return knexNext.andWhereIn.apply(knexNext, filter.filter(function (a) { return a !== 'in'; }));
+                return knexNext.whereIn.apply(knexNext, filter.filter(function (a) { return a !== 'in'; }));
             return knexNext.andWhere.apply(knexNext, filter);
         }, knexPipe);
     };
