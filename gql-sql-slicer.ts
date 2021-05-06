@@ -165,6 +165,8 @@ function parseFilters(tree) {
     if (arg.name.value.endsWith('_gte')) return res.concat([[arg.name.value.replace('_gte', ''), '>=', arg.value.value]]);
     if (arg.name.value.endsWith('_lt')) return res.concat([[arg.name.value.replace('_lt', ''), '<', arg.value.value]]);
     if (arg.name.value.endsWith('_lte')) return res.concat([[arg.name.value.replace('_lte', ''), '<=', arg.value.value]]);
+    if (arg.name.value.endsWith('_like')) return res.concat([[arg.name.value.replace('_like', ''), 'LIKE', arg.value.value]]);
+    if (arg.name.value.endsWith('_in')) return res.concat([[arg.name.value.replace('_in', ''), 'in', arg.value.value.split('|')]]);
     return res.concat([[arg.name.value, '=', arg.value.value]]);
   }, []);
 }
@@ -538,7 +540,12 @@ function progressiveSet(object, queryPath, value) {
 function withFilters(filters) {
   return (knexPipe) => {
     return filters.reduce((knexNext, filter, i) => {
-      if (i === 0) return knexNext.where.apply(knexNext, filter);
+      console.log(filter)
+      if (i === 0) {
+        if (filter[1] === 'in') return knexNext.whereIn.apply(knexNext, filter.filter(a => a !== 'in'));
+        return knexNext.where.apply(knexNext, filter);
+      }
+      if (filter[1] === 'in') return knexNext.andWhereIn.apply(knexNext, filter.filter(a => a !== 'in'));
       return knexNext.andWhere.apply(knexNext, filter);
     }, knexPipe)
   }
