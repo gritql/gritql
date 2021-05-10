@@ -185,6 +185,14 @@ const metricResolvers = {
     if (!!args.by) partition = knex.raw(`partition by ??`, [args.by]);
     query.promise = query.promise.select(knex.raw(`sum(??)/NULLIF(sum(sum(??)) over (${partition}), 0) as ??`, [args.a, args.a, tree.alias.value]));
   },
+  indexed: (tree, query, knex) => {
+    if (!tree.arguments) throw "Share function requires arguments";
+    const args = argumentsToObject(tree.arguments);
+    if (!args.a) throw "Share  function requires 'a' as argument";
+    let partition = '';
+    if (!!args.by) partition = knex.raw(`partition by ??`, [args.by]);
+    query.promise = query.promise.select(knex.raw(`sum(??)/NULLIF(max(sum(??)::float) over (${partition}), 0) as ??`, [args.a, args.a, tree.alias.value]));
+  },
   divide: (tree, query, knex) => {
     if (!tree.arguments) throw "Divide function requires arguments";
     const args = argumentsToObject(tree.arguments);
@@ -540,7 +548,6 @@ function progressiveSet(object, queryPath, value) {
 function withFilters(filters) {
   return (knexPipe) => {
     return filters.reduce((knexNext, filter, i) => {
-      console.log(filter)
       if (i === 0) {
         if (filter[1] === 'in') return knexNext.whereIn.apply(knexNext, filter.filter(a => a !== 'in'));
         return knexNext.where.apply(knexNext, filter);
