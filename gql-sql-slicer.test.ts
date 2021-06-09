@@ -841,68 +841,7 @@ describe('gql mutation', () => {
   })
 })
 
-xdescribe('gqlBuilder joins and complex queries', () => {
-  xtest('simple use of the result of different query', () => {
-    const querier = gqlToDb().beforeDbFetch(({ sql }) => {
-      expect(sql).toMatchSnapshot();
-    })
 
-    querier(`query TEMP_BRAND_BASKET_POSITION_TABLE{
-      position1: fetch(brand: adidas, country: us, position: 1) {
-        position1_baskets: sum(a: no_of_baskets)
-      }
-      fetch(brand: adidas, country: us){
-        ... with
-        position1 {
-          result: divide(a:no_of_baskets, by:"max|position1.position1_baskets")
-        }
-      }
-    }
-    `);
-  })
-  xtest('simple use of the result of different query', () => {
-    const querier = gqlToDb().beforeDbFetch(({ sql }) => {
-      expect(sql).toMatchSnapshot();
-    })
-
-    querier(`
-    query OTHER_TABLE{
-      position1: fetch(brand: adidas, country: us, position: 1) {
-        position1_baskets: sum(a: no_of_baskets)
-      }
-    }
-    query TEMP_BRAND_BASKET_POSITION_TABLE{
-      fetch(brand: adidas, country: us){
-        ... with
-        position1 {
-          result: divide(a:no_of_baskets, by:"max|position1.position1_baskets")
-        }
-      }
-    }
-    `);
-  })
-  xtest('simple use of the result of different query', () => {
-    const querier = gqlToDb().beforeDbFetch(({ sql }) => {
-      expect(sql).toMatchSnapshot();
-    })
-
-    querier(`
-    query OTHER_TABLE{
-      position1: fetch(brand: adidas, country: us, position: 1) {
-        position1_baskets: sum(a: no_of_baskets)
-      }
-    }
-    query TEMP_BRAND_BASKET_POSITION_TABLE{
-      fetch(brand: adidas, country: us){
-        ... join
-        position1(a:country ,b:"position1.country") {
-          result: divide(a:no_of_baskets, by:"position1.position1_baskets")
-        }
-      }
-    }
-    `);
-  })
-})
 
 
 // test('simple use of the result of different query', () => {

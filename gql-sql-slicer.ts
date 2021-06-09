@@ -177,6 +177,26 @@ const metricResolvers = {
     if (!args.a) throw "Sum function requires 'a' as argument";
     query.promise = query.promise.sum(`${args.a} as ${tree.alias.value}`);
   },
+  avg: (tree, query, knex) => {
+    //TODO: test
+    if (!tree.arguments) throw "Avg function requires arguments";
+    const args = argumentsToObject(tree.arguments);
+    if (!args.a) throw "Avg function requires 'a' as argument";
+
+    if (!!args.by) {
+      query.promise.select(knex.raw(`avg(??) over (partition by ??) as ??`, [args.a, args.by, tree.alias.value]));
+    } else {
+      query.promise = query.promise.avg(`${args.a} as ${tree.alias.value}`);
+    }
+  },
+  avgPerDimension: (tree, query, knex) => {
+    if (!tree.arguments) throw "avgPerDimension function requires arguments";
+    const args = argumentsToObject(tree.arguments);
+    if (!args.a) throw "avgPerDimension function requires 'a' as argument";
+
+    if (!args.per) throw "avgPerDimension function requires 'per' as argument";
+    query.promise.select(knex.raw(`sum(??)::float/COUNT(DISTINCT ??) as ??`, [args.a, args.per, tree.alias.value]));
+  },
   share: (tree, query, knex) => {
     if (!tree.arguments) throw "Share function requires arguments";
     const args = argumentsToObject(tree.arguments);
@@ -248,7 +268,6 @@ const metricResolvers = {
     }
   },
   distinct: (tree, query, knex) => {
-
     query.promise = query.promise.distinct(tree.alias.value);
   }
 }
@@ -609,3 +628,7 @@ query brand1_table{
   }
 }
 */
+
+
+
+
