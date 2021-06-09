@@ -28,23 +28,32 @@ interface DbHandler {
   (QueryObject: gqlBuildObject): Promise<any>
 }
 
+interface metricResolver {
+  (tree, query, knex): void
+}
+
+interface metricDataResolver {
+  (tree, query): void
+}
+
 export const gqlToDb = (opts: any = { client: 'pg' }) => {
   const knex = knexConstructor(opts);
   let beforeDbHandler: BeforeDbHandler = (r) => Promise.resolve(r);
   let dbHandler: DbHandler = ({ queries }) => Promise.all(queries.map(q => q.promise))
-
+  let customMetricResolvers = {};
+  let customMetricDataResolvers = {};
   const gqlFetch = async (gqlQuery: string): Promise<any> => {
 
     try {
       const definitions = gql(gqlQuery).definitions;
 
-      const queries = queryBuilder(null, definitions, undefined, undefined, knex).filter(q => !q.skip);
+      const queries = queryBuilder(null, definitions, undefined, undefined, knex, { ...metricResolvers, ...customMetricResolvers }).filter(q => !q.skip);
       const sql = queries.map(q => q.promise.toString())
       const preparedGqlQuery = await beforeDbHandler({ queries, sql, definitions });
       if (!preparedGqlQuery) return null;
       const resultFromDb = await dbHandler(preparedGqlQuery);
       if (!resultFromDb) return null;
-      return await merge(definitions, resultFromDb)
+      return await merge(definitions, resultFromDb, { ...metricResolversData, ...customMetricDataResolvers })
     } catch (e) {
       console.log(e)
       throw Error(e)
@@ -60,12 +69,18 @@ export const gqlToDb = (opts: any = { client: 'pg' }) => {
     dbHandler = fn;
     return gqlFetch;
   }
+  gqlFetch.useResolver = (name: string, fn: metricResolver) => {
+    customMetricResolvers = { ...customMetricResolvers, [name]: fn }
+  }
+  gqlFetch.useDataResolver = (name: string, fn: metricDataResolver) => {
+    customMetricDataResolvers = { ...customMetricDataResolvers, [name]: fn }
+  }
 
   return gqlFetch;
 }
 
 
-function queryBuilder(table, tree, queries: Array<any> | undefined = [], idx: number | undefined = undefined, knex) {
+function queryBuilder(table, tree, queries: Array<any> | undefined = [], idx: number | undefined = undefined, knex, metricResolvers) {
   //console.log(queries.map(q => q.promise._statements))
   //console.log(tree, idx, queries)
   //console.log(queries, idx, tree.length)
@@ -73,12 +88,12 @@ function queryBuilder(table, tree, queries: Array<any> | undefined = [], idx: nu
   const query = queries[idx];
   if (Array.isArray(tree)) {
     //we replace query with next level
-    return tree.reduce((queries, t, i) => queryBuilder(table, t, queries, queries.length - 1, knex), queries);
+    return tree.reduce((queries, t, i) => queryBuilder(table, t, queries, queries.length - 1, knex, metricResolvers), queries);
   }
   if (tree.kind === 'OperationDefinition' && !!tree.selectionSet) {
     if (tree.operation === 'query' && !!tree.name?.value) table = tree.name?.value
     if (tree.operation === 'mutation') return queries;
-    return tree.selectionSet.selections.reduce((queries, t, i) => queryBuilder(table, t, queries, queries.length, knex), queries);
+    return tree.selectionSet.selections.reduce((queries, t, i) => queryBuilder(table, t, queries, queries.length, knex, metricResolvers), queries);
   }
   if (!query.filters && tree.name.value === 'fetch') {
     query.name = tree.alias?.value || null;
@@ -112,15 +127,15 @@ function queryBuilder(table, tree, queries: Array<any> | undefined = [], idx: nu
         if (!!query.dimensions) queries[newIdx].dimensions = JSON.parse(JSON.stringify(query.dimensions));
         queries[newIdx].promise = copyKnex(query.promise, knex);
         queries[newIdx].idx = newIdx;
-        return queryBuilder(table, t, queries, newIdx, knex);
+        return queryBuilder(table, t, queries, newIdx, knex, metricResolvers);
       }
-      return queryBuilder(table, t, queries, idx, knex)
+      return queryBuilder(table, t, queries, idx, knex, metricResolvers)
     }, queries);
   }
-  parseMetric(tree, query, knex);
+  parseMetric(tree, query, knex, metricResolvers);
   return queries
 }
-function parseMetric(tree, query, knex) {
+function parseMetric(tree, query, knex, metricResolvers) {
   const { metrics = [] } = query;
   if (tree.alias && metricResolvers[tree.name?.value]) return metricResolvers[tree.name?.value](tree, query, knex)
   if (!tree.alias?.value) {
@@ -264,8 +279,8 @@ function copyKnex(knexObject, knex) {
     return k;
   }, result)
 }
-export const merge = (tree: Array<TagObject>, data: Array<any>): any => {
-  const queries = getMergeStrings(tree);
+export const merge = (tree: Array<TagObject>, data: Array<any>, metricResolversData): any => {
+  const queries = getMergeStrings(tree, null, null, metricResolversData);
 
   const mutations = queries.filter((q) => !!q.mutation).reduce((result, query) => {
     result[query.filters.from] = query;
@@ -349,13 +364,13 @@ function unshieldSeparator(str) {
 }
 
 
-function getMergeStrings(tree, queries = [], idx = undefined) {
+function getMergeStrings(tree, queries = [], idx = undefined, metricResolversData) {
 
   if (!!~idx && idx !== undefined && !queries[idx]) queries[idx] = { idx, name: undefined };
   const query = queries[idx];
   if (Array.isArray(tree)) {
 
-    return tree.reduce((queries, t, i) => getMergeStrings(t, queries, queries.length - 1), queries);
+    return tree.reduce((queries, t, i) => getMergeStrings(t, queries, queries.length - 1, metricResolversData), queries);
   }
   if (tree.kind === 'OperationDefinition' && !!tree.selectionSet) {
     return tree.selectionSet.selections.reduce((queries, t, i) => {
@@ -364,7 +379,7 @@ function getMergeStrings(tree, queries = [], idx = undefined) {
       } else {
         queries.push({ idx: queries.length, name: undefined });
       }
-      return getMergeStrings(t, queries, queries.length - 1)
+      return getMergeStrings(t, queries, queries.length - 1, metricResolversData)
     }, queries);
   }
 
@@ -397,17 +412,17 @@ function getMergeStrings(tree, queries = [], idx = undefined) {
         queries[newIdx] = { ...queries[idx], metrics: {} };
         queries[newIdx].path = query.path + '';
         queries[newIdx].idx = newIdx;
-        return getMergeStrings(t, queries, newIdx);
+        return getMergeStrings(t, queries, newIdx, metricResolversData);
       }
 
-      return getMergeStrings(t, queries, idx)
+      return getMergeStrings(t, queries, idx, metricResolversData)
     }, queries);
   }
-  mergeMetric(tree, query);
+  mergeMetric(tree, query, metricResolversData);
   return queries
 }
 
-function mergeMetric(tree, query) {
+function mergeMetric(tree, query, metricResolversData) {
   let name = tree.name.value;
   const args = argumentsToObject(tree.arguments);
   if (args?.type === 'Array') {
