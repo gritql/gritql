@@ -58,6 +58,8 @@ var gqlToDb = function (opts) {
         var queries = _a.queries;
         return Promise.all(queries.map(function (q) { return q.promise; }));
     };
+    var customMetricResolvers = {};
+    var customMetricDataResolvers = {};
     var gqlFetch = function (gqlQuery) { return __awaiter(void 0, void 0, void 0, function () {
         var definitions, queries, sql, preparedGqlQuery, resultFromDb, e_1;
         return __generator(this, function (_a) {
@@ -65,7 +67,7 @@ var gqlToDb = function (opts) {
                 case 0:
                     _a.trys.push([0, 4, , 5]);
                     definitions = gql(gqlQuery).definitions;
-                    queries = queryBuilder(null, definitions, undefined, undefined, knex).filter(function (q) { return !q.skip; });
+                    queries = queryBuilder(null, definitions, undefined, undefined, knex, __assign(__assign({}, metricResolvers), customMetricResolvers)).filter(function (q) { return !q.skip; });
                     sql = queries.map(function (q) { return q.promise.toString(); });
                     return [4 /*yield*/, beforeDbHandler({ queries: queries, sql: sql, definitions: definitions })];
                 case 1:
@@ -77,7 +79,7 @@ var gqlToDb = function (opts) {
                     resultFromDb = _a.sent();
                     if (!resultFromDb)
                         return [2 /*return*/, null];
-                    return [4 /*yield*/, exports.merge(definitions, resultFromDb)];
+                    return [4 /*yield*/, exports.merge(definitions, resultFromDb, __assign(__assign({}, metricResolversData), customMetricDataResolvers))];
                 case 3: return [2 /*return*/, _a.sent()];
                 case 4:
                     e_1 = _a.sent();
@@ -95,10 +97,18 @@ var gqlToDb = function (opts) {
         dbHandler = fn;
         return gqlFetch;
     };
+    gqlFetch.useResolver = function (name, fn) {
+        var _a;
+        customMetricResolvers = __assign(__assign({}, customMetricResolvers), (_a = {}, _a[name] = fn, _a));
+    };
+    gqlFetch.useDataResolver = function (name, fn) {
+        var _a;
+        customMetricDataResolvers = __assign(__assign({}, customMetricDataResolvers), (_a = {}, _a[name] = fn, _a));
+    };
     return gqlFetch;
 };
 exports.gqlToDb = gqlToDb;
-function queryBuilder(table, tree, queries, idx, knex) {
+function queryBuilder(table, tree, queries, idx, knex, metricResolvers) {
     var _a, _b, _c, _d, _e, _f;
     if (queries === void 0) { queries = []; }
     if (idx === void 0) { idx = undefined; }
@@ -110,14 +120,14 @@ function queryBuilder(table, tree, queries, idx, knex) {
     var query = queries[idx];
     if (Array.isArray(tree)) {
         //we replace query with next level
-        return tree.reduce(function (queries, t, i) { return queryBuilder(table, t, queries, queries.length - 1, knex); }, queries);
+        return tree.reduce(function (queries, t, i) { return queryBuilder(table, t, queries, queries.length - 1, knex, metricResolvers); }, queries);
     }
     if (tree.kind === 'OperationDefinition' && !!tree.selectionSet) {
         if (tree.operation === 'query' && !!((_a = tree.name) === null || _a === void 0 ? void 0 : _a.value))
             table = (_b = tree.name) === null || _b === void 0 ? void 0 : _b.value;
         if (tree.operation === 'mutation')
             return queries;
-        return tree.selectionSet.selections.reduce(function (queries, t, i) { return queryBuilder(table, t, queries, queries.length, knex); }, queries);
+        return tree.selectionSet.selections.reduce(function (queries, t, i) { return queryBuilder(table, t, queries, queries.length, knex, metricResolvers); }, queries);
     }
     if (!query.filters && tree.name.value === 'fetch') {
         query.name = ((_c = tree.alias) === null || _c === void 0 ? void 0 : _c.value) || null;
@@ -153,15 +163,15 @@ function queryBuilder(table, tree, queries, idx, knex) {
                     queries[newIdx].dimensions = JSON.parse(JSON.stringify(query.dimensions));
                 queries[newIdx].promise = copyKnex(query.promise, knex);
                 queries[newIdx].idx = newIdx;
-                return queryBuilder(table, t, queries, newIdx, knex);
+                return queryBuilder(table, t, queries, newIdx, knex, metricResolvers);
             }
-            return queryBuilder(table, t, queries, idx, knex);
+            return queryBuilder(table, t, queries, idx, knex, metricResolvers);
         }, queries);
     }
-    parseMetric(tree, query, knex);
+    parseMetric(tree, query, knex, metricResolvers);
     return queries;
 }
-function parseMetric(tree, query, knex) {
+function parseMetric(tree, query, knex, metricResolvers) {
     var _a, _b, _c;
     var _d = query.metrics, metrics = _d === void 0 ? [] : _d;
     if (tree.alias && metricResolvers[(_a = tree.name) === null || _a === void 0 ? void 0 : _a.value])
@@ -226,6 +236,30 @@ var metricResolvers = {
         if (!args.a)
             throw "Sum function requires 'a' as argument";
         query.promise = query.promise.sum(args.a + " as " + tree.alias.value);
+    },
+    avg: function (tree, query, knex) {
+        //TODO: test
+        if (!tree.arguments)
+            throw "Avg function requires arguments";
+        var args = argumentsToObject(tree.arguments);
+        if (!args.a)
+            throw "Avg function requires 'a' as argument";
+        if (!!args.by) {
+            query.promise.select(knex.raw("avg(??) over (partition by ??) as ??", [args.a, args.by, tree.alias.value]));
+        }
+        else {
+            query.promise = query.promise.avg(args.a + " as " + tree.alias.value);
+        }
+    },
+    avgPerDimension: function (tree, query, knex) {
+        if (!tree.arguments)
+            throw "avgPerDimension function requires arguments";
+        var args = argumentsToObject(tree.arguments);
+        if (!args.a)
+            throw "avgPerDimension function requires 'a' as argument";
+        if (!args.per)
+            throw "avgPerDimension function requires 'per' as argument";
+        query.promise.select(knex.raw("sum(??)::float/COUNT(DISTINCT ??) as ??", [args.a, args.per, tree.alias.value]));
     },
     share: function (tree, query, knex) {
         if (!tree.arguments)
@@ -323,10 +357,16 @@ function copyKnex(knexObject, knex) {
         return k;
     }, result);
 }
-var merge = function (tree, data) {
-    var queries = getMergeStrings(tree);
+var merge = function (tree, data, metricResolversData) {
+    var queries = getMergeStrings(tree, undefined, undefined, metricResolversData);
     var mutations = queries.filter(function (q) { return !!q.mutation; }).reduce(function (result, query) {
-        result[query.filters.from] = query;
+        var _a;
+        if ((_a = query.filters) === null || _a === void 0 ? void 0 : _a.from) {
+            result[query.filters.from] = query;
+        }
+        else {
+            result[query.name] = query;
+        }
         return result;
     }, {});
     var batches = queries.filter(function (q) { return !q.mutation; }).reduce(function (r, q, i) {
@@ -355,11 +395,12 @@ var merge = function (tree, data) {
                         if (skipArray.includes(valueDir))
                             return "continue";
                         var value = isNaN(+resultData[j][keys[key]]) ? resultData[j][keys[key]] : +resultData[j][keys[key]];
-                        if (mutations) {
+                        if (!!mutations) {
                             var checks_1 = mutations[mutations.mutationFunction];
                             var skip = Object.keys(checks_1).reduce(function (r, k) {
                                 if (r)
                                     return r;
+                                //relying on pick by fix that
                                 return !checks_1[k](progressiveGet(fullObject[mutations.filters.by], replVars(k, resultData[j])));
                             }, false);
                             if (skip)
@@ -404,7 +445,7 @@ function unshieldSeparator(str) {
         return str;
     return str.replace(/\$#@#/, '.');
 }
-function getMergeStrings(tree, queries, idx) {
+function getMergeStrings(tree, queries, idx, metricResolversData) {
     var _a, _b, _c, _d, _e, _f;
     if (queries === void 0) { queries = []; }
     if (idx === void 0) { idx = undefined; }
@@ -412,7 +453,7 @@ function getMergeStrings(tree, queries, idx) {
         queries[idx] = { idx: idx, name: undefined };
     var query = queries[idx];
     if (Array.isArray(tree)) {
-        return tree.reduce(function (queries, t, i) { return getMergeStrings(t, queries, queries.length - 1); }, queries);
+        return tree.reduce(function (queries, t, i) { return getMergeStrings(t, queries, queries.length - 1, metricResolversData); }, queries);
     }
     if (tree.kind === 'OperationDefinition' && !!tree.selectionSet) {
         return tree.selectionSet.selections.reduce(function (queries, t, i) {
@@ -422,7 +463,7 @@ function getMergeStrings(tree, queries, idx) {
             else {
                 queries.push({ idx: queries.length, name: undefined });
             }
-            return getMergeStrings(t, queries, queries.length - 1);
+            return getMergeStrings(t, queries, queries.length - 1, metricResolversData);
         }, queries);
     }
     if (!query.filters && tree.name.value === 'fetch') {
@@ -453,15 +494,15 @@ function getMergeStrings(tree, queries, idx) {
                 queries[newIdx] = __assign(__assign({}, queries[idx]), { metrics: {} });
                 queries[newIdx].path = query.path + '';
                 queries[newIdx].idx = newIdx;
-                return getMergeStrings(t, queries, newIdx);
+                return getMergeStrings(t, queries, newIdx, metricResolversData);
             }
-            return getMergeStrings(t, queries, idx);
+            return getMergeStrings(t, queries, idx, metricResolversData);
         }, queries);
     }
-    mergeMetric(tree, query);
+    mergeMetric(tree, query, metricResolversData);
     return queries;
 }
-function mergeMetric(tree, query) {
+function mergeMetric(tree, query, metricResolversData) {
     var _a, _b, _c, _d, _e, _f;
     var name = tree.name.value;
     var args = argumentsToObject(tree.arguments);
