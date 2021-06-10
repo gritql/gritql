@@ -192,6 +192,26 @@ const metricResolvers = {
     if (!args.a) throw "Sum function requires 'a' as argument";
     query.promise = query.promise.sum(`${args.a} as ${tree.alias.value}`);
   },
+  avg: (tree, query, knex) => {
+    //TODO: test
+    if (!tree.arguments) throw "Avg function requires arguments";
+    const args = argumentsToObject(tree.arguments);
+    if (!args.a) throw "Avg function requires 'a' as argument";
+
+    if (!!args.by) {
+      query.promise.select(knex.raw(`avg(??) over (partition by ??) as ??`, [args.a, args.by, tree.alias.value]));
+    } else {
+      query.promise = query.promise.avg(`${args.a} as ${tree.alias.value}`);
+    }
+  },
+  avgPerDimension: (tree, query, knex) => {
+    if (!tree.arguments) throw "avgPerDimension function requires arguments";
+    const args = argumentsToObject(tree.arguments);
+    if (!args.a) throw "avgPerDimension function requires 'a' as argument";
+
+    if (!args.per) throw "avgPerDimension function requires 'per' as argument";
+    query.promise.select(knex.raw(`sum(??)::float/COUNT(DISTINCT ??) as ??`, [args.a, args.per, tree.alias.value]));
+  },
   share: (tree, query, knex) => {
     if (!tree.arguments) throw "Share function requires arguments";
     const args = argumentsToObject(tree.arguments);
@@ -280,10 +300,15 @@ function copyKnex(knexObject, knex) {
   }, result)
 }
 export const merge = (tree: Array<TagObject>, data: Array<any>, metricResolversData): any => {
-  const queries = getMergeStrings(tree, null, null, metricResolversData);
+  const queries = getMergeStrings(tree, undefined, undefined, metricResolversData);
 
   const mutations = queries.filter((q) => !!q.mutation).reduce((result, query) => {
-    result[query.filters.from] = query;
+
+    if (query.filters?.from) {
+      result[query.filters.from] = query;
+    } else {
+      result[query.name] = query;
+    }
     return result;
   }, {});
 
@@ -296,6 +321,7 @@ export const merge = (tree: Array<TagObject>, data: Array<any>, metricResolversD
   }, {})
 
   function getMergedObject(quer, mutations, fullObject) {
+
     return quer.reduce((result, q, i) => {
       const resultData = data[q.bid];
       let skipArray = [];
@@ -315,11 +341,12 @@ export const merge = (tree: Array<TagObject>, data: Array<any>, metricResolversD
             //todo: rm
             if (skipArray.includes(valueDir)) continue;
             const value = isNaN(+resultData[j][keys[key]]) ? resultData[j][keys[key]] : +resultData[j][keys[key]];
-            if (mutations) {
+            if (!!mutations) {
               const checks = mutations[mutations.mutationFunction];
 
               const skip = Object.keys(checks).reduce((r, k) => {
                 if (r) return r;
+                //relying on pick by fix that
                 return !checks[k](progressiveGet(fullObject[mutations.filters.by], replVars(k, resultData[j])))
               }, false)
               if (skip) continue;
