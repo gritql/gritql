@@ -47,7 +47,12 @@ export const gqlToDb = (opts: any = { client: 'pg' }) => {
     try {
       const definitions = gql(gqlQuery).definitions;
 
-      const queries = queryBuilder(null, definitions, undefined, undefined, knex, { ...metricResolvers, ...customMetricResolvers }).filter(q => !q.skip);
+      const queries = queryBuilder(null, definitions, undefined, undefined, knex, { ...metricResolvers, ...customMetricResolvers })
+        .filter(q => !q.skip)
+        .map(q => {
+          if (q.postQueryProcessing) q.postQueryProcessing(definitions, q, knex);
+          return q;
+        });
       const sql = queries.map(q => q.promise.toString())
       const preparedGqlQuery = await beforeDbHandler({ queries, sql, definitions });
       if (!preparedGqlQuery) return null;
@@ -137,6 +142,7 @@ function queryBuilder(table, tree, queries: Array<any> | undefined = [], idx: nu
 }
 function parseMetric(tree, query, knex, metricResolvers) {
   const { metrics = [] } = query;
+  query.metrics = metrics;
   if (tree.alias && metricResolvers[tree.name?.value]) return metricResolvers[tree.name?.value](tree, query, knex)
   if (!tree.alias?.value) {
     query.promise = query.promise.select(`${tree.name.value}`)
@@ -144,18 +150,28 @@ function parseMetric(tree, query, knex, metricResolvers) {
     query.promise = query.promise.select(`${tree.name.value} as ${tree.alias.value}`)
   }
 
-  metrics.push(tree.name.value);
-  query.metrics = metrics;
+  query.metrics.push(tree.name?.value);
+
 }
 
 function parseDimension(tree, query, knex) {
   const { dimensions = [] } = query;
-
+  if (!query.groupIndex) query.groupIndex = 0;
+  query.groupIndex++;
   const args = argumentsToObject(tree.arguments);
 
   if (args?.groupBy) {
     query.promise = query.promise.select(knex.raw(`date_trunc(?, ??) as ??`, [args?.groupBy, tree.name.value, tree.name.value]));
-    query.promise = query.promise.groupBy(1);
+    query.promise = query.promise.groupBy(knex.raw(`??`, [tree.name.value]));
+    if (!query.replaceWith) query.replaceWith = {};
+    query.replaceWith[tree.name.value] = { value: knex.raw(`date_trunc(?, ??)`, [args?.groupBy, tree.name.value]), index: query.groupIndex }
+    query.postQueryProcessing = (tree, query, knex) => {
+      let internal = query.promise;
+      query.promise = knex.select([...query.metrics.map(m => knex.raw(`sum(??) as ??`, [m, m])), ...query.dimensions])
+        .from(internal.as('middleTable')).groupBy(query.dimensions)
+      if (!!args?.sort_desc) query.promise.orderBy(args?.sort_desc, 'desc');
+      if (!!args?.sort_asc) query.promise.orderBy(args?.sort_asc, 'asc');
+    }
   } else {
     query.promise = query.promise.select(tree.name.value);
     query.promise = query.promise.groupBy(tree.name.value);
@@ -191,6 +207,7 @@ const metricResolvers = {
     const args = argumentsToObject(tree.arguments);
     if (!args.a) throw "Sum function requires 'a' as argument";
     query.promise = query.promise.sum(`${args.a} as ${tree.alias.value}`);
+    query.metrics.push(tree.alias.value);
   },
   avg: (tree, query, knex) => {
     //TODO: test
@@ -203,6 +220,7 @@ const metricResolvers = {
     } else {
       query.promise = query.promise.avg(`${args.a} as ${tree.alias.value}`);
     }
+    query.metrics.push(tree.alias.value);
   },
   avgPerDimension: (tree, query, knex) => {
     if (!tree.arguments) throw "avgPerDimension function requires arguments";
@@ -217,8 +235,16 @@ const metricResolvers = {
     const args = argumentsToObject(tree.arguments);
     if (!args.a) throw "Share  function requires 'a' as argument";
     let partition = '';
-    if (!!args.by) partition = knex.raw(`partition by ??`, [args.by]);
+    if (!!args.by) {
+      let partitionBy = args.by;
+      if (query.replaceWith?.[args.by]) {
+        partitionBy = query.replaceWith[args.by].value;
+      }
+      partition = knex.raw(`partition by ??`, [partitionBy]);
+    }
     query.promise = query.promise.select(knex.raw(`sum(??)/NULLIF(sum(sum(??)) over (${partition}), 0) as ??`, [args.a, args.a, tree.alias.value]));
+    query.metrics.push(tree.alias.value);
+
   },
   indexed: (tree, query, knex) => {
     if (!tree.arguments) throw "Share function requires arguments";
@@ -227,6 +253,7 @@ const metricResolvers = {
     let partition = '';
     if (!!args.by) partition = knex.raw(`partition by ??`, [args.by]);
     query.promise = query.promise.select(knex.raw(`sum(??)/NULLIF(max(sum(??)::float) over (${partition}), 0) as ??`, [args.a, args.a, tree.alias.value]));
+    query.metrics.push(tree.alias.value);
   },
   divide: (tree, query, knex) => {
     if (!tree.arguments) throw "Divide function requires arguments";
@@ -244,6 +271,7 @@ const metricResolvers = {
     if (!args.by) throw "Divide function requires 'by' as argument";
 
     query.promise = query.promise.select(knex.raw(`cast(??(??) as float)/NULLIF(cast(??(??) as float), 0) as ??`, [functions.a, args.a, functions.by, args.by, tree.alias.value]));
+    query.metrics.push(tree.alias.value);
   },
   aggrAverage: (tree, query, knex) => {
     if (!tree.arguments) throw "AggrAverage function requires arguments";
@@ -283,7 +311,6 @@ const metricResolvers = {
     }
   },
   distinct: (tree, query, knex) => {
-
     query.promise = query.promise.distinct(tree.alias.value);
   }
 }

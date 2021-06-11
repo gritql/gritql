@@ -46,6 +46,11 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
         if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
     }
 };
+var __spreadArray = (this && this.__spreadArray) || function (to, from) {
+    for (var i = 0, il = from.length, j = to.length; i < il; i++, j++)
+        to[j] = from[i];
+    return to;
+};
 exports.__esModule = true;
 exports.merge = exports.gqlToDb = void 0;
 var gql = require('graphql-tag');
@@ -61,15 +66,21 @@ var gqlToDb = function (opts) {
     var customMetricResolvers = {};
     var customMetricDataResolvers = {};
     var gqlFetch = function (gqlQuery) { return __awaiter(void 0, void 0, void 0, function () {
-        var definitions, queries, sql, preparedGqlQuery, resultFromDb, e_1;
+        var definitions_1, queries, sql, preparedGqlQuery, resultFromDb, e_1;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
                     _a.trys.push([0, 4, , 5]);
-                    definitions = gql(gqlQuery).definitions;
-                    queries = queryBuilder(null, definitions, undefined, undefined, knex, __assign(__assign({}, metricResolvers), customMetricResolvers)).filter(function (q) { return !q.skip; });
+                    definitions_1 = gql(gqlQuery).definitions;
+                    queries = queryBuilder(null, definitions_1, undefined, undefined, knex, __assign(__assign({}, metricResolvers), customMetricResolvers))
+                        .filter(function (q) { return !q.skip; })
+                        .map(function (q) {
+                        if (q.postQueryProcessing)
+                            q.postQueryProcessing(definitions_1, q, knex);
+                        return q;
+                    });
                     sql = queries.map(function (q) { return q.promise.toString(); });
-                    return [4 /*yield*/, beforeDbHandler({ queries: queries, sql: sql, definitions: definitions })];
+                    return [4 /*yield*/, beforeDbHandler({ queries: queries, sql: sql, definitions: definitions_1 })];
                 case 1:
                     preparedGqlQuery = _a.sent();
                     if (!preparedGqlQuery)
@@ -79,7 +90,7 @@ var gqlToDb = function (opts) {
                     resultFromDb = _a.sent();
                     if (!resultFromDb)
                         return [2 /*return*/, null];
-                    return [4 /*yield*/, exports.merge(definitions, resultFromDb, __assign(__assign({}, metricResolversData), customMetricDataResolvers))];
+                    return [4 /*yield*/, exports.merge(definitions_1, resultFromDb, __assign(__assign({}, metricResolversData), customMetricDataResolvers))];
                 case 3: return [2 /*return*/, _a.sent()];
                 case 4:
                     e_1 = _a.sent();
@@ -172,8 +183,9 @@ function queryBuilder(table, tree, queries, idx, knex, metricResolvers) {
     return queries;
 }
 function parseMetric(tree, query, knex, metricResolvers) {
-    var _a, _b, _c;
-    var _d = query.metrics, metrics = _d === void 0 ? [] : _d;
+    var _a, _b, _c, _d;
+    var _e = query.metrics, metrics = _e === void 0 ? [] : _e;
+    query.metrics = metrics;
     if (tree.alias && metricResolvers[(_a = tree.name) === null || _a === void 0 ? void 0 : _a.value])
         return metricResolvers[(_b = tree.name) === null || _b === void 0 ? void 0 : _b.value](tree, query, knex);
     if (!((_c = tree.alias) === null || _c === void 0 ? void 0 : _c.value)) {
@@ -182,15 +194,29 @@ function parseMetric(tree, query, knex, metricResolvers) {
     else {
         query.promise = query.promise.select(tree.name.value + " as " + tree.alias.value);
     }
-    metrics.push(tree.name.value);
-    query.metrics = metrics;
+    query.metrics.push((_d = tree.name) === null || _d === void 0 ? void 0 : _d.value);
 }
 function parseDimension(tree, query, knex) {
     var _a = query.dimensions, dimensions = _a === void 0 ? [] : _a;
+    if (!query.groupIndex)
+        query.groupIndex = 0;
+    query.groupIndex++;
     var args = argumentsToObject(tree.arguments);
     if (args === null || args === void 0 ? void 0 : args.groupBy) {
         query.promise = query.promise.select(knex.raw("date_trunc(?, ??) as ??", [args === null || args === void 0 ? void 0 : args.groupBy, tree.name.value, tree.name.value]));
-        query.promise = query.promise.groupBy(1);
+        query.promise = query.promise.groupBy(knex.raw("??", [tree.name.value]));
+        if (!query.replaceWith)
+            query.replaceWith = {};
+        query.replaceWith[tree.name.value] = { value: knex.raw("date_trunc(?, ??)", [args === null || args === void 0 ? void 0 : args.groupBy, tree.name.value]), index: query.groupIndex };
+        query.postQueryProcessing = function (tree, query, knex) {
+            var internal = query.promise;
+            query.promise = knex.select(__spreadArray(__spreadArray([], query.metrics.map(function (m) { return knex.raw("sum(??) as ??", [m, m]); })), query.dimensions))
+                .from(internal.as('middleTable')).groupBy(query.dimensions);
+            if (!!(args === null || args === void 0 ? void 0 : args.sort_desc))
+                query.promise.orderBy(args === null || args === void 0 ? void 0 : args.sort_desc, 'desc');
+            if (!!(args === null || args === void 0 ? void 0 : args.sort_asc))
+                query.promise.orderBy(args === null || args === void 0 ? void 0 : args.sort_asc, 'asc');
+        };
     }
     else {
         query.promise = query.promise.select(tree.name.value);
@@ -236,6 +262,7 @@ var metricResolvers = {
         if (!args.a)
             throw "Sum function requires 'a' as argument";
         query.promise = query.promise.sum(args.a + " as " + tree.alias.value);
+        query.metrics.push(tree.alias.value);
     },
     avg: function (tree, query, knex) {
         //TODO: test
@@ -250,6 +277,7 @@ var metricResolvers = {
         else {
             query.promise = query.promise.avg(args.a + " as " + tree.alias.value);
         }
+        query.metrics.push(tree.alias.value);
     },
     avgPerDimension: function (tree, query, knex) {
         if (!tree.arguments)
@@ -262,15 +290,22 @@ var metricResolvers = {
         query.promise.select(knex.raw("sum(??)::float/COUNT(DISTINCT ??) as ??", [args.a, args.per, tree.alias.value]));
     },
     share: function (tree, query, knex) {
+        var _a;
         if (!tree.arguments)
             throw "Share function requires arguments";
         var args = argumentsToObject(tree.arguments);
         if (!args.a)
             throw "Share  function requires 'a' as argument";
         var partition = '';
-        if (!!args.by)
-            partition = knex.raw("partition by ??", [args.by]);
+        if (!!args.by) {
+            var partitionBy = args.by;
+            if ((_a = query.replaceWith) === null || _a === void 0 ? void 0 : _a[args.by]) {
+                partitionBy = query.replaceWith[args.by].value;
+            }
+            partition = knex.raw("partition by ??", [partitionBy]);
+        }
         query.promise = query.promise.select(knex.raw("sum(??)/NULLIF(sum(sum(??)) over (" + partition + "), 0) as ??", [args.a, args.a, tree.alias.value]));
+        query.metrics.push(tree.alias.value);
     },
     indexed: function (tree, query, knex) {
         if (!tree.arguments)
@@ -282,6 +317,7 @@ var metricResolvers = {
         if (!!args.by)
             partition = knex.raw("partition by ??", [args.by]);
         query.promise = query.promise.select(knex.raw("sum(??)/NULLIF(max(sum(??)::float) over (" + partition + "), 0) as ??", [args.a, args.a, tree.alias.value]));
+        query.metrics.push(tree.alias.value);
     },
     divide: function (tree, query, knex) {
         if (!tree.arguments)
@@ -300,6 +336,7 @@ var metricResolvers = {
         if (!args.by)
             throw "Divide function requires 'by' as argument";
         query.promise = query.promise.select(knex.raw("cast(??(??) as float)/NULLIF(cast(??(??) as float), 0) as ??", [functions.a, args.a, functions.by, args.by, tree.alias.value]));
+        query.metrics.push(tree.alias.value);
     },
     aggrAverage: function (tree, query, knex) {
         var _a, _b, _c;
