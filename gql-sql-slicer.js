@@ -46,11 +46,6 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
         if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
     }
 };
-var __spreadArray = (this && this.__spreadArray) || function (to, from) {
-    for (var i = 0, il = from.length, j = to.length; i < il; i++, j++)
-        to[j] = from[i];
-    return to;
-};
 exports.__esModule = true;
 exports.merge = exports.gqlToDb = void 0;
 var gql = require('graphql-tag');
@@ -203,20 +198,13 @@ function parseDimension(tree, query, knex) {
     query.groupIndex++;
     var args = argumentsToObject(tree.arguments);
     if (args === null || args === void 0 ? void 0 : args.groupBy) {
-        query.promise = query.promise.select(knex.raw("date_trunc(?, ??) as ??", [args === null || args === void 0 ? void 0 : args.groupBy, tree.name.value, tree.name.value]));
-        query.promise = query.promise.groupBy(knex.raw("??", [tree.name.value]));
+        var pre_trunc = withFilters(query.filters)(knex.select(["*", knex.raw("date_trunc(?, ??) as ??", [args === null || args === void 0 ? void 0 : args.groupBy, tree.name.value, tree.name.value + "_" + (args === null || args === void 0 ? void 0 : args.groupBy)])]).from(query.table));
+        query.promise = query.promise.from(pre_trunc.as('pretrunc'));
+        query.promise = query.promise.select(knex.raw("?? as ??", [tree.name.value + "_" + (args === null || args === void 0 ? void 0 : args.groupBy), tree.name.value]));
+        query.promise = query.promise.groupBy(knex.raw("??", [tree.name.value + "_" + (args === null || args === void 0 ? void 0 : args.groupBy)]));
         if (!query.replaceWith)
             query.replaceWith = {};
-        query.replaceWith[tree.name.value] = { value: knex.raw("date_trunc(?, ??)", [args === null || args === void 0 ? void 0 : args.groupBy, tree.name.value]), index: query.groupIndex };
-        query.postQueryProcessing = function (tree, query, knex) {
-            var internal = query.promise;
-            query.promise = knex.select(__spreadArray(__spreadArray([], query.metrics.map(function (m) { return knex.raw("sum(??) as ??", [m, m]); })), query.dimensions))
-                .from(internal.as('middleTable')).groupBy(query.dimensions);
-            if (!!(args === null || args === void 0 ? void 0 : args.sort_desc))
-                query.promise.orderBy(args === null || args === void 0 ? void 0 : args.sort_desc, 'desc');
-            if (!!(args === null || args === void 0 ? void 0 : args.sort_asc))
-                query.promise.orderBy(args === null || args === void 0 ? void 0 : args.sort_asc, 'asc');
-        };
+        query.replaceWith[tree.name.value] = { value: tree.name.value + "_" + (args === null || args === void 0 ? void 0 : args.groupBy), index: query.groupIndex };
     }
     else {
         query.promise = query.promise.select(tree.name.value);
