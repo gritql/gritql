@@ -161,17 +161,16 @@ function parseDimension(tree, query, knex) {
   const args = argumentsToObject(tree.arguments);
 
   if (args?.groupBy) {
-    query.promise = query.promise.select(knex.raw(`date_trunc(?, ??) as ??`, [args?.groupBy, tree.name.value, tree.name.value]));
-    query.promise = query.promise.groupBy(knex.raw(`??`, [tree.name.value]));
+
+    const pre_trunc = withFilters(query.filters)(knex.select(["*", knex.raw(`date_trunc(?, ??) as ??`, [args?.groupBy, tree.name.value, `${tree.name.value}_${args?.groupBy}`])]).from(query.table))
+    query.promise = query.promise.from(pre_trunc.as('pretrunc'))
+
+    query.promise = query.promise.select(knex.raw(`?? as ??`, [`${tree.name.value}_${args?.groupBy}`, tree.name.value]));
+    query.promise = query.promise.groupBy(knex.raw(`??`, [`${tree.name.value}_${args?.groupBy}`]));
+
     if (!query.replaceWith) query.replaceWith = {};
-    query.replaceWith[tree.name.value] = { value: knex.raw(`date_trunc(?, ??)`, [args?.groupBy, tree.name.value]), index: query.groupIndex }
-    query.postQueryProcessing = (tree, query, knex) => {
-      let internal = query.promise;
-      query.promise = knex.select([...query.metrics.map(m => knex.raw(`sum(??) as ??`, [m, m])), ...query.dimensions])
-        .from(internal.as('middleTable')).groupBy(query.dimensions)
-      if (!!args?.sort_desc) query.promise.orderBy(args?.sort_desc, 'desc');
-      if (!!args?.sort_asc) query.promise.orderBy(args?.sort_asc, 'asc');
-    }
+    query.replaceWith[tree.name.value] = { value: `${tree.name.value}_${args?.groupBy}`, index: query.groupIndex }
+
   } else {
     query.promise = query.promise.select(tree.name.value);
     query.promise = query.promise.groupBy(tree.name.value);
