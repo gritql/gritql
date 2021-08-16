@@ -94,14 +94,56 @@ Object {
 }
 `;
 
-exports[`gql mutation pick 1`] = `
+exports[`gql blank mutation pick 1`] = `
 Array [
-  "select \\"channels\\", sum(\\"sessions\\")/sum(sum(\\"sessions\\")) over () as \\"value\\" from \\"ecom_benchmarking\\" where \\"category\\" = 'Adult' and \\"country\\" = 'DE' group by \\"channels\\" order by \\"value\\" desc",
-  "select \\"date\\", \\"channels\\", sum(\\"transactions\\")/sum(sum(\\"transactions\\")) over (partition by \\"date\\") as \\"value\\" from \\"ecom_benchmarking\\" where \\"category\\" = 'Adult' and \\"country\\" = 'US' group by \\"date\\", \\"channels\\" order by \\"date\\" asc",
+  "select \\"channels\\", sum(\\"sessions\\") as \\"value\\" from \\"ecom_benchmarking\\" where \\"category\\" = 'Adult' and \\"country\\" = 'US' group by \\"channels\\"",
+  "select \\"channels\\", sum(\\"sessions\\") as \\"value\\" from \\"ecom_benchmarking\\" where \\"category\\" = 'Adult' and \\"country\\" = 'US' group by \\"channels\\"",
 ]
 `;
 
-exports[`gql mutation pick 2`] = `
+exports[`gql blank mutation pick 2`] = `
+Object {
+  "prevSeries": Object {
+    "Organic": Object {
+      "value": 1,
+    },
+    "Social": Object {
+      "value": 2,
+    },
+  },
+  "series": Object {},
+}
+`;
+
+exports[`gql diff mutation pick 1`] = `
+Array [
+  "select \\"channels\\", sum(\\"sessions\\") as \\"value\\" from \\"ecom_benchmarking\\" where \\"category\\" = 'Adult' and \\"country\\" = 'US' group by \\"channels\\"",
+  "select \\"channels\\", sum(\\"sessions\\") as \\"value\\" from \\"ecom_benchmarking\\" where \\"category\\" = 'Adult' and \\"country\\" = 'US' group by \\"channels\\"",
+]
+`;
+
+exports[`gql diff mutation pick 2`] = `
+Object {
+  "prevSeries": Object {},
+  "series": Object {
+    "Organic": Object {
+      "value": 2,
+    },
+    "Social": Object {
+      "value": -0.5,
+    },
+  },
+}
+`;
+
+exports[`gql pick mutation pick 1`] = `
+Array [
+  "select \\"channels\\", sum(\\"sessions\\")/NULLIF(sum(sum(\\"sessions\\")) over (), 0) as \\"value\\" from \\"ecom_benchmarking\\" where \\"category\\" = 'Adult' and \\"country\\" = 'DE' group by \\"channels\\" order by \\"value\\" desc",
+  "select \\"date\\", \\"channels\\", sum(\\"transactions\\")/NULLIF(sum(sum(\\"transactions\\")) over (partition by \\"date\\"), 0) as \\"value\\" from \\"ecom_benchmarking\\" where \\"category\\" = 'Adult' and \\"country\\" = 'US' group by \\"date\\", \\"channels\\" order by \\"date\\" asc",
+]
+`;
+
+exports[`gql pick mutation pick 2`] = `
 Object {
   "series": Array [
     Object {
@@ -144,66 +186,39 @@ Object {
 }
 `;
 
-exports[`gql mutation pick 3`] = `
-Array [
-  "select \\"channels\\", sum(\\"sessions\\")/sum(sum(\\"sessions\\")) over () as \\"value\\" from \\"ecom_benchmarking\\" where \\"category\\" = 'Adult' and \\"country\\" = 'DE' group by \\"channels\\" order by \\"value\\" desc",
-  "select \\"date\\", \\"channels\\", sum(\\"transactions\\")/sum(sum(\\"transactions\\")) over (partition by \\"date\\") as \\"value\\" from \\"ecom_benchmarking\\" where \\"category\\" = 'Adult' and \\"country\\" = 'US' group by \\"date\\", \\"channels\\" order by \\"date\\" asc",
-]
-`;
-
 exports[`gqlBuilder function share 1`] = `
 Array [
-  "select \\"channels\\", sum(\\"sessions\\")/sum(sum(\\"sessions\\")) over () as \\"share\\" from \\"ecom_benchmarking\\" where \\"date\\" = '2020-11-27' and \\"category\\" = 'Finance/Investing' group by \\"channels\\"",
-]
-`;
-
-exports[`gqlBuilder joins and complex queries simple use of the result of different query 1`] = `
-Array [
-  "select cast(\\"sum\\"(\\"no_of_baskets\\") as float)/cast(\\"max\\"(\\"position1\\".\\"position1_baskets\\") as float) as \\"result\\" from TEMP_BRAND_BASKET_POSITION_TABLE, (select sum(\\"no_of_baskets\\") as \\"position1_baskets\\" from \\"TEMP_BRAND_BASKET_POSITION_TABLE\\" where \\"brand\\" = 'adidas' and \\"country\\" = 'us' and \\"position\\" = '1') as \\"position1\\" where \\"brand\\" = 'adidas' and \\"country\\" = 'us'",
-]
-`;
-
-exports[`gqlBuilder joins and complex queries simple use of the result of different query 2`] = `
-Array [
-  "select cast(\\"sum\\"(\\"no_of_baskets\\") as float)/cast(\\"max\\"(\\"position1\\".\\"position1_baskets\\") as float) as \\"result\\" from TEMP_BRAND_BASKET_POSITION_TABLE, (select sum(\\"no_of_baskets\\") as \\"position1_baskets\\" from \\"OTHER_TABLE\\" where \\"brand\\" = 'adidas' and \\"country\\" = 'us' and \\"position\\" = '1') as \\"position1\\" where \\"brand\\" = 'adidas' and \\"country\\" = 'us'",
-]
-`;
-
-exports[`gqlBuilder joins and complex queries simple use of the result of different query 3`] = `
-Array [
-  "select sum(\\"no_of_baskets\\") as \\"position1_baskets\\" from \\"OTHER_TABLE\\" where \\"brand\\" = 'adidas' and \\"country\\" = 'us' and \\"position\\" = '1'",
-  "select \\"joinLeft\\" from \\"TEMP_BRAND_BASKET_POSITION_TABLE\\" where \\"brand\\" = 'adidas' and \\"country\\" = 'us'",
-  "select \\"position1\\", cast(\\"sum\\"(\\"no_of_baskets\\") as float)/cast(\\"sum\\"(\\"position1\\".\\"position1_baskets\\") as float) as \\"result\\" from \\"TEMP_BRAND_BASKET_POSITION_TABLE\\" where \\"brand\\" = 'adidas' and \\"country\\" = 'us' group by \\"position1\\"",
+  "select \\"channels\\", sum(\\"sessions\\")/NULLIF(sum(sum(\\"sessions\\")) over (), 0) as \\"share\\" from \\"ecom_benchmarking\\" where \\"date\\" = '2020-11-27' and \\"category\\" = 'Finance/Investing' group by \\"channels\\"",
 ]
 `;
 
 exports[`gqlBuilder request tuning all together 1`] = `
 Array [
-  "select \\"channels\\", sum(\\"sessions\\")/sum(sum(\\"sessions\\")) over () as \\"share\\" from \\"ecom_benchmarking\\" where \\"category\\" = 'Travel_and_Tourism' and \\"country\\" = 'US' and \\"date\\" > '2020-10-13' and \\"date\\" < '2021-04-13' group by \\"channels\\" order by \\"share\\" desc limit 5 offset 3",
+  "select \\"channels\\", sum(\\"sessions\\")/NULLIF(sum(sum(\\"sessions\\")) over (), 0) as \\"share\\" from \\"ecom_benchmarking\\" where \\"category\\" = 'Travel_and_Tourism' and \\"country\\" = 'US' and \\"date\\" > '2020-10-13' and \\"date\\" < '2021-04-13' group by \\"channels\\" order by \\"share\\" desc limit 5 offset 3",
 ]
 `;
 
 exports[`gqlBuilder request tuning limit 1`] = `
 Array [
-  "select \\"channels\\", sum(\\"sessions\\")/sum(sum(\\"sessions\\")) over () as \\"share\\" from \\"ecom_benchmarking\\" where \\"category\\" = 'Travel_and_Tourism' and \\"country\\" = 'US' and \\"date\\" > '2020-10-13' and \\"date\\" < '2021-04-13' group by \\"channels\\" limit 3",
+  "select \\"channels\\", sum(\\"sessions\\")/NULLIF(sum(sum(\\"sessions\\")) over (), 0) as \\"share\\" from \\"ecom_benchmarking\\" where \\"category\\" = 'Travel_and_Tourism' and \\"country\\" = 'US' and \\"date\\" > '2020-10-13' and \\"date\\" < '2021-04-13' group by \\"channels\\" limit 3",
 ]
 `;
 
 exports[`gqlBuilder request tuning offset 1`] = `
 Array [
-  "select \\"channels\\", sum(\\"sessions\\")/sum(sum(\\"sessions\\")) over () as \\"share\\" from \\"ecom_benchmarking\\" where \\"category\\" = 'Travel_and_Tourism' and \\"country\\" = 'US' and \\"date\\" > '2020-10-13' and \\"date\\" < '2021-04-13' group by \\"channels\\" offset 5",
+  "select \\"channels\\", sum(\\"sessions\\")/NULLIF(sum(sum(\\"sessions\\")) over (), 0) as \\"share\\" from \\"ecom_benchmarking\\" where \\"category\\" = 'Travel_and_Tourism' and \\"country\\" = 'US' and \\"date\\" > '2020-10-13' and \\"date\\" < '2021-04-13' group by \\"channels\\" offset 5",
 ]
 `;
 
 exports[`gqlBuilder request tuning sort_asc 1`] = `
 Array [
-  "select \\"channels\\", sum(\\"sessions\\")/sum(sum(\\"sessions\\")) over () as \\"share\\" from \\"ecom_benchmarking\\" where \\"category\\" = 'Travel_and_Tourism' and \\"country\\" = 'US' and \\"date\\" > '2020-10-13' and \\"date\\" < '2021-04-13' group by \\"channels\\" order by \\"share\\" asc",
+  "select \\"channels\\", sum(\\"sessions\\")/NULLIF(sum(sum(\\"sessions\\")) over (), 0) as \\"share\\" from \\"ecom_benchmarking\\" where \\"category\\" = 'Travel_and_Tourism' and \\"country\\" = 'US' and \\"date\\" > '2020-10-13' and \\"date\\" < '2021-04-13' group by \\"channels\\" order by \\"share\\" asc",
 ]
 `;
 
 exports[`gqlBuilder request tuning sort_desc 1`] = `
 Array [
-  "select \\"channels\\", sum(\\"sessions\\")/sum(sum(\\"sessions\\")) over () as \\"share\\" from \\"ecom_benchmarking\\" where \\"category\\" = 'Travel_and_Tourism' and \\"country\\" = 'US' and \\"date\\" > '2020-10-13' and \\"date\\" < '2021-04-13' group by \\"channels\\" order by \\"share\\" desc",
+  "select \\"channels\\", sum(\\"sessions\\")/NULLIF(sum(sum(\\"sessions\\")) over (), 0) as \\"share\\" from \\"ecom_benchmarking\\" where \\"category\\" = 'Travel_and_Tourism' and \\"country\\" = 'US' and \\"date\\" > '2020-10-13' and \\"date\\" < '2021-04-13' group by \\"channels\\" order by \\"share\\" desc",
 ]
 `;
 
@@ -233,7 +248,7 @@ Array [
 
 exports[`gqlBuilder single query group date by month 1`] = `
 Array [
-  "select \\"device\\", date_trunc('month', \\"date\\") as \\"date\\", sum(\\"no_unique_products\\") as \\"no_unique_products\\", sum(\\"no_brand_products\\") as \\"no_brand_products\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", 1",
+  "select \\"device\\", \\"date_month\\" as \\"date\\", sum(\\"no_unique_products\\") as \\"no_unique_products\\", sum(\\"no_brand_products\\") as \\"no_brand_products\\" from (select *, date_trunc('month', \\"date\\") as \\"date_month\\" from \\"table\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12') as \\"pretrunc\\" where \\"brand\\" = 'Adidas' and \\"country\\" = 'US' and \\"date\\" > '2020-1-1' and \\"date\\" < '2021-7-12' group by \\"device\\", \\"date_month\\"",
 ]
 `;
 

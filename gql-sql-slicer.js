@@ -384,16 +384,7 @@ function copyKnex(knexObject, knex) {
 }
 var merge = function (tree, data, metricResolversData) {
     var queries = getMergeStrings(tree, undefined, undefined, metricResolversData);
-    var mutations = queries.filter(function (q) { return !!q.mutation; }).reduce(function (result, query) {
-        var _a;
-        if ((_a = query.filters) === null || _a === void 0 ? void 0 : _a.from) {
-            result[query.filters.from] = query;
-        }
-        else {
-            result[query.name] = query;
-        }
-        return result;
-    }, {});
+    var mutations = queries.filter(function (q) { return !!q.mutation; });
     var batches = queries.filter(function (q) { return !q.mutation; }).reduce(function (r, q, i) {
         var key = q.name || "___query";
         if (!r[key])
@@ -405,31 +396,30 @@ var merge = function (tree, data, metricResolversData) {
     function getMergedObject(quer, mutations, fullObject) {
         return quer.reduce(function (result, q, i) {
             var resultData = data[q.bid];
-            var skipArray = [];
             for (var j = 0; j < resultData.length; j++) {
                 var keys = Object.keys(resultData[j]);
                 var _loop_1 = function () {
-                    //todo: rm
-                    if (keys[key] === 'cutoff' && +resultData[j][keys[key]] < 0.005) {
-                        skipArray.push(replVars(q.cutoff, resultData[j]));
-                    }
                     if (q.metrics[keys[key]]) {
                         var replacedPath = replVars(q.metrics[keys[key]], resultData[j]);
                         var valueDir = replacedPath.slice(0, -(keys[key].length + 1));
-                        //todo: rm
-                        if (skipArray.includes(valueDir))
-                            return "continue";
                         var value = isNaN(+resultData[j][keys[key]]) ? resultData[j][keys[key]] : +resultData[j][keys[key]];
                         if (!!mutations) {
-                            var checks_1 = mutations[mutations.mutationFunction];
-                            var skip = Object.keys(checks_1).reduce(function (r, k) {
-                                if (r)
-                                    return r;
-                                //relying on pick by fix that
-                                return !checks_1[k](progressiveGet(fullObject[mutations.filters.by], replVars(k, resultData[j])));
-                            }, false);
-                            if (skip)
+                            if (mutations.skip) {
+                                var checks_1 = mutations['skip'];
+                                var skip = Object.keys(checks_1).reduce(function (r, k) {
+                                    if (r)
+                                        return r;
+                                    //relying on pick by fix that
+                                    return !checks_1[k](progressiveGet(fullObject[mutations.filters.by], replVars(k, resultData[j])));
+                                }, false);
+                                if (skip)
+                                    return "continue";
+                            }
+                            if (mutations[mutations.mutationFunction]) {
+                                var mutation = mutations[mutations.mutationFunction];
+                                result = progressiveSet(result, replacedPath, mutation[q.metrics[keys[key]]](value, replacedPath, fullObject));
                                 return "continue";
+                            }
                         }
                         result = progressiveSet(result, replacedPath, value);
                     }
@@ -446,11 +436,13 @@ var merge = function (tree, data, metricResolversData) {
     }
     var res = Object.keys(batches).reduce(function (r, k) {
         r[k.replace('___query', '')] = getMergedObject(batches[k], null, null);
-        if (mutations[k])
-            r[mutations[k].name] = getMergedObject(batches[k], mutations[k], r);
         return r;
     }, {});
-    return res;
+    return mutations.reduce(function (r, mutation) {
+        if (batches[mutation.name])
+            r[mutation.name] = getMergedObject(batches[mutation.name], mutation, r);
+        return r;
+    }, res);
 };
 exports.merge = merge;
 function replVars(str, obj) {
@@ -580,14 +572,36 @@ var metricResolversData = {
         var _a;
         var name = "" + ((_a = tree.name) === null || _a === void 0 ? void 0 : _a.value);
         var args = argumentsToObject(tree.arguments);
-        if (!query.pick)
-            query.pick = {};
+        if (!query.skip)
+            query.skip = {};
         if (query.path === ':pick')
             query.path = '';
         Object.keys(args).map(function (key) {
             var _a = key.split('_'), keyName = _a[0], operator = _a[1];
-            query.pick["" + query.path + (!!query.path ? '.' : '') + ":" + name + "." + keyName] = comparisonFunction[operator](args[key]);
+            query.skip["" + query.path + (!!query.path ? '.' : '') + ":" + name + "." + keyName] = comparisonFunction[operator](args[key]);
         });
+    },
+    diff: function (tree, query) {
+        var _a;
+        var name = "" + ((_a = tree.name) === null || _a === void 0 ? void 0 : _a.value);
+        var args = argumentsToObject(tree.arguments);
+        if (!query.diff)
+            query.diff = {};
+        if (query.path.startsWith(':diff.'))
+            query.path = query.path.replace(':diff.', '');
+        query.diff["" + query.path + (!!query.path ? '.' : '') + name] = function (value, path, fullObject) {
+            return (value / progressiveGet(fullObject[query.filters.by], path) - 1);
+        };
+    },
+    blank: function (tree, query) {
+        var _a;
+        var name = "" + ((_a = tree.name) === null || _a === void 0 ? void 0 : _a.value);
+        var args = argumentsToObject(tree.arguments);
+        if (!query.skip)
+            query.skip = {};
+        if (query.path.startsWith(':blank.'))
+            query.path = query.path.replace(':diff.', '');
+        query.skip["" + query.path + (!!query.path ? '.' : '') + ":" + name] = function (x) { return false; };
     }
 };
 /*

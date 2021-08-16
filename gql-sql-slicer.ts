@@ -328,15 +328,7 @@ function copyKnex(knexObject, knex) {
 export const merge = (tree: Array<TagObject>, data: Array<any>, metricResolversData): any => {
   const queries = getMergeStrings(tree, undefined, undefined, metricResolversData);
 
-  const mutations = queries.filter((q) => !!q.mutation).reduce((result, query) => {
-
-    if (query.filters?.from) {
-      result[query.filters.from] = query;
-    } else {
-      result[query.name] = query;
-    }
-    return result;
-  }, {});
+  const mutations = queries.filter((q) => !!q.mutation);
 
   const batches = queries.filter(q => !q.mutation).reduce((r, q, i) => {
     const key = q.name || "___query";
@@ -350,33 +342,36 @@ export const merge = (tree: Array<TagObject>, data: Array<any>, metricResolversD
 
     return quer.reduce((result, q, i) => {
       const resultData = data[q.bid];
-      let skipArray = [];
       for (var j = 0; j < resultData.length; j++) {
         const keys = Object.keys(resultData[j]);
 
         for (var key in keys) {
 
-          //todo: rm
-          if (keys[key] === 'cutoff' && +resultData[j][keys[key]] < 0.005) {
-            skipArray.push(replVars(q.cutoff, resultData[j]))
-          }
+
           if (q.metrics[keys[key]]) {
             const replacedPath = replVars(q.metrics[keys[key]], resultData[j]);
 
             const valueDir = replacedPath.slice(0, -(keys[key].length + 1));
-            //todo: rm
-            if (skipArray.includes(valueDir)) continue;
+
             const value = isNaN(+resultData[j][keys[key]]) ? resultData[j][keys[key]] : +resultData[j][keys[key]];
             if (!!mutations) {
-              const checks = mutations[mutations.mutationFunction];
+              if (mutations.skip) {
+                const checks = mutations['skip'];
+                const skip = Object.keys(checks).reduce((r, k) => {
+                  if (r) return r;
+                  //relying on pick by fix that
+                  return !checks[k](progressiveGet(fullObject[mutations.filters.by], replVars(k, resultData[j])))
+                }, false)
+                if (skip) continue;
+              }
+              if (mutations[mutations.mutationFunction]) {
+                const mutation = mutations[mutations.mutationFunction];
+                result = progressiveSet(result, replacedPath, mutation[q.metrics[keys[key]]](value, replacedPath, fullObject))
+                continue;
+              }
 
-              const skip = Object.keys(checks).reduce((r, k) => {
-                if (r) return r;
-                //relying on pick by fix that
-                return !checks[k](progressiveGet(fullObject[mutations.filters.by], replVars(k, resultData[j])))
-              }, false)
-              if (skip) continue;
             }
+
             result = progressiveSet(result, replacedPath, value)
           }
         }
@@ -389,13 +384,17 @@ export const merge = (tree: Array<TagObject>, data: Array<any>, metricResolversD
   if (Object.keys(batches).length === 1 && !!batches["___query"]) {
     return getMergedObject(queries, null, null);
   }
+
   const res = Object.keys(batches).reduce((r, k) => {
     r[k.replace('___query', '')] = getMergedObject(batches[k], null, null)
-    if (mutations[k]) r[mutations[k].name] = getMergedObject(batches[k], mutations[k], r)
     return r;
   }, {})
 
-  return res;
+
+  return mutations.reduce((r, mutation) => {
+    if (batches[mutation.name]) r[mutation.name] = getMergedObject(batches[mutation.name], mutation, r)
+    return r;
+  }, res);
 }
 
 
@@ -522,13 +521,29 @@ const metricResolversData = {
   pick: (tree, query) => {
     const name = `${tree.name?.value}`;
     const args = argumentsToObject(tree.arguments);
-    if (!query.pick) query.pick = {};
+    if (!query.skip) query.skip = {};
     if (query.path === ':pick') query.path = '';
     Object.keys(args).map((key) => {
       const [keyName, operator] = key.split('_');
-      query.pick[`${query.path}${!!query.path ? '.' : ''}:${name}.${keyName}`] = comparisonFunction[operator](args[key])
-
+      query.skip[`${query.path}${!!query.path ? '.' : ''}:${name}.${keyName}`] = comparisonFunction[operator](args[key])
     })
+  },
+  diff: (tree, query) => {
+    const name = `${tree.name?.value}`;
+    const args = argumentsToObject(tree.arguments);
+    if (!query.diff) query.diff = {};
+    if (query.path.startsWith(':diff.')) query.path = query.path.replace(':diff.', '');
+
+    query.diff[`${query.path}${!!query.path ? '.' : ''}${name}`] = (value, path, fullObject) => {
+      return (value / progressiveGet(fullObject[query.filters.by], path) - 1);
+    }
+  },
+  blank: (tree, query) => {
+    const name = `${tree.name?.value}`;
+    const args = argumentsToObject(tree.arguments);
+    if (!query.skip) query.skip = {};
+    if (query.path.startsWith(':blank.')) query.path = query.path.replace(':diff.', '');
+    query.skip[`${query.path}${!!query.path ? '.' : ''}:${name}`] = (x) => false
   }
 }
 

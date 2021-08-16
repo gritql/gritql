@@ -1,7 +1,7 @@
 const { gqlToDb, gqlBuild } = require("./gql-sql-slicer");
 
 
-xdescribe('builder for mulyquery requests', () => {
+describe('builder for mulyquery requests', () => {
   test('mixing the object', () => {
     const table = [[
       {
@@ -203,7 +203,7 @@ xdescribe('builder for mulyquery requests', () => {
 
 
 
-xdescribe('gqlBuilder single query', () => {
+describe('gqlBuilder single query', () => {
   test('distinct', () => {
     const querier = gqlToDb().beforeDbFetch(({ sql }) => {
       expect(sql).toMatchSnapshot();
@@ -304,7 +304,7 @@ xdescribe('gqlBuilder single query', () => {
 })
 
 
-xdescribe('merge', () => {
+describe('merge', () => {
 
   test('basic example works', () => {
     const tables = [[
@@ -571,7 +571,7 @@ xdescribe('merge', () => {
 
 })
 
-xdescribe('gqlBuilder single query', () => {
+describe('gqlBuilder single query', () => {
   test('handle table name in query', () => {
     const querier = gqlToDb().beforeDbFetch(({ sql }) => {
       expect(sql).toMatchSnapshot();
@@ -595,7 +595,7 @@ xdescribe('gqlBuilder single query', () => {
   })
 })
 
-xdescribe('gqlBuilder function', () => {
+describe('gqlBuilder function', () => {
   test('share', () => {
     const querier = gqlToDb().beforeDbFetch(({ sql }) => {
       expect(sql).toMatchSnapshot();
@@ -611,7 +611,7 @@ xdescribe('gqlBuilder function', () => {
   })
 })
 
-xdescribe('gqlBuilder request tuning', () => {
+describe('gqlBuilder request tuning', () => {
   test('sort_desc', () => {
     const querier = gqlToDb().beforeDbFetch(({ sql }) => {
       expect(sql).toMatchSnapshot();
@@ -682,84 +682,7 @@ xdescribe('gqlBuilder request tuning', () => {
   })
 })
 
-describe('gql mutation', () => {
-  xtest('pick', () => {
-    const tables = [
-      [{
-        channels: 'Organic',
-        value: .1
-      },
-      {
-        channels: 'Paid',
-        value: .3
-      },
-      {
-        channels: 'Organicsmall',
-        value: .05
-      }, {
-        channels: 'Paidbig',
-        value: .5
-      }], [{
-        date: '2020-01-02T23:00:00.000Z',
-        channels: 'Organic',
-        value: .2
-      }, {
-        date: '2020-01-02T23:00:00.000Z',
-        channels: 'Paid',
-        value: .2
-      }, {
-        date: '2020-01-02T23:00:00.000Z',
-        channels: 'Organicsmall',
-        value: .2
-      }, {
-        date: '2020-01-02T23:00:00.000Z',
-        channels: 'Paidbig',
-        value: .2
-      }, {
-        date: '2020-01-03T23:00:00.000Z',
-        channels: 'Organic',
-        value: .4
-      }, {
-        date: '2020-01-03T23:00:00.000Z',
-        channels: 'Paid',
-        value: .4
-      }, {
-        date: '2020-01-03T23:00:00.000Z',
-        channels: 'Organicsmall',
-        value: .8
-      }, {
-        date: '2020-01-03T23:00:00.000Z',
-        channels: 'Paidbig',
-        value: .8
-      }], []
-    ]
-    const querier = gqlToDb().dbFetch(({ sql }) => {
-      expect(sql).toMatchSnapshot();
-      return tables;
-    })
-    querier(`query ecom_benchmarking {
-      topChannels: fetch(category:"Adult", country:"DE") {
-          channels (type: Array, sort_desc: value) {
-              value: share(a: sessions)    
-        }
-      }
-      series: fetch(category:"Adult", country:"US") {
-          date (type: Array, sort_asc: date) {
-              channels {
-                  value: share(a: transactions, by: date)
-              }
-          }
-      }
-    }
-    mutation {
-      series: pick(from: series, by: topChannels){
-        channels(value_gt: 0.2)
-      }
-    }`).then((result) => {
-      expect(result).toMatchSnapshot()
-    })
-  })
-
+describe('gql pick mutation', () => {
   test('pick', () => {
     const tables = [
       [{
@@ -832,8 +755,64 @@ describe('gql mutation', () => {
       series: pick(from: series, by: topChannels){
         channels(value_gt: 0.2)
       }
-      topChannels: pick(from: topChannels, by: topChannels){
-        channels(value_gt: 0.2)
+    }`).then((result) => {
+      expect(result).toMatchSnapshot()
+    })
+  })
+
+
+})
+
+describe('gql diff mutation', () => {
+  test('pick', () => {
+    const tables = [
+      [{
+
+        channels: 'Social',
+        value: 1
+      }, {
+
+        channels: 'Organic',
+        value: 3
+      }],
+      [{
+
+        channels: 'Social',
+        value: 2
+      }, {
+
+        channels: 'Organic',
+        value: 1
+      }]
+    ]
+    const querier = gqlToDb().dbFetch(({ sql }) => {
+      expect(sql).toMatchSnapshot();
+      return tables;
+    })
+    querier(`query ecom_benchmarking {
+      series: fetch(category:"Adult", country:"US") {
+        channels {
+            value: sum(a: sessions)
+        }
+    
+      }
+      prevSeries: fetch(category:"Adult", country:"US") {
+              channels {
+                  value: sum(a: sessions)
+              }
+      }
+      
+    }
+    mutation {
+      series: diff (of: series, by: prevSeries){
+        channels {
+          value
+        }
+      }
+      prevSeries: blank {
+        channels {
+          value
+        }
       }
     }`).then((result) => {
       expect(result).toMatchSnapshot()
@@ -841,90 +820,55 @@ describe('gql mutation', () => {
   })
 })
 
-xdescribe('gqlBuilder joins and complex queries', () => {
-  xtest('simple use of the result of different query', () => {
-    const querier = gqlToDb().beforeDbFetch(({ sql }) => {
-      expect(sql).toMatchSnapshot();
-    })
 
-    querier(`query TEMP_BRAND_BASKET_POSITION_TABLE{
-      position1: fetch(brand: adidas, country: us, position: 1) {
-        position1_baskets: sum(a: no_of_baskets)
+describe('gql blank mutation', () => {
+  test('pick', () => {
+    const tables = [
+      [{
+
+        channels: 'Social',
+        value: 1
+      }, {
+
+        channels: 'Organic',
+        value: 3
+      }],
+      [{
+
+        channels: 'Social',
+        value: 2
+      }, {
+
+        channels: 'Organic',
+        value: 1
+      }]
+    ]
+    const querier = gqlToDb().dbFetch(({ sql }) => {
+      expect(sql).toMatchSnapshot();
+      return tables;
+    })
+    querier(`query ecom_benchmarking {
+
+      series: fetch(category:"Adult", country:"US") {
+              channels {
+                  value: sum(a: sessions)
+              }
       }
-      fetch(brand: adidas, country: us){
-        ... with
-        position1 {
-          result: divide(a:no_of_baskets, by:"max|position1.position1_baskets")
+      prevSeries: fetch(category:"Adult", country:"US") {
+            channels {
+                value: sum(a: sessions)
+            }
+        
+       }
+    }
+    mutation {
+      series: blank {
+        channels {
+          value
         }
       }
-    }
-    `);
-  })
-  xtest('simple use of the result of different query', () => {
-    const querier = gqlToDb().beforeDbFetch(({ sql }) => {
-      expect(sql).toMatchSnapshot();
+    }`).then((result) => {
+      expect(result).toMatchSnapshot()
     })
-
-    querier(`
-    query OTHER_TABLE{
-      position1: fetch(brand: adidas, country: us, position: 1) {
-        position1_baskets: sum(a: no_of_baskets)
-      }
-    }
-    query TEMP_BRAND_BASKET_POSITION_TABLE{
-      fetch(brand: adidas, country: us){
-        ... with
-        position1 {
-          result: divide(a:no_of_baskets, by:"max|position1.position1_baskets")
-        }
-      }
-    }
-    `);
-  })
-  xtest('simple use of the result of different query', () => {
-    const querier = gqlToDb().beforeDbFetch(({ sql }) => {
-      expect(sql).toMatchSnapshot();
-    })
-
-    querier(`
-    query OTHER_TABLE{
-      position1: fetch(brand: adidas, country: us, position: 1) {
-        position1_baskets: sum(a: no_of_baskets)
-      }
-    }
-    query TEMP_BRAND_BASKET_POSITION_TABLE{
-      fetch(brand: adidas, country: us){
-        ... join
-        position1(a:country ,b:"position1.country") {
-          result: divide(a:no_of_baskets, by:"position1.position1_baskets")
-        }
-      }
-    }
-    `);
   })
 })
-
-
-// test('simple use of the result of different query', () => {
-//   const querier = gqlToDb().beforeDbFetch(({ sql }) => {
-//     console.log(sql)
-//     // expect(sql).toMatchSnapshot();
-//   })
-
-//   querier(`
-//   query temp_brand_basket_position_table {
-//     byDevice: fetch(brand: adidas, country: us) {
-//             date (type: Array, groupBy: week) {
-//                     device {
-//                         value: weightAvg(a:position, by:no_of_baskets)
-//                     }
-//             }
-//     }
-//     all: fetch(brand: adidas, country: us) {
-//         date (type: Array, groupBy: week) {
-//                 value: weightAvg(a:position, by:no_of_baskets)
-//         }
-// }
-// }
-//   `);
-// })
