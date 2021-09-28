@@ -1,6 +1,7 @@
 const gql = require('graphql-tag');
 const knexConstructor = require('knex');
-
+import { gaQueryBuilder, gaMetricResolvers } from './gql-ga-slicer';
+import { DateTime } from 'luxon';
 
 type TagObject = {
   kind: 'OperationDefinition'
@@ -14,6 +15,7 @@ type GqlQuery = {
   promise: Promise<any>
   name: string
   filters: Array<string>
+  postQueryTransform?: Array<Function>
 }
 
 type gqlBuildObject = {
@@ -39,7 +41,19 @@ interface metricDataResolver {
 export const gqlToDb = (opts: any = { client: 'pg' }) => {
   const knex = knexConstructor(opts);
   let beforeDbHandler: BeforeDbHandler = (r) => Promise.resolve(r);
-  let dbHandler: DbHandler = ({ queries }) => Promise.all(queries.map(q => q.promise))
+  let dbHandler: DbHandler = ({ queries }) => {
+    return Promise.all(queries.map(q => {
+      //todo: remove this bullshit
+      //I just need to rethink whole thing
+      if (q.postQueryTransform) {
+
+        return q.postQueryTransform.reduce((next, t: any) => {
+          return next.then(t)
+        }, q.promise)
+      }
+      return q.promise;
+    }))
+  }
   let customMetricResolvers = {};
   let customMetricDataResolvers = {};
   const gqlFetch = async (gqlQuery: string): Promise<any> => {
@@ -51,8 +65,10 @@ export const gqlToDb = (opts: any = { client: 'pg' }) => {
         .filter(q => !q.skip)
         .map(q => {
           if (q.postQueryProcessing) q.postQueryProcessing(definitions, q, knex);
+          if (q.generatePromise) q.promise = q.generatePromise(q);
           return q;
         });
+
       const sql = queries.map(q => q.promise.toString())
       const preparedGqlQuery = await beforeDbHandler({ queries, sql, definitions });
       if (!preparedGqlQuery) return null;
@@ -96,7 +112,14 @@ function queryBuilder(table, tree, queries: Array<any> | undefined = [], idx: nu
     return tree.reduce((queries, t, i) => queryBuilder(table, t, queries, queries.length - 1, knex, metricResolvers), queries);
   }
   if (tree.kind === 'OperationDefinition' && !!tree.selectionSet) {
-    if (tree.operation === 'query' && !!tree.name?.value) table = tree.name?.value
+
+    if (tree.operation === 'query' && !!tree.name?.value) {
+      if (tree?.variableDefinitions[0]?.variable?.name?.value === 'source' && tree?.variableDefinitions[0]?.type?.name?.value === 'GA') {
+
+        return gaQueryBuilder(table, tree, queries, idx, knex, gaMetricResolvers);
+      }
+      table = tree.name?.value
+    }
     if (tree.operation === 'mutation') return queries;
     return tree.selectionSet.selections.reduce((queries, t, i) => queryBuilder(table, t, queries, queries.length, knex, metricResolvers), queries);
   }
@@ -364,15 +387,14 @@ export const merge = (tree: Array<TagObject>, data: Array<any>, metricResolversD
                 }, false)
                 if (skip) continue;
               }
-              if (mutations[mutations.mutationFunction]) {
+              if (mutations[mutations.mutationFunction] && mutations[mutations.mutationFunction][q.metrics[keys[key]]]) {
                 const mutation = mutations[mutations.mutationFunction];
-                result = progressiveSet(result, replacedPath, mutation[q.metrics[keys[key]]](value, replacedPath, fullObject))
+                result = progressiveSet(result, replacedPath, mutation[q.metrics[keys[key]]]({ value, replacedPath, result, config: { metrics: q.metrics[keys[key]], resultData: resultData[j] }, fullObject }), false)
                 continue;
               }
 
             }
-
-            result = progressiveSet(result, replacedPath, value)
+            result = progressiveSet(result, replacedPath, value, false)
           }
         }
       }
@@ -534,16 +556,16 @@ const metricResolversData = {
     if (!query.diff) query.diff = {};
     if (query.path.startsWith(':diff.')) query.path = query.path.replace(':diff.', '');
 
-    query.diff[`${query.path}${!!query.path ? '.' : ''}${name}`] = (value, path, fullObject) => {
-      return (value / progressiveGet(fullObject[query.filters.by], path) - 1);
+    query.diff[`${query.path}${!!query.path ? '.' : ''}${name}`] = (value, replacedPath, fullObject) => {
+      return (value / progressiveGet(fullObject[query.filters.by], replacedPath) - 1);
     }
   },
   blank: (tree, query) => {
-    const name = `${tree.name?.value}`;
+    const name = `${tree.name?.value} `;
     const args = argumentsToObject(tree.arguments);
     if (!query.skip) query.skip = {};
     if (query.path.startsWith(':blank.')) query.path = query.path.replace(':diff.', '');
-    query.skip[`${query.path}${!!query.path ? '.' : ''}:${name}`] = (x) => false
+    query.skip[`${query.path} ${!!query.path ? '.' : ''}: ${name} `] = (x) => false
   }
 }
 
@@ -570,14 +592,15 @@ function progressiveGet(object, queryPath) {
   }, object)
 }
 
-function progressiveSet(object, queryPath, value) {
+function progressiveSet(object, queryPath, value, summItUp) {
 
   const pathArray = queryPath.split(/\./).map(p => unshieldSeparator(p));
   const property = pathArray.splice(-1);
   if (queryPath.startsWith("[") && !Array.isArray(object) && Object.keys(object).length === 0) object = [];
   let leaf = object;
-
+  let pathHistory = [{ leaf, namedArrayIndex: null }];
   pathArray.forEach((pathStep, i) => {
+    let namedArrayIndex = null;
     if (pathStep.startsWith('[') && !Array.isArray(leaf)) {
       let key = pathStep.slice(1, pathStep.length - 1);
 
@@ -587,6 +610,8 @@ function progressiveSet(object, queryPath, value) {
       } else if (key.startsWith("@")) {
         key = key.slice(1);
         const filterBy = key.split('=');
+
+
         if (!leaf[filterBy[0]]) leaf[filterBy[0]] = [];
         leaf = leaf[filterBy[0]];
       }
@@ -604,6 +629,7 @@ function progressiveSet(object, queryPath, value) {
         key = key.slice(1);
 
         const filterBy = key.split('=');
+        namedArrayIndex = filterBy;
         const found = leaf.find((a) => a[filterBy[0]] == ('' + filterBy[1]))
         if (!!found) {
           leaf = found;
@@ -621,10 +647,40 @@ function progressiveSet(object, queryPath, value) {
       if (!leaf[pathStep]) leaf[pathStep] = {};//todo guess if there should be an array
       leaf = leaf[pathStep];
     }
+    pathHistory = pathHistory.concat([{ leaf, namedArrayIndex }]);
+
   })
 
+  if (summItUp && !!leaf[property]) {
+    leaf[property] += value;
+  } else {
+    leaf[property] = value;
+  }
 
-  leaf[property] = value;
+  if (value === undefined) {
+    pathHistory.reverse();
+
+    pathHistory.forEach(({ leaf: step, namedArrayIndex }, i) => {
+      if (Array.isArray(step)) {
+        const spliceIndex = Object.values(step).findIndex((val, i) => {
+          const previousStepNameddArrayIndex = pathHistory[i - 1] && pathHistory[i - 1].namedArrayIndex;
+          if (Array.isArray(val) && !val.reduce((r, v) => r || v !== undefined, false)) return true;
+          if (!Object.keys(val).reduce((r, vk) => {
+            return r || (val[vk] !== undefined && (!previousStepNameddArrayIndex || !(previousStepNameddArrayIndex[0] === vk && previousStepNameddArrayIndex[1] == val[vk])))
+          }, false)) return true;
+        })
+        if (!!~spliceIndex) step.splice(spliceIndex, 1);
+      } else {
+        const spliceKey = Object.keys(step).find((val, i) => {
+          if (!step[val]) return false;
+          if (namedArrayIndex && val == namedArrayIndex[0] && step[val] == namedArrayIndex[1]) return true;
+          if (Array.isArray(step[val]) && !step[val].reduce((r, v) => r || v !== undefined, false)) return true;
+          if (!Object.values(step[val]).reduce((r, v) => r || v !== undefined, false)) return true;
+        })
+        if (!!spliceKey) delete step[spliceKey];
+      }
+    })
+  }
   return object;
 }
 

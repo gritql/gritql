@@ -50,13 +50,23 @@ exports.__esModule = true;
 exports.merge = exports.gqlToDb = void 0;
 var gql = require('graphql-tag');
 var knexConstructor = require('knex');
+var gql_ga_slicer_1 = require("./gql-ga-slicer");
 var gqlToDb = function (opts) {
     if (opts === void 0) { opts = { client: 'pg' }; }
     var knex = knexConstructor(opts);
     var beforeDbHandler = function (r) { return Promise.resolve(r); };
     var dbHandler = function (_a) {
         var queries = _a.queries;
-        return Promise.all(queries.map(function (q) { return q.promise; }));
+        return Promise.all(queries.map(function (q) {
+            //todo: remove this bullshit
+            //I just need to rethink whole thing
+            if (q.postQueryTransform) {
+                return q.postQueryTransform.reduce(function (next, t) {
+                    return next.then(t);
+                }, q.promise);
+            }
+            return q.promise;
+        }));
     };
     var customMetricResolvers = {};
     var customMetricDataResolvers = {};
@@ -72,6 +82,8 @@ var gqlToDb = function (opts) {
                         .map(function (q) {
                         if (q.postQueryProcessing)
                             q.postQueryProcessing(definitions_1, q, knex);
+                        if (q.generatePromise)
+                            q.promise = q.generatePromise(q);
                         return q;
                     });
                     sql = queries.map(function (q) { return q.promise.toString(); });
@@ -115,7 +127,7 @@ var gqlToDb = function (opts) {
 };
 exports.gqlToDb = gqlToDb;
 function queryBuilder(table, tree, queries, idx, knex, metricResolvers) {
-    var _a, _b, _c, _d, _e, _f;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
     if (queries === void 0) { queries = []; }
     if (idx === void 0) { idx = undefined; }
     //console.log(queries.map(q => q.promise._statements))
@@ -129,34 +141,38 @@ function queryBuilder(table, tree, queries, idx, knex, metricResolvers) {
         return tree.reduce(function (queries, t, i) { return queryBuilder(table, t, queries, queries.length - 1, knex, metricResolvers); }, queries);
     }
     if (tree.kind === 'OperationDefinition' && !!tree.selectionSet) {
-        if (tree.operation === 'query' && !!((_a = tree.name) === null || _a === void 0 ? void 0 : _a.value))
-            table = (_b = tree.name) === null || _b === void 0 ? void 0 : _b.value;
+        if (tree.operation === 'query' && !!((_a = tree.name) === null || _a === void 0 ? void 0 : _a.value)) {
+            if (((_d = (_c = (_b = tree === null || tree === void 0 ? void 0 : tree.variableDefinitions[0]) === null || _b === void 0 ? void 0 : _b.variable) === null || _c === void 0 ? void 0 : _c.name) === null || _d === void 0 ? void 0 : _d.value) === 'source' && ((_g = (_f = (_e = tree === null || tree === void 0 ? void 0 : tree.variableDefinitions[0]) === null || _e === void 0 ? void 0 : _e.type) === null || _f === void 0 ? void 0 : _f.name) === null || _g === void 0 ? void 0 : _g.value) === 'GA') {
+                return gql_ga_slicer_1.gaQueryBuilder(table, tree, queries, idx, knex, gql_ga_slicer_1.gaMetricResolvers);
+            }
+            table = (_h = tree.name) === null || _h === void 0 ? void 0 : _h.value;
+        }
         if (tree.operation === 'mutation')
             return queries;
         return tree.selectionSet.selections.reduce(function (queries, t, i) { return queryBuilder(table, t, queries, queries.length, knex, metricResolvers); }, queries);
     }
     if (!query.filters && tree.name.value === 'fetch') {
-        query.name = ((_c = tree.alias) === null || _c === void 0 ? void 0 : _c.value) || null;
+        query.name = ((_j = tree.alias) === null || _j === void 0 ? void 0 : _j.value) || null;
         query.table = table;
         query.filters = parseFilters(tree);
         query.promise = knex.select().from(table);
         //if(filters)
         query.promise = withFilters(query.filters)(query.promise);
-        if (!((_d = tree.selectionSet) === null || _d === void 0 ? void 0 : _d.selections))
+        if (!((_k = tree.selectionSet) === null || _k === void 0 ? void 0 : _k.selections))
             throw "The query is empty, you need specify metrics or dimensions";
     }
     //console.log(JSON.stringify(tree, null, 2))
     if (query.name === undefined)
         throw "Builder: Cant find fetch in the payload";
-    if (!!((_e = tree.selectionSet) === null || _e === void 0 ? void 0 : _e.selections)) {
+    if (!!((_l = tree.selectionSet) === null || _l === void 0 ? void 0 : _l.selections)) {
         var selections = tree.selectionSet.selections;
-        var _g = selections.reduce(function (r, s) {
+        var _o = selections.reduce(function (r, s) {
             //check multiple dimensions we also need to split queries in the case
             if (r[1] && !!s.selectionSet)
                 return [true, true];
             return [r[0] || !s.selectionSet, r[1] || !!s.selectionSet];
-        }, [false, false]), haveMetric_1 = _g[0], haveDimension_1 = _g[1];
-        if (((_f = tree.name) === null || _f === void 0 ? void 0 : _f.value) !== 'fetch' && !tree["with"])
+        }, [false, false]), haveMetric_1 = _o[0], haveDimension_1 = _o[1];
+        if (((_m = tree.name) === null || _m === void 0 ? void 0 : _m.value) !== 'fetch' && !tree["with"])
             parseDimension(tree, query, knex);
         selections.sort(function (a, b) { return !b.selectionSet ? -1 : 1; });
         return selections.reduce(function (queries, t, i) {
@@ -415,13 +431,13 @@ var merge = function (tree, data, metricResolversData) {
                                 if (skip)
                                     return "continue";
                             }
-                            if (mutations[mutations.mutationFunction]) {
+                            if (mutations[mutations.mutationFunction] && mutations[mutations.mutationFunction][q.metrics[keys[key]]]) {
                                 var mutation = mutations[mutations.mutationFunction];
-                                result = progressiveSet(result, replacedPath, mutation[q.metrics[keys[key]]](value, replacedPath, fullObject));
+                                result = progressiveSet(result, replacedPath, mutation[q.metrics[keys[key]]]({ value: value, replacedPath: replacedPath, result: result, config: { metrics: q.metrics[keys[key]], resultData: resultData[j] }, fullObject: fullObject }), false);
                                 return "continue";
                             }
                         }
-                        result = progressiveSet(result, replacedPath, value);
+                        result = progressiveSet(result, replacedPath, value, false);
                     }
                 };
                 for (var key in keys) {
@@ -589,19 +605,19 @@ var metricResolversData = {
             query.diff = {};
         if (query.path.startsWith(':diff.'))
             query.path = query.path.replace(':diff.', '');
-        query.diff["" + query.path + (!!query.path ? '.' : '') + name] = function (value, path, fullObject) {
-            return (value / progressiveGet(fullObject[query.filters.by], path) - 1);
+        query.diff["" + query.path + (!!query.path ? '.' : '') + name] = function (value, replacedPath, fullObject) {
+            return (value / progressiveGet(fullObject[query.filters.by], replacedPath) - 1);
         };
     },
     blank: function (tree, query) {
         var _a;
-        var name = "" + ((_a = tree.name) === null || _a === void 0 ? void 0 : _a.value);
+        var name = ((_a = tree.name) === null || _a === void 0 ? void 0 : _a.value) + " ";
         var args = argumentsToObject(tree.arguments);
         if (!query.skip)
             query.skip = {};
         if (query.path.startsWith(':blank.'))
             query.path = query.path.replace(':diff.', '');
-        query.skip["" + query.path + (!!query.path ? '.' : '') + ":" + name] = function (x) { return false; };
+        query.skip[query.path + " " + (!!query.path ? '.' : '') + ": " + name + " "] = function (x) { return false; };
     }
 };
 /*
@@ -626,14 +642,16 @@ function progressiveGet(object, queryPath) {
         return r[pathStep];
     }, object);
 }
-function progressiveSet(object, queryPath, value) {
+function progressiveSet(object, queryPath, value, summItUp) {
     var pathArray = queryPath.split(/\./).map(function (p) { return unshieldSeparator(p); });
     var property = pathArray.splice(-1);
     if (queryPath.startsWith("[") && !Array.isArray(object) && Object.keys(object).length === 0)
         object = [];
     var leaf = object;
+    var pathHistory = [{ leaf: leaf, namedArrayIndex: null }];
     pathArray.forEach(function (pathStep, i) {
         var _a;
+        var namedArrayIndex = null;
         if (pathStep.startsWith('[') && !Array.isArray(leaf)) {
             var key = pathStep.slice(1, pathStep.length - 1);
             if (key !== 0 && !key || Number.isInteger(+key)) {
@@ -660,6 +678,7 @@ function progressiveSet(object, queryPath, value) {
             else if (key.startsWith("@")) {
                 key = key.slice(1);
                 var filterBy_1 = key.split('=');
+                namedArrayIndex = filterBy_1;
                 var found = leaf.find(function (a) { return a[filterBy_1[0]] == ('' + filterBy_1[1]); });
                 if (!!found) {
                     leaf = found;
@@ -679,8 +698,47 @@ function progressiveSet(object, queryPath, value) {
                 leaf[pathStep] = {}; //todo guess if there should be an array
             leaf = leaf[pathStep];
         }
+        pathHistory = pathHistory.concat([{ leaf: leaf, namedArrayIndex: namedArrayIndex }]);
     });
-    leaf[property] = value;
+    if (summItUp && !!leaf[property]) {
+        leaf[property] += value;
+    }
+    else {
+        leaf[property] = value;
+    }
+    if (value === undefined) {
+        pathHistory.reverse();
+        pathHistory.forEach(function (_a, i) {
+            var step = _a.leaf, namedArrayIndex = _a.namedArrayIndex;
+            if (Array.isArray(step)) {
+                var spliceIndex = Object.values(step).findIndex(function (val, i) {
+                    var previousStepNameddArrayIndex = pathHistory[i - 1] && pathHistory[i - 1].namedArrayIndex;
+                    if (Array.isArray(val) && !val.reduce(function (r, v) { return r || v !== undefined; }, false))
+                        return true;
+                    if (!Object.keys(val).reduce(function (r, vk) {
+                        return r || (val[vk] !== undefined && (!previousStepNameddArrayIndex || !(previousStepNameddArrayIndex[0] === vk && previousStepNameddArrayIndex[1] == val[vk])));
+                    }, false))
+                        return true;
+                });
+                if (!!~spliceIndex)
+                    step.splice(spliceIndex, 1);
+            }
+            else {
+                var spliceKey = Object.keys(step).find(function (val, i) {
+                    if (!step[val])
+                        return false;
+                    if (namedArrayIndex && val == namedArrayIndex[0] && step[val] == namedArrayIndex[1])
+                        return true;
+                    if (Array.isArray(step[val]) && !step[val].reduce(function (r, v) { return r || v !== undefined; }, false))
+                        return true;
+                    if (!Object.values(step[val]).reduce(function (r, v) { return r || v !== undefined; }, false))
+                        return true;
+                });
+                if (!!spliceKey)
+                    delete step[spliceKey];
+            }
+        });
+    }
     return object;
 }
 function withFilters(filters) {
