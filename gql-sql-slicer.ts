@@ -123,7 +123,7 @@ function queryBuilder(table, tree, queries: Array<any> | undefined = [], idx: nu
     if (tree.operation === 'mutation') return queries;
     return tree.selectionSet.selections.reduce((queries, t, i) => queryBuilder(table, t, queries, queries.length, knex, metricResolvers), queries);
   }
-  if (!query.filters && tree.name.value === 'fetch') {
+  if (!query.filters && (tree.name.value === 'fetch' || tree.name.value === 'fetchPlain')) {
     query.name = tree.alias?.value || null;
     query.table = table;
     query.filters = parseFilters(tree);
@@ -143,7 +143,7 @@ function queryBuilder(table, tree, queries: Array<any> | undefined = [], idx: nu
       return [r[0] || !s.selectionSet, r[1] || !!s.selectionSet];
     }, [false, false])
 
-    if (tree.name?.value !== 'fetch' && !tree.with) parseDimension(tree, query, knex);
+    if (tree.name?.value !== 'fetch' && tree.name?.value !== 'fetchPlain' && !tree.with) parseDimension(tree, query, knex);
     selections.sort((a, b) => !b.selectionSet ? -1 : 1);
 
 
@@ -362,7 +362,12 @@ export const merge = (tree: Array<TagObject>, data: Array<any>, metricResolversD
   }, {})
 
   function getMergedObject(quer, mutations, fullObject) {
-
+    if (!!quer[0].skipMerge) {
+      return quer.reduce((result, q, i) => {
+        result.push(data[q.bid]);
+        return result;
+      }, []);
+    }
     return quer.reduce((result, q, i) => {
       const resultData = data[q.bid];
       for (var j = 0; j < resultData.length; j++) {
@@ -457,11 +462,13 @@ function getMergeStrings(tree, queries = [], idx = undefined, metricResolversDat
     }, queries);
   }
 
-  if (!query.filters && tree.name.value === 'fetch') {
+  if (!query.filters && (tree.name.value === 'fetch' || tree.name.value === 'fetchPlain')) {
     query.name = tree.alias?.value || null;
     query.metrics = {};
     query.path = '';
-
+    if (tree.name.value === 'fetchPlain') {
+      query.skipMerge = true;
+    }
     if (!tree.selectionSet?.selections) throw "The query is empty, you need specify metrics or dimensions";
   }
 
@@ -478,7 +485,7 @@ function getMergeStrings(tree, queries = [], idx = undefined, metricResolversDat
     const [haveMetric, haveDimension] = selections.reduce((r, s) => {
       return [r[0] || !!s.selectionSet, r[1] || !s.selectionSet];
     }, [false, false])
-    if (tree.name?.value !== 'fetch') mergeDimension(tree, query);
+    if (tree.name?.value !== 'fetch' && tree.name.value !== 'fetchPlain') mergeDimension(tree, query);
     selections.sort((a, b) => !b.selectionSet ? -1 : 1);
     return selections.reduce((queries, t, i) => {
       if (!!t.selectionSet && haveMetric && haveDimension) {
