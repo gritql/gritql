@@ -127,7 +127,7 @@ var gqlToDb = function (opts) {
 };
 exports.gqlToDb = gqlToDb;
 function queryBuilder(table, tree, queries, idx, knex, metricResolvers) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o;
     if (queries === void 0) { queries = []; }
     if (idx === void 0) { idx = undefined; }
     //console.log(queries.map(q => q.promise._statements))
@@ -151,7 +151,7 @@ function queryBuilder(table, tree, queries, idx, knex, metricResolvers) {
             return queries;
         return tree.selectionSet.selections.reduce(function (queries, t, i) { return queryBuilder(table, t, queries, queries.length, knex, metricResolvers); }, queries);
     }
-    if (!query.filters && tree.name.value === 'fetch') {
+    if (!query.filters && (tree.name.value === 'fetch' || tree.name.value === 'fetchPlain')) {
         query.name = ((_j = tree.alias) === null || _j === void 0 ? void 0 : _j.value) || null;
         query.table = table;
         query.filters = parseFilters(tree);
@@ -166,13 +166,13 @@ function queryBuilder(table, tree, queries, idx, knex, metricResolvers) {
         throw "Builder: Cant find fetch in the payload";
     if (!!((_l = tree.selectionSet) === null || _l === void 0 ? void 0 : _l.selections)) {
         var selections = tree.selectionSet.selections;
-        var _o = selections.reduce(function (r, s) {
+        var _p = selections.reduce(function (r, s) {
             //check multiple dimensions we also need to split queries in the case
             if (r[1] && !!s.selectionSet)
                 return [true, true];
             return [r[0] || !s.selectionSet, r[1] || !!s.selectionSet];
-        }, [false, false]), haveMetric_1 = _o[0], haveDimension_1 = _o[1];
-        if (((_m = tree.name) === null || _m === void 0 ? void 0 : _m.value) !== 'fetch' && !tree["with"])
+        }, [false, false]), haveMetric_1 = _p[0], haveDimension_1 = _p[1];
+        if (((_m = tree.name) === null || _m === void 0 ? void 0 : _m.value) !== 'fetch' && ((_o = tree.name) === null || _o === void 0 ? void 0 : _o.value) !== 'fetchPlain' && !tree["with"])
             parseDimension(tree, query, knex);
         selections.sort(function (a, b) { return !b.selectionSet ? -1 : 1; });
         return selections.reduce(function (queries, t, i) {
@@ -410,6 +410,12 @@ var merge = function (tree, data, metricResolversData) {
         return r;
     }, {});
     function getMergedObject(quer, mutations, fullObject) {
+        if (!!quer[0].skipMerge) {
+            return quer.reduce(function (result, q, i) {
+                result.push(data[q.bid]);
+                return result;
+            }, []);
+        }
         return quer.reduce(function (result, q, i) {
             var resultData = data[q.bid];
             for (var j = 0; j < resultData.length; j++) {
@@ -499,10 +505,13 @@ function getMergeStrings(tree, queries, idx, metricResolversData) {
             return getMergeStrings(t, queries, queries.length - 1, metricResolversData);
         }, queries);
     }
-    if (!query.filters && tree.name.value === 'fetch') {
+    if (!query.filters && (tree.name.value === 'fetch' || tree.name.value === 'fetchPlain')) {
         query.name = ((_a = tree.alias) === null || _a === void 0 ? void 0 : _a.value) || null;
         query.metrics = {};
         query.path = '';
+        if (tree.name.value === 'fetchPlain') {
+            query.skipMerge = true;
+        }
         if (!((_b = tree.selectionSet) === null || _b === void 0 ? void 0 : _b.selections))
             throw "The query is empty, you need specify metrics or dimensions";
     }
@@ -518,7 +527,7 @@ function getMergeStrings(tree, queries, idx, metricResolversData) {
         var _g = selections.reduce(function (r, s) {
             return [r[0] || !!s.selectionSet, r[1] || !s.selectionSet];
         }, [false, false]), haveMetric_2 = _g[0], haveDimension_2 = _g[1];
-        if (((_f = tree.name) === null || _f === void 0 ? void 0 : _f.value) !== 'fetch')
+        if (((_f = tree.name) === null || _f === void 0 ? void 0 : _f.value) !== 'fetch' && tree.name.value !== 'fetchPlain')
             mergeDimension(tree, query);
         selections.sort(function (a, b) { return !b.selectionSet ? -1 : 1; });
         return selections.reduce(function (queries, t, i) {
