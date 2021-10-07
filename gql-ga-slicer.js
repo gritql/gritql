@@ -196,5 +196,22 @@ exports.gaMetricResolvers = {
             query.metrics.push(args.a);
         if (!~query.metrics.indexOf(args.by))
             query.metrics.push(args.by);
+    },
+    indexed: function (tree, query, knex) {
+        if (!tree.arguments)
+            throw "Indexed function requires arguments";
+        var args = argumentsToObject(tree.arguments);
+        if (!args.a)
+            throw "Indexed  function requires 'a' as argument";
+        //if (!!args.by) throw "Indexed  function doesnot support 'a' as argument";
+        query.postQueryTransform.push(function (result) {
+            var maxValue = Math.max.apply(Math, result.map(function (l) { return l[args.a]; }));
+            return result.map(function (l) {
+                var _a;
+                return (__assign(__assign({}, l), (_a = {}, _a[tree.alias.value] = l[args.a] / maxValue, _a)));
+            });
+        });
+        if (!~query.metrics.indexOf(args.a))
+            query.metrics.push(args.a);
     }
 };

@@ -195,6 +195,7 @@ function queryBuilder(table, tree, queries, idx, knex, metricResolvers) {
 }
 function parseMetric(tree, query, knex, metricResolvers) {
     var _a, _b, _c, _d;
+    var args = argumentsToObject(tree.arguments);
     var _e = query.metrics, metrics = _e === void 0 ? [] : _e;
     query.metrics = metrics;
     if (tree.alias && metricResolvers[(_a = tree.name) === null || _a === void 0 ? void 0 : _a.value])
@@ -205,6 +206,10 @@ function parseMetric(tree, query, knex, metricResolvers) {
     else {
         query.promise = query.promise.select(tree.name.value + " as " + tree.alias.value);
     }
+    if ((args === null || args === void 0 ? void 0 : args.sort) == 'desc' || (args === null || args === void 0 ? void 0 : args.sort) == 'asc')
+        query.promise.orderBy(tree.name.value, args === null || args === void 0 ? void 0 : args.sort);
+    if (args === null || args === void 0 ? void 0 : args.limit)
+        query.promise.limit(args === null || args === void 0 ? void 0 : args.limit);
     query.metrics.push((_d = tree.name) === null || _d === void 0 ? void 0 : _d.value);
 }
 function parseDimension(tree, query, knex) {

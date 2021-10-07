@@ -164,6 +164,7 @@ function queryBuilder(table, tree, queries: Array<any> | undefined = [], idx: nu
   return queries
 }
 function parseMetric(tree, query, knex, metricResolvers) {
+  const args = argumentsToObject(tree.arguments);
   const { metrics = [] } = query;
   query.metrics = metrics;
   if (tree.alias && metricResolvers[tree.name?.value]) return metricResolvers[tree.name?.value](tree, query, knex)
@@ -172,6 +173,8 @@ function parseMetric(tree, query, knex, metricResolvers) {
   } else {
     query.promise = query.promise.select(`${tree.name.value} as ${tree.alias.value}`)
   }
+  if (args?.sort == 'desc' || args?.sort == 'asc') query.promise.orderBy(tree.name.value, args?.sort);
+  if (args?.limit) query.promise.limit(args?.limit);
 
   query.metrics.push(tree.name?.value);
 
