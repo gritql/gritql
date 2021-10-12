@@ -384,7 +384,7 @@ export const merge = (tree: Array<TagObject>, data: Array<any>, metricResolversD
 
             const valueDir = replacedPath.slice(0, -(keys[key].length + 1));
 
-            const value = isNaN(+resultData[j][keys[key]]) ? resultData[j][keys[key]] : +resultData[j][keys[key]];
+            const value = isNumber(+resultData[j][keys[key]]) ? +resultData[j][keys[key]] : resultData[j][keys[key]];
             if (!!mutations) {
               if (mutations.skip) {
                 const checks = mutations['skip'];
@@ -579,7 +579,9 @@ const metricResolversData = {
   }
 }
 
-
+function isNumber(val) {
+  return (+val + "") == val + "";
+}
 /*
 var k = {};
 progressiveSet(k, 'book.test.one', 1)
