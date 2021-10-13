@@ -1,4 +1,6 @@
 const gql = require('graphql-tag');
+var pg = require('pg')
+pg.types.setTypeParser(20, parseInt);
 const knexConstructor = require('knex');
 import { gaQueryBuilder, gaMetricResolvers } from './gql-ga-slicer';
 import { DateTime } from 'luxon';
@@ -74,6 +76,7 @@ export const gqlToDb = (opts: any = { client: 'pg' }) => {
       if (!preparedGqlQuery) return null;
       const resultFromDb = await dbHandler(preparedGqlQuery);
       if (!resultFromDb) return null;
+      console.log(resultFromDb)
       return await merge(definitions, resultFromDb, { ...metricResolversData, ...customMetricDataResolvers })
     } catch (e) {
       console.log(e)
@@ -241,7 +244,7 @@ const metricResolvers = {
     if (!args.a) throw "Avg function requires 'a' as argument";
 
     if (!!args.by) {
-      query.promise.select(knex.raw(`avg(??) over (partition by ??) as ??`, [args.a, args.by, tree.alias.value]));
+      query.promise.select(knex.raw(`avg(??) over (partition by ??)::float4 as ??`, [args.a, args.by, tree.alias.value]));
     } else {
       query.promise = query.promise.avg(`${args.a} as ${tree.alias.value}`);
     }
@@ -253,7 +256,7 @@ const metricResolvers = {
     if (!args.a) throw "avgPerDimension function requires 'a' as argument";
 
     if (!args.per) throw "avgPerDimension function requires 'per' as argument";
-    query.promise.select(knex.raw(`sum(??)::float/COUNT(DISTINCT ??) as ??`, [args.a, args.per, tree.alias.value]));
+    query.promise.select(knex.raw(`sum(??)::float/COUNT(DISTINCT ??)::float4 as ??`, [args.a, args.per, tree.alias.value]));
   },
   share: (tree, query, knex) => {
     if (!tree.arguments) throw "Share function requires arguments";
@@ -267,7 +270,7 @@ const metricResolvers = {
       }
       partition = knex.raw(`partition by ??`, [partitionBy]);
     }
-    query.promise = query.promise.select(knex.raw(`sum(??)/NULLIF(sum(sum(??)) over (${partition}), 0) as ??`, [args.a, args.a, tree.alias.value]));
+    query.promise = query.promise.select(knex.raw(`sum(??)/NULLIF(sum(sum(??)) over (${partition}), 0)::float4 as ??`, [args.a, args.a, tree.alias.value]));
     query.metrics.push(tree.alias.value);
 
   },
@@ -277,7 +280,7 @@ const metricResolvers = {
     if (!args.a) throw "Share  function requires 'a' as argument";
     let partition = '';
     if (!!args.by) partition = knex.raw(`partition by ??`, [args.by]);
-    query.promise = query.promise.select(knex.raw(`sum(??)/NULLIF(max(sum(??)::float) over (${partition}), 0) as ??`, [args.a, args.a, tree.alias.value]));
+    query.promise = query.promise.select(knex.raw(`sum(??)/NULLIF(max(sum(??)::float) over (${partition}), 0)::float4 as ??`, [args.a, args.a, tree.alias.value]));
     query.metrics.push(tree.alias.value);
   },
   divide: (tree, query, knex) => {
@@ -295,7 +298,7 @@ const metricResolvers = {
     if (!args.a) throw "Divide function requires 'a' as argument";
     if (!args.by) throw "Divide function requires 'by' as argument";
 
-    query.promise = query.promise.select(knex.raw(`cast(??(??) as float)/NULLIF(cast(??(??) as float), 0) as ??`, [functions.a, args.a, functions.by, args.by, tree.alias.value]));
+    query.promise = query.promise.select(knex.raw(`cast(??(??) as float)/NULLIF(cast(??(??) as float), 0)::float4 as ??`, [functions.a, args.a, functions.by, args.by, tree.alias.value]));
     query.metrics.push(tree.alias.value);
   },
   aggrAverage: (tree, query, knex) => {
@@ -384,7 +387,8 @@ export const merge = (tree: Array<TagObject>, data: Array<any>, metricResolversD
 
             const valueDir = replacedPath.slice(0, -(keys[key].length + 1));
 
-            const value = isNumber(+resultData[j][keys[key]]) ? +resultData[j][keys[key]] : resultData[j][keys[key]];
+            const value = resultData[j][keys[key]];
+
             if (!!mutations) {
               if (mutations.skip) {
                 const checks = mutations['skip'];
