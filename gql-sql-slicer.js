@@ -49,6 +49,8 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
 exports.__esModule = true;
 exports.merge = exports.gqlToDb = void 0;
 var gql = require('graphql-tag');
+var pg = require('pg');
+pg.types.setTypeParser(20, parseInt);
 var knexConstructor = require('knex');
 var gql_ga_slicer_1 = require("./gql-ga-slicer");
 var gqlToDb = function (opts) {
@@ -97,6 +99,7 @@ var gqlToDb = function (opts) {
                     resultFromDb = _a.sent();
                     if (!resultFromDb)
                         return [2 /*return*/, null];
+                    console.log(resultFromDb);
                     return [4 /*yield*/, exports.merge(definitions_1, resultFromDb, __assign(__assign({}, metricResolversData), customMetricDataResolvers))];
                 case 3: return [2 /*return*/, _a.sent()];
                 case 4:
@@ -281,7 +284,7 @@ var metricResolvers = {
         if (!args.a)
             throw "Avg function requires 'a' as argument";
         if (!!args.by) {
-            query.promise.select(knex.raw("avg(??) over (partition by ??) as ??", [args.a, args.by, tree.alias.value]));
+            query.promise.select(knex.raw("avg(??) over (partition by ??)::float4 as ??", [args.a, args.by, tree.alias.value]));
         }
         else {
             query.promise = query.promise.avg(args.a + " as " + tree.alias.value);
@@ -296,7 +299,7 @@ var metricResolvers = {
             throw "avgPerDimension function requires 'a' as argument";
         if (!args.per)
             throw "avgPerDimension function requires 'per' as argument";
-        query.promise.select(knex.raw("sum(??)::float/COUNT(DISTINCT ??) as ??", [args.a, args.per, tree.alias.value]));
+        query.promise.select(knex.raw("sum(??)::float/COUNT(DISTINCT ??)::float4 as ??", [args.a, args.per, tree.alias.value]));
     },
     share: function (tree, query, knex) {
         var _a;
@@ -313,7 +316,7 @@ var metricResolvers = {
             }
             partition = knex.raw("partition by ??", [partitionBy]);
         }
-        query.promise = query.promise.select(knex.raw("sum(??)/NULLIF(sum(sum(??)) over (" + partition + "), 0) as ??", [args.a, args.a, tree.alias.value]));
+        query.promise = query.promise.select(knex.raw("sum(??)/NULLIF(sum(sum(??)) over (" + partition + "), 0)::float4 as ??", [args.a, args.a, tree.alias.value]));
         query.metrics.push(tree.alias.value);
     },
     indexed: function (tree, query, knex) {
@@ -325,7 +328,7 @@ var metricResolvers = {
         var partition = '';
         if (!!args.by)
             partition = knex.raw("partition by ??", [args.by]);
-        query.promise = query.promise.select(knex.raw("sum(??)/NULLIF(max(sum(??)::float) over (" + partition + "), 0) as ??", [args.a, args.a, tree.alias.value]));
+        query.promise = query.promise.select(knex.raw("sum(??)/NULLIF(max(sum(??)::float) over (" + partition + "), 0)::float4 as ??", [args.a, args.a, tree.alias.value]));
         query.metrics.push(tree.alias.value);
     },
     divide: function (tree, query, knex) {
@@ -344,7 +347,7 @@ var metricResolvers = {
             throw "Divide function requires 'a' as argument";
         if (!args.by)
             throw "Divide function requires 'by' as argument";
-        query.promise = query.promise.select(knex.raw("cast(??(??) as float)/NULLIF(cast(??(??) as float), 0) as ??", [functions.a, args.a, functions.by, args.by, tree.alias.value]));
+        query.promise = query.promise.select(knex.raw("cast(??(??) as float)/NULLIF(cast(??(??) as float), 0)::float4 as ??", [functions.a, args.a, functions.by, args.by, tree.alias.value]));
         query.metrics.push(tree.alias.value);
     },
     aggrAverage: function (tree, query, knex) {
@@ -429,7 +432,7 @@ var merge = function (tree, data, metricResolversData) {
                     if (q.metrics[keys[key]]) {
                         var replacedPath = replVars(q.metrics[keys[key]], resultData[j]);
                         var valueDir = replacedPath.slice(0, -(keys[key].length + 1));
-                        var value = isNaN(+resultData[j][keys[key]]) ? resultData[j][keys[key]] : +resultData[j][keys[key]];
+                        var value = resultData[j][keys[key]];
                         if (!!mutations) {
                             if (mutations.skip) {
                                 var checks_1 = mutations['skip'];
@@ -634,6 +637,9 @@ var metricResolversData = {
         query.skip[query.path + " " + (!!query.path ? '.' : '') + ": " + name + " "] = function (x) { return false; };
     }
 };
+function isNumber(val) {
+    return (+val + "") == val + "";
+}
 /*
 var k = {};
 progressiveSet(k, 'book.test.one', 1)
