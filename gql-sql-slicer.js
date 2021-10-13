@@ -367,7 +367,7 @@ var metricResolvers = {
         if (args.to !== args.by)
             internal = internal.sum(args.by + " as " + args.by);
         query.promise = knex.select(query.dimensions)
-            .select(knex.raw("sum(\"aggrAverage\")/max(??) as \"" + ((_c = tree.alias) === null || _c === void 0 ? void 0 : _c.value) + "_aggrAverage\"", [args.by]))
+            .select(knex.raw("sum(\"aggrAverage\")/max(??)::float4  as \"" + ((_c = tree.alias) === null || _c === void 0 ? void 0 : _c.value) + "_aggrAverage\"", [args.by]))
             .from(internal.as('middleTable'));
         if (!!query.dimensions && query.dimensions.length > 0) {
             query.promise = query.promise.groupBy(query.dimensions);
@@ -384,10 +384,10 @@ var metricResolvers = {
             throw "weightAvg function requires 'by' as argument";
         var internal = query.promise.select(args.a)
             .sum(args.by + " as " + args.by)
-            .select(knex.raw("?? * sum(??) as \"weightAvg\"", [args.a, args.by]))
+            .select(knex.raw("?? * sum(??)::float4 as \"weightAvg\"", [args.a, args.by]))
             .groupBy(args.a);
         query.promise = knex.select(query.dimensions)
-            .select(knex.raw("sum(\"weightAvg\")/sum(??) as \"" + ((_a = tree.alias) === null || _a === void 0 ? void 0 : _a.value) + "\"", [args.by]))
+            .select(knex.raw("sum(\"weightAvg\")/sum(??)::float4 as \"" + ((_a = tree.alias) === null || _a === void 0 ? void 0 : _a.value) + "\"", [args.by]))
             .from(internal.as('middleTable'));
         if (!!query.dimensions && query.dimensions.length > 0) {
             query.promise = query.promise.groupBy(query.dimensions);
