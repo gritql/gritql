@@ -76,7 +76,6 @@ export const gqlToDb = (opts: any = { client: 'pg' }) => {
       if (!preparedGqlQuery) return null;
       const resultFromDb = await dbHandler(preparedGqlQuery);
       if (!resultFromDb) return null;
-      console.log(resultFromDb)
       return await merge(definitions, resultFromDb, { ...metricResolversData, ...customMetricDataResolvers })
     } catch (e) {
       console.log(e)

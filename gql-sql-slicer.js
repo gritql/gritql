@@ -99,7 +99,6 @@ var gqlToDb = function (opts) {
                     resultFromDb = _a.sent();
                     if (!resultFromDb)
                         return [2 /*return*/, null];
-                    console.log(resultFromDb);
                     return [4 /*yield*/, exports.merge(definitions_1, resultFromDb, __assign(__assign({}, metricResolversData), customMetricDataResolvers))];
                 case 3: return [2 /*return*/, _a.sent()];
                 case 4:
