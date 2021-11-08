@@ -56,7 +56,9 @@ function gaQueryBuilder(table, tree, queries, idx, knex, metricResolvers) {
                 r[f[0].replace("_", "-")] = f[2];
                 return r;
             }, {});
-            var request = __assign(__assign({}, preparedFilters), { dimensions: query.dimensions.reduce(arrayToGaString, ''), metrics: query.metrics.reduce(arrayToGaString, ''), sort: query.orderBys.length > 0 ? (query.orderBys.reduce(arrayToGaString, '')) : undefined });
+            var deduplicatedDimensions = Array.from(new Set(query.dimensions));
+            var deduplicatedMetrics = Array.from(new Set(query.metrics));
+            var request = __assign(__assign({}, preparedFilters), { dimensions: deduplicatedDimensions.reduce(arrayToGaString, ''), metrics: deduplicatedMetrics.reduce(arrayToGaString, ''), sort: query.orderBys.length > 0 ? (query.orderBys.reduce(arrayToGaString, '')) : undefined });
             var thePromise = (new Promise(function (resolve, reject) {
                 resolve(request);
             }))["catch"](function (e) { return console.log(e); });

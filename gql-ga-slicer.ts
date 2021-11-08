@@ -36,11 +36,12 @@ export function gaQueryBuilder(table, tree, queries: Array<any> | undefined = []
         r[f[0].replace("_", "-")] = f[2];
         return r;
       }, {});
-
+      const deduplicatedDimensions = Array.from(new Set(query.dimensions));
+      const deduplicatedMetrics = Array.from(new Set(query.metrics));
       const request = {
         ...preparedFilters,
-        dimensions: query.dimensions.reduce(arrayToGaString, ''),
-        metrics: query.metrics.reduce(arrayToGaString, ''),
+        dimensions: deduplicatedDimensions.reduce(arrayToGaString, ''),
+        metrics: deduplicatedMetrics.reduce(arrayToGaString, ''),
         sort: query.orderBys.length > 0 ? (query.orderBys.reduce(arrayToGaString, '')) : undefined
       }
 
