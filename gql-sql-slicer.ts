@@ -40,6 +40,63 @@ interface metricDataResolver {
   (tree, query): void
 }
 
+enum JoinType {
+  DEFAULT = 'join',
+  LEFT = 'leftJoin',
+  RIGHT = 'rightJoin',
+  FULL = 'fullJoin',
+  INNER = 'innerJoin',
+  LEFT_OUTER = 'leftOuterJoin',
+  RIGHT_OUTER = 'rightOuterJoin',
+  FULL_OUTER_JOIN = 'fullOuterJoin'
+}
+
+function transformFilters(args) {
+  return args.reduce((res, arg) => {
+    if (arg.name.value.endsWith('_gt')) return res.concat([[arg.name.value.replace('_gt', ''), '>', arg.value.value]]);
+    if (arg.name.value.endsWith('_gte')) return res.concat([[arg.name.value.replace('_gte', ''), '>=', arg.value.value]]);
+    if (arg.name.value.endsWith('_lt')) return res.concat([[arg.name.value.replace('_lt', ''), '<', arg.value.value]]);
+    if (arg.name.value.endsWith('_lte')) return res.concat([[arg.name.value.replace('_lte', ''), '<=', arg.value.value]]);
+    if (arg.name.value.endsWith('_like')) return res.concat([[arg.name.value.replace('_like', ''), 'LIKE', arg.value.value]]);
+    if (arg.name.value.endsWith('_in')) return res.concat([[arg.name.value.replace('_in', ''), 'in', arg.value.value.split('|')]]);
+    return res.concat([[arg.name.value, '=', arg.value.value]]);
+  }, []);
+}
+
+function join(type: JoinType) {
+  return (tree, query, knex) => {
+    if (!tree.arguments) throw "Join function requires arguments";
+
+     const args = argumentsToObject(tree.arguments);
+     if (!args.a) throw "Join function requires 'a' as argument";
+    
+     const byKeys = ['by', 'by_gt', 'by_gte', 'by_lt', 'by_lte', 'by_like', 'by_in'].filter(key => args[key] !== undefined)
+    
+     if (!byKeys.length) throw "Join function requires 'by' as argument";
+
+     const filters = transformFilters(arguments.filter(({ name: { value } }) => byKeys.includes(value)))
+     
+     query.promise.join(knex.raw('?', [args.a]), function () {
+       this.on(function() {
+         filters.forEach(([_, operator, value], index) => {
+            const onFunc = index === 0 ? this.on : this.andOn
+
+            let [leftSide, rightSide] = value.split(':')
+            
+            if (!leftSide || !rightSide) {
+              throw "'by' argument inside Join function must include two fields (divided with :)"
+            }
+
+            leftSide = `${query.table}.${leftSide}`
+            rightSide = `${args.a}.${rightSide}`
+            
+            onFunc(knex.raw('?', [leftSide]), operator, knex.raw('?', [rightSide])
+         })
+       })
+     }) 
+  }
+}
+
 export const gqlToDb = (opts: any = { client: 'pg' }) => {
   const knex = knexConstructor(opts);
   let beforeDbHandler: BeforeDbHandler = (r) => Promise.resolve(r);
@@ -216,17 +273,18 @@ function parseDimension(tree, query, knex) {
   query.dimensions = dimensions;
 }
 
+// Need to thing about same structure of filters as in graphql
+// filter: {
+//   date: { between: { min: '2020-11-11', max: '2021-11-11' } },
+//   age: { gt: 18, lt: 60, or: [{ between: { min: 14, max: 16 } }] },
+//   brand: { like: 'Adidas*', and: [{ not: 'Adidas Originals' }, { not: 'Adidas New York'}] },
+//   category: [1, 12, 24, 367890]
+// }
+// We can support it only in filter argument, so it will not affect older code
+// Such filters we can combine and build easier
 function parseFilters(tree) {
   const { arguments: args } = tree;
-  return args.reduce((res, arg) => {
-    if (arg.name.value.endsWith('_gt')) return res.concat([[arg.name.value.replace('_gt', ''), '>', arg.value.value]]);
-    if (arg.name.value.endsWith('_gte')) return res.concat([[arg.name.value.replace('_gte', ''), '>=', arg.value.value]]);
-    if (arg.name.value.endsWith('_lt')) return res.concat([[arg.name.value.replace('_lt', ''), '<', arg.value.value]]);
-    if (arg.name.value.endsWith('_lte')) return res.concat([[arg.name.value.replace('_lte', ''), '<=', arg.value.value]]);
-    if (arg.name.value.endsWith('_like')) return res.concat([[arg.name.value.replace('_like', ''), 'LIKE', arg.value.value]]);
-    if (arg.name.value.endsWith('_in')) return res.concat([[arg.name.value.replace('_in', ''), 'in', arg.value.value.split('|')]]);
-    return res.concat([[arg.name.value, '=', arg.value.value]]);
-  }, []);
+  return transformFilters(args)
 }
 const metricResolvers = {
   sum: (tree, query, knex) => {
@@ -236,6 +294,14 @@ const metricResolvers = {
     query.promise = query.promise.sum(`${args.a} as ${tree.alias.value}`);
     query.metrics.push(tree.alias.value);
   },
+  join: join(JoinType.DEFAULT),
+  leftJoin: join(JoinType.LEFT),
+  rightJoin: join(JoinType.RIGHT),
+  fullJoin: join(JoinType.FULL),
+  innerJoin: join(JoinType.INNER),
+  leftOuterJoin: join(JoinType.LEFT_OUTER),
+  rightOuterJoin: join(JoinType.RIGHT_OUTER),
+  fullOuterJoin: join(JoinType.FULL_OUTER),
   avg: (tree, query, knex) => {
     //TODO: test
     if (!tree.arguments) throw "Avg function requires arguments";
