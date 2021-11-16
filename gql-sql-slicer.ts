@@ -51,8 +51,17 @@ enum JoinType {
   FULL_OUTER_JOIN = 'fullOuterJoin'
 }
 
-function transformFilters(args) {
+function transformFilters(args, query?, knex?) {
   return args.reduce((res, arg) => {
+    if (Object.values(JoinType).includes(arg.name.value)) {
+      if (query && knex) {
+        join(arg.name.value)(arg.value, query, knex)
+        return res
+      } else {
+        throw "Join can't be called inside of join"
+      }
+    }
+
     if (arg.name.value.endsWith('_gt')) return res.concat([[arg.name.value.replace('_gt', ''), '>', arg.value.value]]);
     if (arg.name.value.endsWith('_gte')) return res.concat([[arg.name.value.replace('_gte', ''), '>=', arg.value.value]]);
     if (arg.name.value.endsWith('_lt')) return res.concat([[arg.name.value.replace('_lt', ''), '<', arg.value.value]]);
@@ -65,10 +74,10 @@ function transformFilters(args) {
 
 function join(type: JoinType) {
   return (tree, query, knex) => {
-    if (!tree.arguments) throw "Join function requires arguments";
+    if (!tree.arguments && !tree.fields) throw "Join function requires arguments";
 
-     const args = argumentsToObject(tree.arguments);
-     if (!args.a) throw "Join function requires 'a' as argument";
+     const args = argumentsToObject(tree.arguments || tree.fields);
+     if (!args.table) throw "Join function requires 'table' as argument";
     
      const byKeys = ['by', 'by_gt', 'by_gte', 'by_lt', 'by_lte', 'by_like', 'by_in'].filter(key => args[key] !== undefined)
     
@@ -185,7 +194,7 @@ function queryBuilder(table, tree, queries: Array<any> | undefined = [], idx: nu
   if (!query.filters && (tree.name.value === 'fetch' || tree.name.value === 'fetchPlain')) {
     query.name = tree.alias?.value || null;
     query.table = table;
-    query.filters = parseFilters(tree);
+    query.filters = parseFilters(tree, query, knex);
     query.promise = knex.select().from(table);
     //if(filters)
     query.promise = withFilters(query.filters)(query.promise)
@@ -282,9 +291,9 @@ function parseDimension(tree, query, knex) {
 // }
 // We can support it only in filter argument, so it will not affect older code
 // Such filters we can combine and build easier
-function parseFilters(tree) {
+function parseFilters(tree, query, knex) {
   const { arguments: args } = tree;
-  return transformFilters(args)
+  return transformFilters(args, query, knex)
 }
 const metricResolvers = {
   sum: (tree, query, knex) => {
@@ -302,6 +311,22 @@ const metricResolvers = {
   leftOuterJoin: join(JoinType.LEFT_OUTER),
   rightOuterJoin: join(JoinType.RIGHT_OUTER),
   fullOuterJoin: join(JoinType.FULL_OUTER),
+  ranking: (tree, query, knex) => {
+    if (!tree.arguments) throw "Avg function requires arguments";
+    const args = argumentsToObject(tree.arguments);
+    if (!args.a) throw "Ranking function requires 'a' as argument";
+    if (!args.by) throw "Ranking function requires 'by' as argument";
+    
+    let partition = '';
+    let partitionBy = args.by;
+    if (query.replaceWith?.[args.by]) {
+      partitionBy = query.replaceWith[args.by].value;
+    }
+    partition = knex.raw(`partition by ??`, [partitionBy]);
+
+    query.promise = query.promise.select(knex.raw(`DENSE_RANK() over (${partition} ORDERY BY ??), 0) as ??`, [args.a, tree.alias.value]));
+    query.metrics.push(tree.alias.value);
+  },
   avg: (tree, query, knex) => {
     //TODO: test
     if (!tree.arguments) throw "Avg function requires arguments";
