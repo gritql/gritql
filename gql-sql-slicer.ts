@@ -315,14 +315,15 @@ const metricResolvers = {
     if (!tree.arguments) throw "Avg function requires arguments";
     const args = argumentsToObject(tree.arguments);
     if (!args.a) throw "Ranking function requires 'a' as argument";
-    if (!args.by) throw "Ranking function requires 'by' as argument";
     
     let partition = '';
-    let partitionBy = args.by;
-    if (query.replaceWith?.[args.by]) {
-      partitionBy = query.replaceWith[args.by].value;
+    if (!!args.by) {
+      let partitionBy = args.by;
+      if (query.replaceWith?.[args.by]) {
+        partitionBy = query.replaceWith[args.by].value;
+      }
+      partition = knex.raw(`partition by ??`, [partitionBy]);
     }
-    partition = knex.raw(`partition by ??`, [partitionBy]);
 
     query.promise = query.promise.select(knex.raw(`DENSE_RANK() over (${partition} ORDERY BY ??), 0) as ??`, [args.a, tree.alias.value]));
     query.metrics.push(tree.alias.value);
