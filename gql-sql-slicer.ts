@@ -1006,6 +1006,7 @@ const comparisonFunction = {
   lt: (v) => (x) => +x < +v,
   gte: (v) => (x) => +x >= +v,
   lte: (v) => (x) => +x <= +v,
+  eq: (v) => (x) => x == v,
 }
 
 const metricResolversData = {
@@ -1025,7 +1026,7 @@ const metricResolversData = {
     Object.keys(args).map((key) => {
       const [keyName, operator] = key.split('_')
       query.skip[`${query.path}${!!query.path ? '.' : ''}:${name}.${keyName}`] =
-        comparisonFunction[operator](args[key])
+        comparisonFunction[operator || 'eq'](args[key])
     })
   },
   diff: (tree, query) => {
