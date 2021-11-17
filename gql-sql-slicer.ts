@@ -559,6 +559,7 @@ export const merge = (
                 }, false)
                 if (skip) continue
               }
+
               if (
                 mutations[mutations.mutationFunction] &&
                 mutations[mutations.mutationFunction][q.metrics[keys[key]]]
@@ -733,13 +734,11 @@ function mergeDimension(tree, query) {
 
   if (args?.type === 'Array') {
     if (!!args?.cutoff) {
-      query.cutoff = `${query.path}${!!query.path ? '.' : ''}[@${
-        tree.name.value
-      }=:${tree.name.value}]`
+      query.cutoff = `${query.path}${!!query.path ? '.' : ''}[@${tree.name.value
+        }=:${tree.name.value}]`
     }
-    query.path += `${!!query.path ? '.' : ''}[@${tree.name.value}=:${
-      tree.name.value
-    }]`
+    query.path += `${!!query.path ? '.' : ''}[@${tree.name.value}=:${tree.name.value
+      }]`
   } else {
     query.path += `${!!query.path ? '.' : ''}:${tree.name.value}`
   }
@@ -775,13 +774,13 @@ const metricResolversData = {
     const name = `${tree.name?.value}`
     const args = argumentsToObject(tree.arguments)
     if (!query.diff) query.diff = {}
-    if (query.path.startsWith(':diff.'))
-      query.path = query.path.replace(':diff.', '')
+    if (query.path.startsWith(':diff'))
+      query.path = query.path.replace(':diff', '')
 
     query.diff[`${query.path}${!!query.path ? '.' : ''}${name}`] = (
-      value,
-      replacedPath,
-      fullObject,
+      { value,
+        replacedPath,
+        fullObject }
     ) => {
       return (
         value / progressiveGet(fullObject[query.filters.by], replacedPath) - 1
@@ -793,7 +792,7 @@ const metricResolversData = {
     const args = argumentsToObject(tree.arguments)
     if (!query.skip) query.skip = {}
     if (query.path.startsWith(':blank.'))
-      query.path = query.path.replace(':diff.', '')
+      query.path = query.path.replace(':blank.', '')
     query.skip[`${query.path} ${!!query.path ? '.' : ''}: ${name} `] = (x) =>
       false
   },
