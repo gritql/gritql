@@ -161,7 +161,7 @@ function join(type: JoinType) {
     if (!byKeys.length) throw "Join function requires 'by' as argument"
 
     const filters = transformFilters(
-      tree.arguments
+      (tree.arguments || tree.fields)
         .filter(({ name: { value } }) => byKeys.includes(value))
         .concat({ name: { value: 'from' }, value: { value: args.table } }),
       query,
@@ -323,8 +323,8 @@ function queryBuilder(
   ) {
     query.name = tree.alias?.value || null
     query.table = table
-    query.filters = parseFilters(tree, query, knex)
     query.promise = knex.select().from(table)
+    query.filters = parseFilters(tree, query, knex)
     //if(filters)
     query.promise = withFilters(query.filters)(query.promise)
     if (!tree.selectionSet?.selections)
