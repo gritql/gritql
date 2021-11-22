@@ -503,6 +503,24 @@ const metricResolvers = {
     )
     query.metrics.push(tree.alias.value)
   },
+  min: (tree, query, knex) => {
+    if (!tree.arguments) throw 'Min function requires arguments'
+    const args = argumentsToObject(tree.arguments)
+    if (!args.a) throw "Min function requires 'a' as argument"
+    query.promise = query.promise.min(
+      `${buildFullName(args, query, args.a, false)} as ${tree.alias.value}`,
+    )
+    query.metrics.push(tree.alias.value)
+  },
+  max: (tree, query, knex) => {
+    if (!tree.arguments) throw 'Max function requires arguments'
+    const args = argumentsToObject(tree.arguments)
+    if (!args.a) throw "Max function requires 'a' as argument"
+    query.promise = query.promise.max(
+      `${buildFullName(args, query, args.a, false)} as ${tree.alias.value}`,
+    )
+    query.metrics.push(tree.alias.value)
+  },
   join: join(JoinType.DEFAULT),
   leftJoin: join(JoinType.LEFT),
   rightJoin: join(JoinType.RIGHT),
@@ -840,6 +858,7 @@ export const merge = (
                 }, false)
                 if (skip) continue
               }
+
               if (
                 mutations[mutations.mutationFunction] &&
                 mutations[mutations.mutationFunction][q.metrics[keys[key]]]
@@ -1012,9 +1031,8 @@ function mergeDimension(tree, query) {
 
   if (args?.type === 'Array') {
     if (!!args?.cutoff) {
-      query.cutoff = `${query.path}${!!query.path ? '.' : ''}[@${
-        tree.name.value
-      }=:${tree.name.value}]`
+      query.cutoff = `${query.path}${!!query.path ? '.' : ''}[@${tree.name.value
+        }=:${tree.name.value}]`
     }
     query.path += `${!!query.path ? '.' : ''}[@${tree.name.value}=:${
       tree.name.value
@@ -1057,13 +1075,13 @@ const metricResolversData = {
     const name = `${tree.name?.value}`
     const args = argumentsToObject(tree.arguments)
     if (!query.diff) query.diff = {}
-    if (query.path.startsWith(':diff.'))
-      query.path = query.path.replace(':diff.', '')
+    if (query.path.startsWith(':diff') || query.path.startsWith(':diff.'))
+      query.path = query.path.replace(/:diff\.?/, '')
 
     query.diff[`${query.path}${!!query.path ? '.' : ''}${name}`] = (
-      value,
-      replacedPath,
-      fullObject,
+      { value,
+        replacedPath,
+        fullObject }
     ) => {
       return (
         value / progressiveGet(fullObject[query.filters.by], replacedPath) - 1
@@ -1074,8 +1092,8 @@ const metricResolversData = {
     const name = `${tree.name?.value} `
     const args = argumentsToObject(tree.arguments)
     if (!query.skip) query.skip = {}
-    if (query.path.startsWith(':blank.'))
-      query.path = query.path.replace(':diff.', '')
+    if (query.path.startsWith(':blank.') || query.path.startsWith(':blank'))
+      query.path = query.path.replace(/:blank\.?/, '')
     query.skip[`${query.path} ${!!query.path ? '.' : ''}: ${name} `] = (x) =>
       false
   },
