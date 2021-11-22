@@ -500,6 +500,24 @@ const metricResolvers = {
     )
     query.metrics.push(tree.alias.value)
   },
+  min: (tree, query, knex) => {
+    if (!tree.arguments) throw 'Min function requires arguments'
+    const args = argumentsToObject(tree.arguments)
+    if (!args.a) throw "Min function requires 'a' as argument"
+    query.promise = query.promise.min(
+      `${buildFullName(args, query, args.a, false)} as ${tree.alias.value}`,
+    )
+    query.metrics.push(tree.alias.value)
+  },
+  max: (tree, query, knex) => {
+    if (!tree.arguments) throw 'Max function requires arguments'
+    const args = argumentsToObject(tree.arguments)
+    if (!args.a) throw "Max function requires 'a' as argument"
+    query.promise = query.promise.max(
+      `${buildFullName(args, query, args.a, false)} as ${tree.alias.value}`,
+    )
+    query.metrics.push(tree.alias.value)
+  },
   join: join(JoinType.DEFAULT),
   leftJoin: join(JoinType.LEFT),
   rightJoin: join(JoinType.RIGHT),
