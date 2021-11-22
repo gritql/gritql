@@ -2,7 +2,10 @@ const gql = require('graphql-tag')
 var pg = require('pg')
 pg.types.setTypeParser(20, parseInt)
 const knexConstructor = require('knex')
+import { argumentsToObject } from './arguments'
+import { parseDirective } from './directives'
 import { gaQueryBuilder, gaMetricResolvers } from './gql-ga-slicer'
+import { progressiveGet, progressiveSet } from './progressive'
 
 type TagObject = {
   kind: 'OperationDefinition'
@@ -875,10 +878,6 @@ function shieldSeparator(str) {
   if (typeof str !== 'string') return str
   return str.replace(/\./g, '$#@#')
 }
-function unshieldSeparator(str) {
-  if (typeof str !== 'string') return str
-  return str.replace(/\$#@#/, '.')
-}
 
 function getMergeStrings(
   tree,
@@ -975,6 +974,7 @@ function mergeMetric(tree, query, metricResolversData) {
     if (tree.alias?.value) name = tree.alias?.value
     query.path += `${!!query.path ? '.' : ''}[@${name}=:${name}]`
     query.metrics[`${name}`] = `${query.path}${!!query.path ? '.' : ''}${name}`
+    parseDirective(tree, query, query.metrics[`${name}`])
   } else {
     if (!!query.mutation)
       return metricResolversData[query.mutationFunction](tree, query)
@@ -982,6 +982,7 @@ function mergeMetric(tree, query, metricResolversData) {
       return metricResolversData[tree.name?.value](tree, query)
     if (tree.alias?.value) name = tree.alias?.value
     query.metrics[`${name}`] = `${query.path}${!!query.path ? '.' : ''}${name}`
+    parseDirective(tree, query, query.metrics[`${name}`])
   }
 }
 
@@ -997,8 +998,10 @@ function mergeDimension(tree, query) {
     query.path += `${!!query.path ? '.' : ''}[@${tree.name.value}=:${
       tree.name.value
     }]`
+    parseDirective(tree, query)
   } else {
     query.path += `${!!query.path ? '.' : ''}:${tree.name.value}`
+    parseDirective(tree, query)
   }
 }
 const comparisonFunction = {
@@ -1060,154 +1063,6 @@ const metricResolversData = {
 function isNumber(val) {
   return +val + '' == val + ''
 }
-/*
-var k = {};
-progressiveSet(k, 'book.test.one', 1)
-progressiveSet(k, 'book.two.one', 3)
-progressiveSet(k, 'book.dumbo.[].one', 3)
-progressiveSet(k, 'book.dumbo.[].twenty', 434)
-progressiveSet(k, 'book.dumbo.[].second', '3dqd25')
-progressiveSet(k, 'book.dumbo.[1].leela', 'fry')
-progressiveSet(k, 'book.dumbo.[@one=3].leela', 'fry')
-console.log(JSON.stringify(k))
-*/
-function progressiveGet(object, queryPath) {
-  const pathArray = queryPath.split(/\./).map((p) => unshieldSeparator(p))
-  return pathArray.reduce((r, pathStep, i) => {
-    if (Array.isArray(r)) {
-      return r.find((o) => Object.values(o).includes(pathStep))
-    }
-    if (!r) return NaN
-    return r[pathStep]
-  }, object)
-}
-
-function progressiveSet(object, queryPath, value, summItUp) {
-  const pathArray = queryPath.split(/\./).map((p) => unshieldSeparator(p))
-  const property = pathArray.splice(-1)
-  if (
-    queryPath.startsWith('[') &&
-    !Array.isArray(object) &&
-    Object.keys(object).length === 0
-  )
-    object = []
-  let leaf = object
-  let pathHistory = [{ leaf, namedArrayIndex: null }]
-  pathArray.forEach((pathStep, i) => {
-    let namedArrayIndex = null
-    if (pathStep.startsWith('[') && !Array.isArray(leaf)) {
-      let key = pathStep.slice(1, pathStep.length - 1)
-
-      if ((key !== 0 && !key) || Number.isInteger(+key)) {
-        leaf['arr'] = []
-        leaf = leaf['arr']
-      } else if (key.startsWith('@')) {
-        key = key.slice(1)
-        const filterBy = key.split('=')
-
-        if (!leaf[filterBy[0]]) leaf[filterBy[0]] = []
-        leaf = leaf[filterBy[0]]
-      }
-    }
-    if (Array.isArray(leaf)) {
-      let key = pathStep.slice(1, pathStep.length - 1)
-      if (key !== 0 && !key) {
-        leaf.push({})
-        leaf = leaf[leaf.length - 1]
-      } else if (Number.isInteger(+key)) {
-        leaf = leaf[+key]
-      } else if (key.startsWith('@')) {
-        key = key.slice(1)
-
-        const filterBy = key.split('=')
-        namedArrayIndex = filterBy
-        const found = leaf.find((a) => a[filterBy[0]] == '' + filterBy[1])
-        if (!!found) {
-          leaf = found
-        } else {
-          leaf.push({ [filterBy[0]]: filterBy[1] })
-          leaf = leaf[leaf.length - 1]
-        }
-      }
-    } else {
-      const nextStep = pathArray[i + 1]
-      if (
-        !!nextStep &&
-        nextStep.startsWith('[') &&
-        nextStep.endsWith(']') &&
-        !leaf[pathStep]
-      ) {
-        leaf[pathStep] = []
-      }
-      if (!leaf[pathStep]) leaf[pathStep] = {} //todo guess if there should be an array
-      leaf = leaf[pathStep]
-    }
-    pathHistory = pathHistory.concat([{ leaf, namedArrayIndex }])
-  })
-
-  if (summItUp && !!leaf[property]) {
-    leaf[property] += value
-  } else {
-    leaf[property] = value
-  }
-
-  if (value === undefined) {
-    pathHistory.reverse()
-
-    pathHistory.forEach(({ leaf: step, namedArrayIndex }, i) => {
-      if (Array.isArray(step)) {
-        const spliceIndex = Object.values(step).findIndex((val, i) => {
-          const previousStepNameddArrayIndex =
-            pathHistory[i - 1] && pathHistory[i - 1].namedArrayIndex
-          if (
-            Array.isArray(val) &&
-            !val.reduce((r, v) => r || v !== undefined, false)
-          )
-            return true
-          if (
-            !Object.keys(val).reduce((r, vk) => {
-              return (
-                r ||
-                (val[vk] !== undefined &&
-                  (!previousStepNameddArrayIndex ||
-                    !(
-                      previousStepNameddArrayIndex[0] === vk &&
-                      previousStepNameddArrayIndex[1] == val[vk]
-                    )))
-              )
-            }, false)
-          )
-            return true
-        })
-        if (!!~spliceIndex) step.splice(spliceIndex, 1)
-      } else {
-        const spliceKey = Object.keys(step).find((val, i) => {
-          if (!step[val]) return false
-          if (
-            namedArrayIndex &&
-            val == namedArrayIndex[0] &&
-            step[val] == namedArrayIndex[1]
-          )
-            return true
-          if (
-            Array.isArray(step[val]) &&
-            !step[val].reduce((r, v) => r || v !== undefined, false)
-          )
-            return true
-          if (
-            !Object.values(step[val]).reduce(
-              (r, v) => r || v !== undefined,
-              false,
-            )
-          )
-            return true
-        })
-        if (!!spliceKey) delete step[spliceKey]
-      }
-    })
-  }
-  return object
-}
 
 function withFilters(filters) {
   return (knexPipe) => {
@@ -1233,11 +1088,6 @@ function withFilters(filters) {
 function flattenObject(o) {
   const keys = Object.keys(o)
   return keys.length === 1 ? o[keys[0]] : keys.map((k) => o[k])
-}
-
-function argumentsToObject(args) {
-  if (!args) return null
-  return args.reduce((r, a) => ({ ...r, [a.name.value]: a.value.value }), {})
 }
 
 /*
