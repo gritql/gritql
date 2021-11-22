@@ -874,6 +874,51 @@ describe('SQL', () => {
       })
     })
   })
+
+  describe('gql directives', () => {
+    test("@indexed directive", () => {
+      const tables = [
+        [{
+
+          channels: 'Social',
+          value: 1
+        }, {
+
+          channels: 'Organic',
+          value: 3
+        }],
+        [{
+
+          channels: 'Social',
+          value: 2
+        }, {
+
+          channels: 'Organic',
+          value: 1
+        }]
+      ]
+      const querier = gqlToDb().dbFetch(({ sql }) => {
+        expect(sql).toMatchSnapshot();
+        return tables;
+      })
+      querier(`query ecom_benchmarking {
+
+      series: fetch(category:"Adult", country:"US") {
+              channels {
+                  value: sum(a: sessions) @indexed(to: prevSeries)
+              }
+      }
+      prevSeries: fetch(category:"Adult", country:"US") {
+            channels {
+                value: sum(a: sessions) @indexed(to: series)
+            }
+        
+       }
+    }`).then((result) => {
+        expect(result).toMatchSnapshot()
+      })
+    })
+  })
 })
 
 

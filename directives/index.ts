@@ -44,8 +44,8 @@ export const postExecutedDirectives = {
 
     return ({ value, result, replacedPath, fullObject }) => {
       if (context.data.max == null) {
-        const firstList = progressiveGet(fullObject, context.path)
-        const secondList = progressiveGet(fullObject[args.to], context.path.split('.').slice(1).join('.'))
+        const firstList = progressiveGet(fullObject[context.query.filters.by], context.path)
+        const secondList = progressiveGet(fullObject[args.to], context.path)
 
         let finalList: number[]
 

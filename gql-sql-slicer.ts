@@ -783,14 +783,16 @@ export const merge = (
 
   function getMergedObject(quer, mutations, fullObject) {
     if (!!quer[0].skipMerge) {
-      return quer.reduce((result, q, i) => {
+      return quer.reduce((result, q) => {
         result.push(data[q.bid])
         return result
       }, [])
     }
-    return quer.reduce((result, q, i) => {
+
+    return quer.reduce((result, q) => {
       const resultData = data[q.bid]
       for (var j = 0; j < resultData.length; j++) {
+
         const keys = Object.keys(resultData[j])
 
         for (var key in keys) {
@@ -803,6 +805,25 @@ export const merge = (
             const valueDir = replacedPath.slice(0, -(keys[key].length + 1))
 
             const value = resultData[j][keys[key]]
+
+            console.log(q.directives)
+            
+            q.directives.filter(directiveFunction => {
+              return directiveFunction.context.path === q.metrics[keys[key]]
+            }).forEach((directiveFunction) => {
+              result = progressiveSet(
+                result,
+                replacedPath,
+                directiveFunction({
+                  value,
+                  replacedPath,
+                  result,
+                  fullObject,
+                }),
+                false,
+              )
+            })
+            
 
             if (!!mutations) {
               if (mutations.skip) {
