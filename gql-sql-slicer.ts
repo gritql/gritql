@@ -1032,8 +1032,8 @@ const metricResolversData = {
     const name = `${tree.name?.value}`
     const args = argumentsToObject(tree.arguments)
     if (!query.diff) query.diff = {}
-    if (query.path.startsWith(':diff'))
-      query.path = query.path.replace(':diff', '')
+    if (query.path.startsWith(':diff') || query.path.startsWith(':diff.'))
+      query.path = query.path.replace(/:diff\.?/, '')
 
     query.diff[`${query.path}${!!query.path ? '.' : ''}${name}`] = (
       { value,
@@ -1049,8 +1049,8 @@ const metricResolversData = {
     const name = `${tree.name?.value} `
     const args = argumentsToObject(tree.arguments)
     if (!query.skip) query.skip = {}
-    if (query.path.startsWith(':blank.'))
-      query.path = query.path.replace(':blank.', '')
+    if (query.path.startsWith(':blank.') || query.path.startsWith(':blank'))
+      query.path = query.path.replace(/:blank\.?/, '')
     query.skip[`${query.path} ${!!query.path ? '.' : ''}: ${name} `] = (x) =>
       false
   },
