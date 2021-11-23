@@ -383,7 +383,7 @@ function parseDimension(tree, query, knex) {
             ]),
         ])
             .from(args.from || query.table));
-        query.promise = query.promise.from(pre_trunc.as('pretrunc'));
+        query.promise = query.promise.from(pre_trunc.as(args.from || query.table));
         query.promise = query.promise.select(knex.raw("?? as ??", [
             tree.name.value + "_" + (args === null || args === void 0 ? void 0 : args.groupBy),
             tree.name.value,
