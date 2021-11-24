@@ -151,3 +151,29 @@ export function progressiveSet(object, queryPath, value, summItUp) {
   }
   return object;
 }
+
+export function iterateProgressive(obj, key: string, callback: (obj, currentKeys: Array<number | string>) => void) {
+  function iterateKeys(obj, keys: string[], index = 0, currentKeys = []) {
+    if (index === keys.length || obj == null) {
+      callback(obj, currentKeys)
+      return
+    }
+
+    if (keys[index].startsWith(':')) {
+      const objKeys = Object.keys(obj)
+
+      objKeys.forEach((key) => {
+        iterateKeys(obj[key], keys, index + 1, [...currentKeys, key])
+      })
+    } else if (keys[index] === '[]') {
+      obj.forEach((el, i) => {
+        iterateKeys(el, keys, index + 1, [...currentKeys, i])
+      })
+    } else {
+      iterateKeys(obj[keys[index]], keys, index + 1, [...currentKeys, keys[index]])
+    }
+  }
+
+  return iterateKeys(obj, key.split('.'))
+}
+

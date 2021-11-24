@@ -1,6 +1,6 @@
 import { DocumentNode, DirectiveNode } from 'graphql'
 import { argumentsToObject } from '../arguments'
-import { progressiveGet, progressiveSet } from '../progressive'
+import { iterateProgressive } from '../progressive'
 
 export interface PreExecutedContext {
   tree: DirectiveNode
@@ -19,20 +19,28 @@ export interface PostExecutedContext {
 }
 
 export const preExecutedDirectives = {
-  include: (context: PreExecutedContext) => {},
-  skip: (context: PreExecutedContext) => {}
+  // include: (context: PreExecutedContext) => {},
+  // skip: (context: PreExecutedContext) => {},
 }
 
 export const postExecutedDirectives = {
-  // to: name
-  // by: name
+  // Arguments
+  // to: query name
   // pick: (context: PostExecutedContext) => {
   //  
   // },
 
-  // to: name
+  // omit: (context: PostExecutedContext) => {},
+
+  // Argumnets
+  // to: query name
+  // diff: (context: PostExecutedContext) => {}
+
+  // Divide value by max value
+  // Arguments
+  // to: query name
   indexed: (context: PostExecutedContext) => {
-    if (context.tree.arguments) {
+    if (!context.tree.arguments) {
       throw "Indexed directive requires arguments"
     }
 
@@ -42,28 +50,29 @@ export const postExecutedDirectives = {
       throw "Indexed directive requires 'to' argument"
     }
 
-    return ({ value, result, replacedPath, fullObject }) => {
-      if (context.data.max == null) {
-        const firstList = progressiveGet(fullObject[context.query.filters.by], context.path)
-        const secondList = progressiveGet(fullObject[args.to], context.path)
-
-        let finalList: number[]
-
-        if (Array.isArray(firstList)) {
-          finalList = firstList.concat(secondList)
-        } else {
-          finalList = [firstList, secondList]
-        }
-
-        context.data.max = finalList.reduce((res, el) => {
-          return Math.max(res, el)
-        })
+    const transformer = ({ value, originFullObject }) => {
+      function calculateMax(val: number) {
+        context.data.max = Math.max(val, context.data.max || 0)
       }
 
-      return progressiveSet(result, replacedPath, value / context.data.max, false)
+      if (context.data.max == null && originFullObject) {
+        iterateProgressive(originFullObject[context.query.name], context.path, calculateMax)
+        iterateProgressive(originFullObject[args.to], context.path, calculateMax)
+      }
+
+      if (context.data.max != null) {
+        return { value: value / context.data.max }
+      } else {
+        return { value }
+      }
     }
+
+    transformer.context = context;
+
+    return transformer
   },
 
+  // Arguments
   // [metricName: name]: any
   // [[`${metricName}_gt`]]: any
   // [[`${metricName}_gte`]]: any
@@ -88,7 +97,9 @@ export function parseDirective(tree: DocumentNode, query, path?: string) {
           query,
           data: {}
         }))
-      } else if (preExecutedDirectives[directive.name.value]) {
+      }
+      
+      if (preExecutedDirectives[directive.name.value]) {
         // TODO: support of pre executed directives
       }
     })

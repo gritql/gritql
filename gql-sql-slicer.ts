@@ -6,6 +6,7 @@ import { argumentsToObject } from './arguments'
 import { parseDirective } from './directives'
 import { gaQueryBuilder, gaMetricResolvers } from './gql-ga-slicer'
 import { progressiveGet, progressiveSet } from './progressive'
+import { cloneDeep } from 'lodash'
 
 type TagObject = {
   kind: 'OperationDefinition'
@@ -799,7 +800,7 @@ export const merge = (
       return r
     }, {})
 
-  function getMergedObject(quer, mutations, fullObject) {
+  function getMergedObject(quer, mutations, fullObject, originFullObject?) {
     if (!!quer[0].skipMerge) {
       return quer.reduce((result, q) => {
         result.push(data[q.bid])
@@ -807,10 +808,13 @@ export const merge = (
       }, [])
     }
 
+    if (!originFullObject) {
+      originFullObject = fullObject
+    }
+
     return quer.reduce((result, q) => {
       const resultData = data[q.bid]
       for (var j = 0; j < resultData.length; j++) {
-
         const keys = Object.keys(resultData[j])
 
         for (var key in keys) {
@@ -820,34 +824,30 @@ export const merge = (
               resultData[j],
             ).replace(/:join\./g, '')
 
-            const valueDir = replacedPath.slice(0, -(keys[key].length + 1))
-
-            const value = resultData[j][keys[key]]
-
-            console.log(q.directives)
+            let value = resultData[j][keys[key]]
             
             q.directives.filter(directiveFunction => {
               return directiveFunction.context.path === q.metrics[keys[key]]
             }).forEach((directiveFunction) => {
-              result = progressiveSet(
-                result,
+              const directiveResult = directiveFunction({
+                value,
+                originValue: resultData[j][keys[key]],
                 replacedPath,
-                directiveFunction({
-                  value,
-                  replacedPath,
-                  result,
-                  fullObject,
-                }),
-                false,
-              )
+                result,
+                fullObject,
+                originFullObject
+              })
+
+              // Important for directives which will not change value
+              if (directiveResult.hasOwnProperty('value')) {
+                value = directiveResult.value
+              }
             })
-            
 
             if (!!mutations) {
               if (mutations.skip) {
                 const checks = mutations['skip']
-                const skip = Object.keys(checks).reduce((r, k) => {
-                  if (r) return r
+                const skip = Object.keys(checks).some((k) => {
                   //relying on pick by fix that
                   return !checks[k](
                     progressiveGet(
@@ -855,10 +855,19 @@ export const merge = (
                       replVars(k, resultData[j]),
                     ),
                   )
-                }, false)
+                })
                 if (skip) continue
               }
+            }
 
+            result = progressiveSet(
+              result,
+              replacedPath,
+              value,
+              false,
+            )
+
+            if (!!mutations) {
               if (
                 mutations[mutations.mutationFunction] &&
                 mutations[mutations.mutationFunction][q.metrics[keys[key]]]
@@ -882,7 +891,6 @@ export const merge = (
                 continue
               }
             }
-            result = progressiveSet(result, replacedPath, value, false)
           }
         }
       }
@@ -891,7 +899,11 @@ export const merge = (
   }
 
   if (Object.keys(batches).length === 1 && !!batches['___query']) {
-    return getMergedObject(queries, null, null)
+    const merged = getMergedObject(queries, null, null)
+
+    if (Object.values<any>(batches)[0].some(q => q.directives?.length > 0)) {
+      return getMergedObject(queries, null, merged)
+    }
   }
 
   const res = Object.keys(batches).reduce((r, k) => {
@@ -899,11 +911,22 @@ export const merge = (
     return r
   }, {})
 
+  // When
+  if (mutations.length > 0) {
+
   return mutations.reduce((r, mutation) => {
-    if (batches[mutation.name])
-      r[mutation.name] = getMergedObject(batches[mutation.name], mutation, r)
+    if (batches[mutation.name]) {
+      r[mutation.name] = getMergedObject(batches[mutation.name], mutation, r, res)
+    }
     return r
-  }, res)
+  }, cloneDeep(res))
+} else {
+  return Object.keys(batches).filter((k) => batches[k].some(q => q.directives?.length > 0)).reduce((r, k) => {
+    r[k.replace('___query', '')] = getMergedObject(batches[k], null, r, res)
+
+    return r
+  }, cloneDeep(res))
+}
 }
 
 function replVars(str, obj) {
@@ -1073,7 +1096,6 @@ const metricResolversData = {
   },
   diff: (tree, query) => {
     const name = `${tree.name?.value}`
-    const args = argumentsToObject(tree.arguments)
     if (!query.diff) query.diff = {}
     if (query.path.startsWith(':diff') || query.path.startsWith(':diff.'))
       query.path = query.path.replace(/:diff\.?/, '')
@@ -1090,7 +1112,6 @@ const metricResolversData = {
   },
   blank: (tree, query) => {
     const name = `${tree.name?.value} `
-    const args = argumentsToObject(tree.arguments)
     if (!query.skip) query.skip = {}
     if (query.path.startsWith(':blank.') || query.path.startsWith(':blank'))
       query.path = query.path.replace(/:blank\.?/, '')

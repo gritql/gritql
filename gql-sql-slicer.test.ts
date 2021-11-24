@@ -894,7 +894,7 @@ describe('SQL', () => {
         }, {
 
           channels: 'Organic',
-          value: 1
+          value: 5
         }]
       ]
       const querier = gqlToDb().dbFetch(({ sql }) => {
@@ -903,12 +903,12 @@ describe('SQL', () => {
       })
       querier(`query ecom_benchmarking {
 
-      series: fetch(category:"Adult", country:"US") {
+      series: fetch(category:"Adult", country:"DE") {
               channels {
                   value: sum(a: sessions) @indexed(to: prevSeries)
               }
       }
-      prevSeries: fetch(category:"Adult", country:"US") {
+      prevSeries: fetch(category:"Adult", country:"DE") {
             channels {
                 value: sum(a: sessions) @indexed(to: series)
             }
