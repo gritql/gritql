@@ -11,7 +11,7 @@ exports.postExecutedDirectives = {
     // Arguments
     // to: query name
     // pick: (context: PostExecutedContext) => {
-    //  
+    //
     // },
     // omit: (context: PostExecutedContext) => {},
     // Argumnets
@@ -22,7 +22,7 @@ exports.postExecutedDirectives = {
     // to: query name
     indexed: function (context) {
         if (!context.tree.arguments) {
-            throw "Indexed directive requires arguments";
+            throw 'Indexed directive requires arguments';
         }
         var args = arguments_1.argumentsToObject(context.tree.arguments);
         if (!args.to) {

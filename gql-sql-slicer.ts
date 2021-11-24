@@ -825,24 +825,26 @@ export const merge = (
             ).replace(/:join\./g, '')
 
             let value = resultData[j][keys[key]]
-            
-            q.directives.filter(directiveFunction => {
-              return directiveFunction.context.path === q.metrics[keys[key]]
-            }).forEach((directiveFunction) => {
-              const directiveResult = directiveFunction({
-                value,
-                originValue: resultData[j][keys[key]],
-                replacedPath,
-                result,
-                fullObject,
-                originFullObject
-              })
 
-              // Important for directives which will not change value
-              if (directiveResult.hasOwnProperty('value')) {
-                value = directiveResult.value
-              }
-            })
+            q.directives
+              .filter((directiveFunction) => {
+                return directiveFunction.context.path === q.metrics[keys[key]]
+              })
+              .forEach((directiveFunction) => {
+                const directiveResult = directiveFunction({
+                  value,
+                  originValue: resultData[j][keys[key]],
+                  replacedPath,
+                  result,
+                  fullObject,
+                  originFullObject,
+                })
+
+                // Important for directives which will not change value
+                if (directiveResult.hasOwnProperty('value')) {
+                  value = directiveResult.value
+                }
+              })
 
             if (!!mutations) {
               if (mutations.skip) {
@@ -860,12 +862,7 @@ export const merge = (
               }
             }
 
-            result = progressiveSet(
-              result,
-              replacedPath,
-              value,
-              false,
-            )
+            result = progressiveSet(result, replacedPath, value, false)
 
             if (!!mutations) {
               if (
@@ -901,8 +898,10 @@ export const merge = (
   if (Object.keys(batches).length === 1 && !!batches['___query']) {
     const merged = getMergedObject(queries, null, null)
 
-    if (Object.values<any>(batches)[0].some(q => q.directives?.length > 0)) {
+    if (Object.values<any>(batches)[0].some((q) => q.directives?.length > 0)) {
       return getMergedObject(queries, null, merged)
+    } else {
+      return merged
     }
   }
 
@@ -913,20 +912,26 @@ export const merge = (
 
   // When
   if (mutations.length > 0) {
+    return mutations.reduce((r, mutation) => {
+      if (batches[mutation.name]) {
+        r[mutation.name] = getMergedObject(
+          batches[mutation.name],
+          mutation,
+          r,
+          res,
+        )
+      }
+      return r
+    }, cloneDeep(res))
+  } else {
+    return Object.keys(batches)
+      .filter((k) => batches[k].some((q) => q.directives?.length > 0))
+      .reduce((r, k) => {
+        r[k.replace('___query', '')] = getMergedObject(batches[k], null, r, res)
 
-  return mutations.reduce((r, mutation) => {
-    if (batches[mutation.name]) {
-      r[mutation.name] = getMergedObject(batches[mutation.name], mutation, r, res)
-    }
-    return r
-  }, cloneDeep(res))
-} else {
-  return Object.keys(batches).filter((k) => batches[k].some(q => q.directives?.length > 0)).reduce((r, k) => {
-    r[k.replace('___query', '')] = getMergedObject(batches[k], null, r, res)
-
-    return r
-  }, cloneDeep(res))
-}
+        return r
+      }, cloneDeep(res))
+  }
 }
 
 function replVars(str, obj) {
@@ -1054,8 +1059,9 @@ function mergeDimension(tree, query) {
 
   if (args?.type === 'Array') {
     if (!!args?.cutoff) {
-      query.cutoff = `${query.path}${!!query.path ? '.' : ''}[@${tree.name.value
-        }=:${tree.name.value}]`
+      query.cutoff = `${query.path}${!!query.path ? '.' : ''}[@${
+        tree.name.value
+      }=:${tree.name.value}]`
     }
     query.path += `${!!query.path ? '.' : ''}[@${tree.name.value}=:${
       tree.name.value
@@ -1100,11 +1106,11 @@ const metricResolversData = {
     if (query.path.startsWith(':diff') || query.path.startsWith(':diff.'))
       query.path = query.path.replace(/:diff\.?/, '')
 
-    query.diff[`${query.path}${!!query.path ? '.' : ''}${name}`] = (
-      { value,
-        replacedPath,
-        fullObject }
-    ) => {
+    query.diff[`${query.path}${!!query.path ? '.' : ''}${name}`] = ({
+      value,
+      replacedPath,
+      fullObject,
+    }) => {
       return (
         value / progressiveGet(fullObject[query.filters.by], replacedPath) - 1
       )

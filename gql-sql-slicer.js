@@ -387,7 +387,7 @@ function parseDimension(tree, query, knex) {
             ]),
         ])
             .from(args.from || query.table));
-        query.promise = query.promise.from(pre_trunc.as('pretrunc'));
+        query.promise = query.promise.from(pre_trunc.as(args.from || query.table));
         query.promise = query.promise.select(knex.raw("?? as ??", [
             tree.name.value + "_" + (args === null || args === void 0 ? void 0 : args.groupBy),
             tree.name.value,
@@ -708,9 +708,11 @@ var merge = function (tree, data, metricResolversData) {
                     if (q.metrics[keys[key]]) {
                         var replacedPath_1 = replVars(q.metrics[keys[key]], resultData[j]).replace(/:join\./g, '');
                         var value_1 = resultData[j][keys[key]];
-                        q.directives.filter(function (directiveFunction) {
+                        q.directives
+                            .filter(function (directiveFunction) {
                             return directiveFunction.context.path === q.metrics[keys[key]];
-                        }).forEach(function (directiveFunction) {
+                        })
+                            .forEach(function (directiveFunction) {
                             var directiveResult = directiveFunction({
                                 value: value_1,
                                 originValue: resultData[j][keys[key]],
@@ -770,6 +772,9 @@ var merge = function (tree, data, metricResolversData) {
         if (Object.values(batches)[0].some(function (q) { var _a; return ((_a = q.directives) === null || _a === void 0 ? void 0 : _a.length) > 0; })) {
             return getMergedObject(queries, null, merged);
         }
+        else {
+            return merged;
+        }
     }
     var res = Object.keys(batches).reduce(function (r, k) {
         r[k.replace('___query', '')] = getMergedObject(batches[k], null, null);
@@ -785,7 +790,9 @@ var merge = function (tree, data, metricResolversData) {
         }, lodash_1.cloneDeep(res));
     }
     else {
-        return Object.keys(batches).filter(function (k) { return batches[k].some(function (q) { var _a; return ((_a = q.directives) === null || _a === void 0 ? void 0 : _a.length) > 0; }); }).reduce(function (r, k) {
+        return Object.keys(batches)
+            .filter(function (k) { return batches[k].some(function (q) { var _a; return ((_a = q.directives) === null || _a === void 0 ? void 0 : _a.length) > 0; }); })
+            .reduce(function (r, k) {
             r[k.replace('___query', '')] = getMergedObject(batches[k], null, r, res);
             return r;
         }, lodash_1.cloneDeep(res));
@@ -1026,4 +1033,4 @@ query brand1_table{
     no_of_all_baskets
   }
 }
-*/ 
+*/

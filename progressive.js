@@ -7,9 +7,9 @@ var __spreadArray = (this && this.__spreadArray) || function (to, from) {
 exports.__esModule = true;
 exports.iterateProgressive = exports.progressiveSet = exports.progressiveGet = void 0;
 function unshieldSeparator(str) {
-    if (typeof str !== "string")
+    if (typeof str !== 'string')
         return str;
-    return str.replace(/\$#@#/, ".");
+    return str.replace(/\$#@#/, '.');
 }
 /*
 var k = {};
@@ -37,7 +37,7 @@ exports.progressiveGet = progressiveGet;
 function progressiveSet(object, queryPath, value, summItUp) {
     var pathArray = queryPath.split(/\./).map(function (p) { return unshieldSeparator(p); });
     var property = pathArray.splice(-1);
-    if (queryPath.startsWith("[") &&
+    if (queryPath.startsWith('[') &&
         !Array.isArray(object) &&
         Object.keys(object).length === 0)
         object = [];
@@ -46,15 +46,15 @@ function progressiveSet(object, queryPath, value, summItUp) {
     pathArray.forEach(function (pathStep, i) {
         var _a;
         var namedArrayIndex = null;
-        if (pathStep.startsWith("[") && !Array.isArray(leaf)) {
+        if (pathStep.startsWith('[') && !Array.isArray(leaf)) {
             var key = pathStep.slice(1, pathStep.length - 1);
             if ((key !== 0 && !key) || Number.isInteger(+key)) {
-                leaf["arr"] = [];
-                leaf = leaf["arr"];
+                leaf['arr'] = [];
+                leaf = leaf['arr'];
             }
-            else if (key.startsWith("@")) {
+            else if (key.startsWith('@')) {
                 key = key.slice(1);
-                var filterBy = key.split("=");
+                var filterBy = key.split('=');
                 if (!leaf[filterBy[0]])
                     leaf[filterBy[0]] = [];
                 leaf = leaf[filterBy[0]];
@@ -69,11 +69,11 @@ function progressiveSet(object, queryPath, value, summItUp) {
             else if (Number.isInteger(+key)) {
                 leaf = leaf[+key];
             }
-            else if (key.startsWith("@")) {
+            else if (key.startsWith('@')) {
                 key = key.slice(1);
-                var filterBy_1 = key.split("=");
+                var filterBy_1 = key.split('=');
                 namedArrayIndex = filterBy_1;
-                var found = leaf.find(function (a) { return a[filterBy_1[0]] == "" + filterBy_1[1]; });
+                var found = leaf.find(function (a) { return a[filterBy_1[0]] == '' + filterBy_1[1]; });
                 if (!!found) {
                     leaf = found;
                 }
@@ -86,8 +86,8 @@ function progressiveSet(object, queryPath, value, summItUp) {
         else {
             var nextStep = pathArray[i + 1];
             if (!!nextStep &&
-                nextStep.startsWith("[") &&
-                nextStep.endsWith("]") &&
+                nextStep.startsWith('[') &&
+                nextStep.endsWith(']') &&
                 !leaf[pathStep]) {
                 leaf[pathStep] = [];
             }
@@ -167,7 +167,9 @@ function iterateProgressive(obj, key, callback) {
             });
         }
         else {
-            iterateKeys(obj[keys[index]], keys, index + 1, __spreadArray(__spreadArray([], currentKeys), [keys[index]]));
+            iterateKeys(obj[keys[index]], keys, index + 1, __spreadArray(__spreadArray([], currentKeys), [
+                keys[index],
+            ]));
         }
     }
     return iterateKeys(obj, key.split('.'));

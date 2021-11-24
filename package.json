@@ -15,8 +15,14 @@
     "graphql": "^14.1.1",
     "graphql-tag": "^2.10.1",
     "knex": "^0.95.1",
+    "lodash": "^4.17.21",
     "luxon": "^2.0.2",
     "pg": "^8.5.1"
+  },
+  "prettier": {
+    "semi": false,
+    "singleQuote": true,
+    "trailingComma": "all"
   },
   "devDependencies": {
     "@types/jest": "^26.0.20",

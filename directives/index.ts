@@ -9,13 +9,13 @@ export interface PreExecutedContext {
 }
 
 export interface PostExecutedContext {
- tree: DirectiveNode
- // tree of caller
- caller: DocumentNode
- // resolved path
- path: string
- query: any
- data: { [key: string]: any }
+  tree: DirectiveNode
+  // tree of caller
+  caller: DocumentNode
+  // resolved path
+  path: string
+  query: any
+  data: { [key: string]: any }
 }
 
 export const preExecutedDirectives = {
@@ -27,7 +27,7 @@ export const postExecutedDirectives = {
   // Arguments
   // to: query name
   // pick: (context: PostExecutedContext) => {
-  //  
+  //
   // },
 
   // omit: (context: PostExecutedContext) => {},
@@ -41,7 +41,7 @@ export const postExecutedDirectives = {
   // to: query name
   indexed: (context: PostExecutedContext) => {
     if (!context.tree.arguments) {
-      throw "Indexed directive requires arguments"
+      throw 'Indexed directive requires arguments'
     }
 
     const args = argumentsToObject(context.tree.arguments)
@@ -56,8 +56,16 @@ export const postExecutedDirectives = {
       }
 
       if (context.data.max == null && originFullObject) {
-        iterateProgressive(originFullObject[context.query.name], context.path, calculateMax)
-        iterateProgressive(originFullObject[args.to], context.path, calculateMax)
+        iterateProgressive(
+          originFullObject[context.query.name],
+          context.path,
+          calculateMax,
+        )
+        iterateProgressive(
+          originFullObject[args.to],
+          context.path,
+          calculateMax,
+        )
       }
 
       if (context.data.max != null) {
@@ -67,7 +75,7 @@ export const postExecutedDirectives = {
       }
     }
 
-    transformer.context = context;
+    transformer.context = context
 
     return transformer
   },
@@ -88,22 +96,24 @@ export function parseDirective(tree: DocumentNode, query, path?: string) {
   if (!query.directives) query.directives = []
 
   if (tree.directives) {
-    tree.directives.forEach(directive => {
+    tree.directives.forEach((directive) => {
       if (postExecutedDirectives[directive.name.value]) {
-        query.directives.push(postExecutedDirectives[directive.name.value]({
-          tree: directive,
-          caller: tree,
-          path: path || query.path,
-          query,
-          data: {}
-        }))
+        query.directives.push(
+          postExecutedDirectives[directive.name.value]({
+            tree: directive,
+            caller: tree,
+            path: path || query.path,
+            query,
+            data: {},
+          }),
+        )
       }
-      
+
       if (preExecutedDirectives[directive.name.value]) {
         // TODO: support of pre executed directives
       }
     })
   }
 
-  return tree;
+  return tree
 }
