@@ -323,15 +323,25 @@ function queryBuilder(table, tree, queries, idx, knex, metricResolvers) {
             ((_o = tree.name) === null || _o === void 0 ? void 0 : _o.value) !== 'fetchPlain' &&
             !tree["with"])
             parseDimension(tree, query, knex);
-        selections.sort(function (a, b) { return (!b.selectionSet ? -1 : 1); });
+        selections.sort(function (a, b) {
+            if (!b.selectionSet === !a.selectionSet) {
+                return 0;
+            }
+            else if (!b.selectionSet) {
+                return -1;
+            }
+            else {
+                return 1;
+            }
+        });
         return selections.reduce(function (queries, t, i) {
             if (!!t.selectionSet && haveMetric_1 && haveDimension_1) {
                 var newIdx = queries.length;
                 queries[newIdx] = __assign({}, queries[idx]);
                 if (!!query.metrics)
-                    queries[newIdx].metrics = JSON.parse(JSON.stringify(query.metrics));
+                    queries[newIdx].metrics = lodash_1.cloneDeep(query.metrics);
                 if (!!query.dimensions)
-                    queries[newIdx].dimensions = JSON.parse(JSON.stringify(query.dimensions));
+                    queries[newIdx].dimensions = lodash_1.cloneDeep(query.dimensions);
                 queries[newIdx].promise = copyKnex(query.promise, knex);
                 queries[newIdx].idx = newIdx;
                 return queryBuilder(table, t, queries, newIdx, knex, metricResolvers);
@@ -678,7 +688,9 @@ function copyKnex(knexObject, knex) {
     }, result);
 }
 var merge = function (tree, data, metricResolversData) {
+    var start = Date.now();
     var queries = getMergeStrings(tree, undefined, undefined, metricResolversData);
+    console.log();
     var mutations = queries.filter(function (q) { return !!q.mutation; });
     var batches = queries
         .filter(function (q) { return !q.mutation; })
@@ -706,7 +718,9 @@ var merge = function (tree, data, metricResolversData) {
                 var keys = Object.keys(resultData[j]);
                 var _loop_2 = function () {
                     if (q.metrics[keys[key]]) {
+                        console.log(q.metrics[keys[key]]);
                         var replacedPath_1 = replVars(q.metrics[keys[key]], resultData[j]).replace(/:join\./g, '');
+                        console.log(replacedPath_1);
                         var value_1 = resultData[j][keys[key]];
                         q.directives
                             .filter(function (directiveFunction) {

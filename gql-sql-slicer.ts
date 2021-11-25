@@ -354,18 +354,26 @@ function queryBuilder(
       !tree.with
     )
       parseDimension(tree, query, knex)
-    selections.sort((a, b) => (!b.selectionSet ? -1 : 1))
+      
+    selections.sort((a, b) => {
+      if (!b.selectionSet === !a.selectionSet) {
+        return 0
+      } else if (!b.selectionSet) {
+        return -1;
+      } else {
+        return 1;
+      }
+    })
 
     return selections.reduce((queries, t, i) => {
       if (!!t.selectionSet && haveMetric && haveDimension) {
         const newIdx = queries.length
         queries[newIdx] = { ...queries[idx] }
         if (!!query.metrics)
-          queries[newIdx].metrics = JSON.parse(JSON.stringify(query.metrics))
+          queries[newIdx].metrics = cloneDeep(query.metrics)
         if (!!query.dimensions)
-          queries[newIdx].dimensions = JSON.parse(
-            JSON.stringify(query.dimensions),
-          )
+          queries[newIdx].dimensions = cloneDeep(query.dimensions)
+
         queries[newIdx].promise = copyKnex(query.promise, knex)
         queries[newIdx].idx = newIdx
         return queryBuilder(table, t, queries, newIdx, knex, metricResolvers)
@@ -776,6 +784,7 @@ function copyKnex(knexObject, knex) {
     return k
   }, result)
 }
+
 export const merge = (
   tree: Array<TagObject>,
   data: Array<any>,
