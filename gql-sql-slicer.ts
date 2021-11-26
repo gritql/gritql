@@ -543,7 +543,7 @@ const metricResolvers = {
     if (!tree.arguments) throw 'CountDistinct function requires arguments'
     const args = argumentsToObject(tree.arguments)
     if (!args.a) throw "CountDistinct function requires 'a' as argument"
-    query.promise = query.promise.count(
+    query.promise = query.promise.countDistinct(
       `${buildFullName(args, query, args.a, false)} as ${tree.alias.value}`,
     )
     query.metrics.push(tree.alias.value)

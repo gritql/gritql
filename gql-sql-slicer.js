@@ -487,7 +487,7 @@ var metricResolvers = {
         var args = arguments_1.argumentsToObject(tree.arguments);
         if (!args.a)
             throw "CountDistinct function requires 'a' as argument";
-        query.promise = query.promise.count(buildFullName(args, query, args.a, false) + " as " + tree.alias.value);
+        query.promise = query.promise.countDistinct(buildFullName(args, query, args.a, false) + " as " + tree.alias.value);
         query.metrics.push(tree.alias.value);
     },
     join: join(JoinType.DEFAULT),
