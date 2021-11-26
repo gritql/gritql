@@ -530,6 +530,24 @@ const metricResolvers = {
     )
     query.metrics.push(tree.alias.value)
   },
+  count: (tree, query, knex) => {
+    if (!tree.arguments) throw 'Count function requires arguments'
+    const args = argumentsToObject(tree.arguments)
+    if (!args.a) throw "Count function requires 'a' as argument"
+    query.promise = query.promise.count(
+      `${buildFullName(args, query, args.a, false)} as ${tree.alias.value}`,
+    )
+    query.metrics.push(tree.alias.value)
+  },
+  countDistinct: (tree, query, knex) => {
+    if (!tree.arguments) throw 'CountDistinct function requires arguments'
+    const args = argumentsToObject(tree.arguments)
+    if (!args.a) throw "CountDistinct function requires 'a' as argument"
+    query.promise = query.promise.count(
+      `${buildFullName(args, query, args.a, false)} as ${tree.alias.value}`,
+    )
+    query.metrics.push(tree.alias.value)
+  },
   join: join(JoinType.DEFAULT),
   leftJoin: join(JoinType.LEFT),
   rightJoin: join(JoinType.RIGHT),

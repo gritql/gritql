@@ -472,6 +472,24 @@ var metricResolvers = {
         query.promise = query.promise.max(buildFullName(args, query, args.a, false) + " as " + tree.alias.value);
         query.metrics.push(tree.alias.value);
     },
+    count: function (tree, query, knex) {
+        if (!tree.arguments)
+            throw 'Count function requires arguments';
+        var args = arguments_1.argumentsToObject(tree.arguments);
+        if (!args.a)
+            throw "Count function requires 'a' as argument";
+        query.promise = query.promise.count(buildFullName(args, query, args.a, false) + " as " + tree.alias.value);
+        query.metrics.push(tree.alias.value);
+    },
+    countDistinct: function (tree, query, knex) {
+        if (!tree.arguments)
+            throw 'CountDistinct function requires arguments';
+        var args = arguments_1.argumentsToObject(tree.arguments);
+        if (!args.a)
+            throw "CountDistinct function requires 'a' as argument";
+        query.promise = query.promise.count(buildFullName(args, query, args.a, false) + " as " + tree.alias.value);
+        query.metrics.push(tree.alias.value);
+    },
     join: join(JoinType.DEFAULT),
     leftJoin: join(JoinType.LEFT),
     rightJoin: join(JoinType.RIGHT),
@@ -688,9 +706,7 @@ function copyKnex(knexObject, knex) {
     }, result);
 }
 var merge = function (tree, data, metricResolversData) {
-    var start = Date.now();
     var queries = getMergeStrings(tree, undefined, undefined, metricResolversData);
-    console.log();
     var mutations = queries.filter(function (q) { return !!q.mutation; });
     var batches = queries
         .filter(function (q) { return !q.mutation; })
@@ -718,9 +734,7 @@ var merge = function (tree, data, metricResolversData) {
                 var keys = Object.keys(resultData[j]);
                 var _loop_2 = function () {
                     if (q.metrics[keys[key]]) {
-                        console.log(q.metrics[keys[key]]);
                         var replacedPath_1 = replVars(q.metrics[keys[key]], resultData[j]).replace(/:join\./g, '');
-                        console.log(replacedPath_1);
                         var value_1 = resultData[j][keys[key]];
                         q.directives
                             .filter(function (directiveFunction) {
