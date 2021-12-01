@@ -161,7 +161,7 @@ function iterateProgressive(obj, key, callback) {
                 iterateKeys(obj[key], keys, index + 1, __spreadArray(__spreadArray([], currentKeys), [key]));
             });
         }
-        else if (keys[index] === '[]') {
+        else if (keys[index].startsWith('[') && keys[index].endsWith(']')) {
             obj.forEach(function (el, i) {
                 iterateKeys(el, keys, index + 1, __spreadArray(__spreadArray([], currentKeys), [i]));
             });
