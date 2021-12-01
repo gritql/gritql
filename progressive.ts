@@ -163,8 +163,6 @@ export function iterateProgressive(
       return
     }
 
-
-
     if (keys[index].startsWith(':')) {
       const objKeys = Object.keys(obj)
 
