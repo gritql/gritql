@@ -2,7 +2,11 @@ const gql = require('graphql-tag')
 var pg = require('pg')
 pg.types.setTypeParser(20, parseInt)
 const knexConstructor = require('knex')
+import { argumentsToObject } from './arguments'
+import { parseDirective } from './directives'
 import { gaQueryBuilder, gaMetricResolvers } from './gql-ga-slicer'
+import { progressiveGet, progressiveSet } from './progressive'
+import { cloneDeep } from 'lodash'
 
 type TagObject = {
   kind: 'OperationDefinition'
@@ -350,18 +354,26 @@ function queryBuilder(
       !tree.with
     )
       parseDimension(tree, query, knex)
-    selections.sort((a, b) => (!b.selectionSet ? -1 : 1))
+      
+    selections.sort((a, b) => {
+      if (!b.selectionSet === !a.selectionSet) {
+        return 0
+      } else if (!b.selectionSet) {
+        return -1;
+      } else {
+        return 1;
+      }
+    })
 
     return selections.reduce((queries, t, i) => {
       if (!!t.selectionSet && haveMetric && haveDimension) {
         const newIdx = queries.length
         queries[newIdx] = { ...queries[idx] }
         if (!!query.metrics)
-          queries[newIdx].metrics = JSON.parse(JSON.stringify(query.metrics))
+          queries[newIdx].metrics = cloneDeep(query.metrics)
         if (!!query.dimensions)
-          queries[newIdx].dimensions = JSON.parse(
-            JSON.stringify(query.dimensions),
-          )
+          queries[newIdx].dimensions = cloneDeep(query.dimensions)
+
         queries[newIdx].promise = copyKnex(query.promise, knex)
         queries[newIdx].idx = newIdx
         return queryBuilder(table, t, queries, newIdx, knex, metricResolvers)
@@ -514,6 +526,24 @@ const metricResolvers = {
     const args = argumentsToObject(tree.arguments)
     if (!args.a) throw "Max function requires 'a' as argument"
     query.promise = query.promise.max(
+      `${buildFullName(args, query, args.a, false)} as ${tree.alias.value}`,
+    )
+    query.metrics.push(tree.alias.value)
+  },
+  count: (tree, query, knex) => {
+    if (!tree.arguments) throw 'Count function requires arguments'
+    const args = argumentsToObject(tree.arguments)
+    if (!args.a) throw "Count function requires 'a' as argument"
+    query.promise = query.promise.count(
+      `${buildFullName(args, query, args.a, false)} as ${tree.alias.value}`,
+    )
+    query.metrics.push(tree.alias.value)
+  },
+  countDistinct: (tree, query, knex) => {
+    if (!tree.arguments) throw 'CountDistinct function requires arguments'
+    const args = argumentsToObject(tree.arguments)
+    if (!args.a) throw "CountDistinct function requires 'a' as argument"
+    query.promise = query.promise.countDistinct(
       `${buildFullName(args, query, args.a, false)} as ${tree.alias.value}`,
     )
     query.metrics.push(tree.alias.value)
@@ -772,6 +802,7 @@ function copyKnex(knexObject, knex) {
     return k
   }, result)
 }
+
 export const merge = (
   tree: Array<TagObject>,
   data: Array<any>,
@@ -796,14 +827,19 @@ export const merge = (
       return r
     }, {})
 
-  function getMergedObject(quer, mutations, fullObject) {
+  function getMergedObject(quer, mutations, fullObject, originFullObject?) {
     if (!!quer[0].skipMerge) {
-      return quer.reduce((result, q, i) => {
+      return quer.reduce((result, q) => {
         result.push(data[q.bid])
         return result
       }, [])
     }
-    return quer.reduce((result, q, i) => {
+
+    if (!originFullObject) {
+      originFullObject = fullObject
+    }
+
+    return quer.reduce((result, q) => {
       const resultData = data[q.bid]
       for (var j = 0; j < resultData.length; j++) {
         const keys = Object.keys(resultData[j])
@@ -815,15 +851,32 @@ export const merge = (
               resultData[j],
             ).replace(/:join\./g, '')
 
-            const valueDir = replacedPath.slice(0, -(keys[key].length + 1))
+            let value = resultData[j][keys[key]]
 
-            const value = resultData[j][keys[key]]
+            q.directives
+              .filter((directiveFunction) => {
+                return directiveFunction.context.path === q.metrics[keys[key]]
+              })
+              .forEach((directiveFunction) => {
+                const directiveResult = directiveFunction({
+                  value,
+                  originValue: resultData[j][keys[key]],
+                  replacedPath,
+                  result,
+                  fullObject,
+                  originFullObject,
+                })
+
+                // Important for directives which will not change value
+                if (directiveResult.hasOwnProperty('value')) {
+                  value = directiveResult.value
+                }
+              })
 
             if (!!mutations) {
               if (mutations.skip) {
                 const checks = mutations['skip']
-                const skip = Object.keys(checks).reduce((r, k) => {
-                  if (r) return r
+                const skip = Object.keys(checks).some((k) => {
                   //relying on pick by fix that
                   return !checks[k](
                     progressiveGet(
@@ -831,10 +884,14 @@ export const merge = (
                       replVars(k, resultData[j]),
                     ),
                   )
-                }, false)
+                })
                 if (skip) continue
               }
+            }
 
+            result = progressiveSet(result, replacedPath, value, false)
+
+            if (!!mutations) {
               if (
                 mutations[mutations.mutationFunction] &&
                 mutations[mutations.mutationFunction][q.metrics[keys[key]]]
@@ -858,7 +915,6 @@ export const merge = (
                 continue
               }
             }
-            result = progressiveSet(result, replacedPath, value, false)
           }
         }
       }
@@ -867,7 +923,13 @@ export const merge = (
   }
 
   if (Object.keys(batches).length === 1 && !!batches['___query']) {
-    return getMergedObject(queries, null, null)
+    const merged = getMergedObject(queries, null, null)
+
+    if (Object.values<any>(batches)[0].some((q) => q.directives?.length > 0)) {
+      return getMergedObject(queries, null, merged)
+    } else {
+      return merged
+    }
   }
 
   const res = Object.keys(batches).reduce((r, k) => {
@@ -875,11 +937,28 @@ export const merge = (
     return r
   }, {})
 
-  return mutations.reduce((r, mutation) => {
-    if (batches[mutation.name])
-      r[mutation.name] = getMergedObject(batches[mutation.name], mutation, r)
-    return r
-  }, res)
+  // When
+  if (mutations.length > 0) {
+    return mutations.reduce((r, mutation) => {
+      if (batches[mutation.name]) {
+        r[mutation.name] = getMergedObject(
+          batches[mutation.name],
+          mutation,
+          r,
+          res,
+        )
+      }
+      return r
+    }, cloneDeep(res))
+  } else {
+    return Object.keys(batches)
+      .filter((k) => batches[k].some((q) => q.directives?.length > 0))
+      .reduce((r, k) => {
+        r[k.replace('___query', '')] = getMergedObject(batches[k], null, r, res)
+
+        return r
+      }, cloneDeep(res))
+  }
 }
 
 function replVars(str, obj) {
@@ -893,10 +972,6 @@ function replVars(str, obj) {
 function shieldSeparator(str) {
   if (typeof str !== 'string') return str
   return str.replace(/\./g, '$#@#')
-}
-function unshieldSeparator(str) {
-  if (typeof str !== 'string') return str
-  return str.replace(/\$#@#/, '.')
 }
 
 function getMergeStrings(
@@ -994,6 +1069,7 @@ function mergeMetric(tree, query, metricResolversData) {
     if (tree.alias?.value) name = tree.alias?.value
     query.path += `${!!query.path ? '.' : ''}[@${name}=:${name}]`
     query.metrics[`${name}`] = `${query.path}${!!query.path ? '.' : ''}${name}`
+    parseDirective(tree, query, query.metrics[`${name}`])
   } else {
     if (!!query.mutation)
       return metricResolversData[query.mutationFunction](tree, query)
@@ -1001,6 +1077,7 @@ function mergeMetric(tree, query, metricResolversData) {
       return metricResolversData[tree.name?.value](tree, query)
     if (tree.alias?.value) name = tree.alias?.value
     query.metrics[`${name}`] = `${query.path}${!!query.path ? '.' : ''}${name}`
+    parseDirective(tree, query, query.metrics[`${name}`])
   }
 }
 
@@ -1009,13 +1086,17 @@ function mergeDimension(tree, query) {
 
   if (args?.type === 'Array') {
     if (!!args?.cutoff) {
-      query.cutoff = `${query.path}${!!query.path ? '.' : ''}[@${tree.name.value
-        }=:${tree.name.value}]`
+      query.cutoff = `${query.path}${!!query.path ? '.' : ''}[@${
+        tree.name.value
+      }=:${tree.name.value}]`
     }
-    query.path += `${!!query.path ? '.' : ''}[@${tree.name.value}=:${tree.name.value
-      }]`
+    query.path += `${!!query.path ? '.' : ''}[@${tree.name.value}=:${
+      tree.name.value
+    }]`
+    parseDirective(tree, query)
   } else {
     query.path += `${!!query.path ? '.' : ''}:${tree.name.value}`
+    parseDirective(tree, query)
   }
 }
 const comparisonFunction = {
@@ -1048,16 +1129,15 @@ const metricResolversData = {
   },
   diff: (tree, query) => {
     const name = `${tree.name?.value}`
-    const args = argumentsToObject(tree.arguments)
     if (!query.diff) query.diff = {}
     if (query.path.startsWith(':diff') || query.path.startsWith(':diff.'))
       query.path = query.path.replace(/:diff\.?/, '')
 
-    query.diff[`${query.path}${!!query.path ? '.' : ''}${name}`] = (
-      { value,
-        replacedPath,
-        fullObject }
-    ) => {
+    query.diff[`${query.path}${!!query.path ? '.' : ''}${name}`] = ({
+      value,
+      replacedPath,
+      fullObject,
+    }) => {
       return (
         value / progressiveGet(fullObject[query.filters.by], replacedPath) - 1
       )
@@ -1065,7 +1145,6 @@ const metricResolversData = {
   },
   blank: (tree, query) => {
     const name = `${tree.name?.value} `
-    const args = argumentsToObject(tree.arguments)
     if (!query.skip) query.skip = {}
     if (query.path.startsWith(':blank.') || query.path.startsWith(':blank'))
       query.path = query.path.replace(/:blank\.?/, '')
@@ -1076,154 +1155,6 @@ const metricResolversData = {
 
 function isNumber(val) {
   return +val + '' == val + ''
-}
-/*
-var k = {};
-progressiveSet(k, 'book.test.one', 1)
-progressiveSet(k, 'book.two.one', 3)
-progressiveSet(k, 'book.dumbo.[].one', 3)
-progressiveSet(k, 'book.dumbo.[].twenty', 434)
-progressiveSet(k, 'book.dumbo.[].second', '3dqd25')
-progressiveSet(k, 'book.dumbo.[1].leela', 'fry')
-progressiveSet(k, 'book.dumbo.[@one=3].leela', 'fry')
-console.log(JSON.stringify(k))
-*/
-function progressiveGet(object, queryPath) {
-  const pathArray = queryPath.split(/\./).map((p) => unshieldSeparator(p))
-  return pathArray.reduce((r, pathStep, i) => {
-    if (Array.isArray(r)) {
-      return r.find((o) => Object.values(o).includes(pathStep))
-    }
-    if (!r) return NaN
-    return r[pathStep]
-  }, object)
-}
-
-function progressiveSet(object, queryPath, value, summItUp) {
-  const pathArray = queryPath.split(/\./).map((p) => unshieldSeparator(p))
-  const property = pathArray.splice(-1)
-  if (
-    queryPath.startsWith('[') &&
-    !Array.isArray(object) &&
-    Object.keys(object).length === 0
-  )
-    object = []
-  let leaf = object
-  let pathHistory = [{ leaf, namedArrayIndex: null }]
-  pathArray.forEach((pathStep, i) => {
-    let namedArrayIndex = null
-    if (pathStep.startsWith('[') && !Array.isArray(leaf)) {
-      let key = pathStep.slice(1, pathStep.length - 1)
-
-      if ((key !== 0 && !key) || Number.isInteger(+key)) {
-        leaf['arr'] = []
-        leaf = leaf['arr']
-      } else if (key.startsWith('@')) {
-        key = key.slice(1)
-        const filterBy = key.split('=')
-
-        if (!leaf[filterBy[0]]) leaf[filterBy[0]] = []
-        leaf = leaf[filterBy[0]]
-      }
-    }
-    if (Array.isArray(leaf)) {
-      let key = pathStep.slice(1, pathStep.length - 1)
-      if (key !== 0 && !key) {
-        leaf.push({})
-        leaf = leaf[leaf.length - 1]
-      } else if (Number.isInteger(+key)) {
-        leaf = leaf[+key]
-      } else if (key.startsWith('@')) {
-        key = key.slice(1)
-
-        const filterBy = key.split('=')
-        namedArrayIndex = filterBy
-        const found = leaf.find((a) => a[filterBy[0]] == '' + filterBy[1])
-        if (!!found) {
-          leaf = found
-        } else {
-          leaf.push({ [filterBy[0]]: filterBy[1] })
-          leaf = leaf[leaf.length - 1]
-        }
-      }
-    } else {
-      const nextStep = pathArray[i + 1]
-      if (
-        !!nextStep &&
-        nextStep.startsWith('[') &&
-        nextStep.endsWith(']') &&
-        !leaf[pathStep]
-      ) {
-        leaf[pathStep] = []
-      }
-      if (!leaf[pathStep]) leaf[pathStep] = {} //todo guess if there should be an array
-      leaf = leaf[pathStep]
-    }
-    pathHistory = pathHistory.concat([{ leaf, namedArrayIndex }])
-  })
-
-  if (summItUp && !!leaf[property]) {
-    leaf[property] += value
-  } else {
-    leaf[property] = value
-  }
-
-  if (value === undefined) {
-    pathHistory.reverse()
-
-    pathHistory.forEach(({ leaf: step, namedArrayIndex }, i) => {
-      if (Array.isArray(step)) {
-        const spliceIndex = Object.values(step).findIndex((val, i) => {
-          const previousStepNameddArrayIndex =
-            pathHistory[i - 1] && pathHistory[i - 1].namedArrayIndex
-          if (
-            Array.isArray(val) &&
-            !val.reduce((r, v) => r || v !== undefined, false)
-          )
-            return true
-          if (
-            !Object.keys(val).reduce((r, vk) => {
-              return (
-                r ||
-                (val[vk] !== undefined &&
-                  (!previousStepNameddArrayIndex ||
-                    !(
-                      previousStepNameddArrayIndex[0] === vk &&
-                      previousStepNameddArrayIndex[1] == val[vk]
-                    )))
-              )
-            }, false)
-          )
-            return true
-        })
-        if (!!~spliceIndex) step.splice(spliceIndex, 1)
-      } else {
-        const spliceKey = Object.keys(step).find((val, i) => {
-          if (!step[val]) return false
-          if (
-            namedArrayIndex &&
-            val == namedArrayIndex[0] &&
-            step[val] == namedArrayIndex[1]
-          )
-            return true
-          if (
-            Array.isArray(step[val]) &&
-            !step[val].reduce((r, v) => r || v !== undefined, false)
-          )
-            return true
-          if (
-            !Object.values(step[val]).reduce(
-              (r, v) => r || v !== undefined,
-              false,
-            )
-          )
-            return true
-        })
-        if (!!spliceKey) delete step[spliceKey]
-      }
-    })
-  }
-  return object
 }
 
 function withFilters(filters) {
@@ -1250,11 +1181,6 @@ function withFilters(filters) {
 function flattenObject(o) {
   const keys = Object.keys(o)
   return keys.length === 1 ? o[keys[0]] : keys.map((k) => o[k])
-}
-
-function argumentsToObject(args) {
-  if (!args) return null
-  return args.reduce((r, a) => ({ ...r, [a.name.value]: a.value.value }), {})
 }
 
 /*

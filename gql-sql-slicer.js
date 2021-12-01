@@ -52,7 +52,11 @@ var gql = require('graphql-tag');
 var pg = require('pg');
 pg.types.setTypeParser(20, parseInt);
 var knexConstructor = require('knex');
+var arguments_1 = require("./arguments");
+var directives_1 = require("./directives");
 var gql_ga_slicer_1 = require("./gql-ga-slicer");
+var progressive_1 = require("./progressive");
+var lodash_1 = require("lodash");
 var JoinType;
 (function (JoinType) {
     JoinType["DEFAULT"] = "join";
@@ -133,7 +137,7 @@ function transformFilters(args, query, knex) {
 }
 function buildFullName(args, query, field, evaluateOnlyWithLinkSymbol) {
     if (evaluateOnlyWithLinkSymbol === void 0) { evaluateOnlyWithLinkSymbol = true; }
-    args = Array.isArray(args) ? argumentsToObject(args) : args;
+    args = Array.isArray(args) ? arguments_1.argumentsToObject(args) : args;
     var table = args.from || query.table;
     if (!field.startsWith('@') && (evaluateOnlyWithLinkSymbol || !args.from)) {
         return field;
@@ -146,7 +150,7 @@ function join(type) {
     return function (tree, query, knex) {
         if (!tree.arguments && !tree.fields)
             throw 'Join function requires arguments';
-        var args = argumentsToObject(tree.arguments || tree.fields);
+        var args = arguments_1.argumentsToObject(tree.arguments || tree.fields);
         if (!args.table)
             throw "Join function requires 'table' as argument";
         var byKeys = [
@@ -319,15 +323,25 @@ function queryBuilder(table, tree, queries, idx, knex, metricResolvers) {
             ((_o = tree.name) === null || _o === void 0 ? void 0 : _o.value) !== 'fetchPlain' &&
             !tree["with"])
             parseDimension(tree, query, knex);
-        selections.sort(function (a, b) { return (!b.selectionSet ? -1 : 1); });
+        selections.sort(function (a, b) {
+            if (!b.selectionSet === !a.selectionSet) {
+                return 0;
+            }
+            else if (!b.selectionSet) {
+                return -1;
+            }
+            else {
+                return 1;
+            }
+        });
         return selections.reduce(function (queries, t, i) {
             if (!!t.selectionSet && haveMetric_1 && haveDimension_1) {
                 var newIdx = queries.length;
                 queries[newIdx] = __assign({}, queries[idx]);
                 if (!!query.metrics)
-                    queries[newIdx].metrics = JSON.parse(JSON.stringify(query.metrics));
+                    queries[newIdx].metrics = lodash_1.cloneDeep(query.metrics);
                 if (!!query.dimensions)
-                    queries[newIdx].dimensions = JSON.parse(JSON.stringify(query.dimensions));
+                    queries[newIdx].dimensions = lodash_1.cloneDeep(query.dimensions);
                 queries[newIdx].promise = copyKnex(query.promise, knex);
                 queries[newIdx].idx = newIdx;
                 return queryBuilder(table, t, queries, newIdx, knex, metricResolvers);
@@ -340,7 +354,7 @@ function queryBuilder(table, tree, queries, idx, knex, metricResolvers) {
 }
 function parseMetric(tree, query, knex, metricResolvers) {
     var _a, _b, _c, _d;
-    var args = argumentsToObject(tree.arguments);
+    var args = arguments_1.argumentsToObject(tree.arguments);
     var _e = query.metrics, metrics = _e === void 0 ? [] : _e;
     query.metrics = metrics;
     if (tree.alias && metricResolvers[(_a = tree.name) === null || _a === void 0 ? void 0 : _a.value])
@@ -371,7 +385,7 @@ function parseDimension(tree, query, knex) {
     if (!query.groupIndex)
         query.groupIndex = 0;
     query.groupIndex++;
-    var args = transformLinkedArgs(argumentsToObject(tree.arguments), query);
+    var args = transformLinkedArgs(arguments_1.argumentsToObject(tree.arguments), query);
     if (args === null || args === void 0 ? void 0 : args.groupBy) {
         var pre_trunc = withFilters(query.filters)(knex
             .select([
@@ -434,7 +448,7 @@ var metricResolvers = {
     sum: function (tree, query, knex) {
         if (!tree.arguments)
             throw 'Sum function requires arguments';
-        var args = argumentsToObject(tree.arguments);
+        var args = arguments_1.argumentsToObject(tree.arguments);
         if (!args.a)
             throw "Sum function requires 'a' as argument";
         query.promise = query.promise.sum(buildFullName(args, query, args.a, false) + " as " + tree.alias.value);
@@ -443,7 +457,7 @@ var metricResolvers = {
     min: function (tree, query, knex) {
         if (!tree.arguments)
             throw 'Min function requires arguments';
-        var args = argumentsToObject(tree.arguments);
+        var args = arguments_1.argumentsToObject(tree.arguments);
         if (!args.a)
             throw "Min function requires 'a' as argument";
         query.promise = query.promise.min(buildFullName(args, query, args.a, false) + " as " + tree.alias.value);
@@ -452,10 +466,28 @@ var metricResolvers = {
     max: function (tree, query, knex) {
         if (!tree.arguments)
             throw 'Max function requires arguments';
-        var args = argumentsToObject(tree.arguments);
+        var args = arguments_1.argumentsToObject(tree.arguments);
         if (!args.a)
             throw "Max function requires 'a' as argument";
         query.promise = query.promise.max(buildFullName(args, query, args.a, false) + " as " + tree.alias.value);
+        query.metrics.push(tree.alias.value);
+    },
+    count: function (tree, query, knex) {
+        if (!tree.arguments)
+            throw 'Count function requires arguments';
+        var args = arguments_1.argumentsToObject(tree.arguments);
+        if (!args.a)
+            throw "Count function requires 'a' as argument";
+        query.promise = query.promise.count(buildFullName(args, query, args.a, false) + " as " + tree.alias.value);
+        query.metrics.push(tree.alias.value);
+    },
+    countDistinct: function (tree, query, knex) {
+        if (!tree.arguments)
+            throw 'CountDistinct function requires arguments';
+        var args = arguments_1.argumentsToObject(tree.arguments);
+        if (!args.a)
+            throw "CountDistinct function requires 'a' as argument";
+        query.promise = query.promise.countDistinct(buildFullName(args, query, args.a, false) + " as " + tree.alias.value);
         query.metrics.push(tree.alias.value);
     },
     join: join(JoinType.DEFAULT),
@@ -470,7 +502,7 @@ var metricResolvers = {
         var _a;
         if (!tree.arguments)
             throw 'Avg function requires arguments';
-        var args = argumentsToObject(tree.arguments);
+        var args = arguments_1.argumentsToObject(tree.arguments);
         if (!args.a)
             throw "Ranking function requires 'a' as argument";
         var partition = '';
@@ -491,7 +523,7 @@ var metricResolvers = {
         query.metrics.push(tree.alias.value);
     },
     unique: function (tree, query, knex) {
-        var args = tree.arguments && argumentsToObject(tree.arguments);
+        var args = tree.arguments && arguments_1.argumentsToObject(tree.arguments);
         var field = buildFullName(args, query, (args === null || args === void 0 ? void 0 : args.a) || tree.alias.value, false);
         query.promise = query.promise.select(field);
         query.promise = query.promise.groupBy(field);
@@ -500,7 +532,7 @@ var metricResolvers = {
     from: function (tree, query, knex) {
         if (!tree.arguments)
             throw 'From function requires arguments';
-        var args = argumentsToObject(tree.arguments);
+        var args = arguments_1.argumentsToObject(tree.arguments);
         if (!args.from)
             throw "From function requires 'from' as argument";
         var field = buildFullName(args, query, (args === null || args === void 0 ? void 0 : args.a) || tree.alias.value, false);
@@ -511,7 +543,7 @@ var metricResolvers = {
         //TODO: test
         if (!tree.arguments)
             throw 'Avg function requires arguments';
-        var args = argumentsToObject(tree.arguments);
+        var args = arguments_1.argumentsToObject(tree.arguments);
         if (!args.a)
             throw "Avg function requires 'a' as argument";
         if (!!args.by) {
@@ -529,7 +561,7 @@ var metricResolvers = {
     avgPerDimension: function (tree, query, knex) {
         if (!tree.arguments)
             throw 'avgPerDimension function requires arguments';
-        var args = argumentsToObject(tree.arguments);
+        var args = arguments_1.argumentsToObject(tree.arguments);
         if (!args.a)
             throw "avgPerDimension function requires 'a' as argument";
         if (!args.per)
@@ -544,7 +576,7 @@ var metricResolvers = {
         var _a;
         if (!tree.arguments)
             throw 'Share function requires arguments';
-        var args = argumentsToObject(tree.arguments);
+        var args = arguments_1.argumentsToObject(tree.arguments);
         if (!args.a)
             throw "Share  function requires 'a' as argument";
         var partition = '';
@@ -565,7 +597,7 @@ var metricResolvers = {
     indexed: function (tree, query, knex) {
         if (!tree.arguments)
             throw 'Share function requires arguments';
-        var args = argumentsToObject(tree.arguments);
+        var args = arguments_1.argumentsToObject(tree.arguments);
         if (!args.a)
             throw "Share  function requires 'a' as argument";
         var partition = '';
@@ -583,7 +615,7 @@ var metricResolvers = {
     divide: function (tree, query, knex) {
         if (!tree.arguments)
             throw 'Divide function requires arguments';
-        var args = argumentsToObject(tree.arguments);
+        var args = arguments_1.argumentsToObject(tree.arguments);
         var functions = Object.keys(args).reduce(function (r, k) {
             var fns = args[k].split('|');
             if (fns.length === 2) {
@@ -609,7 +641,7 @@ var metricResolvers = {
         var _a;
         if (!tree.arguments)
             throw 'AggrAverage function requires arguments';
-        var args = argumentsToObject(tree.arguments);
+        var args = arguments_1.argumentsToObject(tree.arguments);
         if (!args.to)
             throw "aggrAverage function requires 'to' as argument";
         if (!args.by)
@@ -637,7 +669,7 @@ var metricResolvers = {
         var _a;
         if (!tree.arguments)
             throw 'weightAvg function requires arguments';
-        var args = argumentsToObject(tree.arguments);
+        var args = arguments_1.argumentsToObject(tree.arguments);
         if (!args.a)
             throw "weightAvg function requires 'a' as argument";
         if (!args.by)
@@ -661,7 +693,7 @@ var metricResolvers = {
         }
     },
     distinct: function (tree, query, knex) {
-        query.promise = query.promise.distinct(buildFullName((tree.arguments && argumentsToObject(tree.arguments)) || {}, query, tree.alias.value, false));
+        query.promise = query.promise.distinct(buildFullName((tree.arguments && arguments_1.argumentsToObject(tree.arguments)) || {}, query, tree.alias.value, false));
     }
 };
 function copyKnex(knexObject, knex) {
@@ -686,40 +718,61 @@ var merge = function (tree, data, metricResolversData) {
         r[key].push(q);
         return r;
     }, {});
-    function getMergedObject(quer, mutations, fullObject) {
+    function getMergedObject(quer, mutations, fullObject, originFullObject) {
         if (!!quer[0].skipMerge) {
-            return quer.reduce(function (result, q, i) {
+            return quer.reduce(function (result, q) {
                 result.push(data[q.bid]);
                 return result;
             }, []);
         }
-        return quer.reduce(function (result, q, i) {
+        if (!originFullObject) {
+            originFullObject = fullObject;
+        }
+        return quer.reduce(function (result, q) {
             var resultData = data[q.bid];
-            for (var j = 0; j < resultData.length; j++) {
+            var _loop_1 = function () {
                 var keys = Object.keys(resultData[j]);
-                var _loop_1 = function () {
+                var _loop_2 = function () {
                     if (q.metrics[keys[key]]) {
-                        var replacedPath = replVars(q.metrics[keys[key]], resultData[j]).replace(/:join\./g, '');
-                        var valueDir = replacedPath.slice(0, -(keys[key].length + 1));
-                        var value = resultData[j][keys[key]];
+                        var replacedPath_1 = replVars(q.metrics[keys[key]], resultData[j]).replace(/:join\./g, '');
+                        var value_1 = resultData[j][keys[key]];
+                        q.directives
+                            .filter(function (directiveFunction) {
+                            return directiveFunction.context.path === q.metrics[keys[key]];
+                        })
+                            .forEach(function (directiveFunction) {
+                            var directiveResult = directiveFunction({
+                                value: value_1,
+                                originValue: resultData[j][keys[key]],
+                                replacedPath: replacedPath_1,
+                                result: result,
+                                fullObject: fullObject,
+                                originFullObject: originFullObject
+                            });
+                            // Important for directives which will not change value
+                            if (directiveResult.hasOwnProperty('value')) {
+                                value_1 = directiveResult.value;
+                            }
+                        });
                         if (!!mutations) {
                             if (mutations.skip) {
                                 var checks_1 = mutations['skip'];
-                                var skip = Object.keys(checks_1).reduce(function (r, k) {
-                                    if (r)
-                                        return r;
+                                var skip = Object.keys(checks_1).some(function (k) {
                                     //relying on pick by fix that
-                                    return !checks_1[k](progressiveGet(fullObject[mutations.filters.by], replVars(k, resultData[j])));
-                                }, false);
+                                    return !checks_1[k](progressive_1.progressiveGet(fullObject[mutations.filters.by], replVars(k, resultData[j])));
+                                });
                                 if (skip)
                                     return "continue";
                             }
+                        }
+                        result = progressive_1.progressiveSet(result, replacedPath_1, value_1, false);
+                        if (!!mutations) {
                             if (mutations[mutations.mutationFunction] &&
                                 mutations[mutations.mutationFunction][q.metrics[keys[key]]]) {
                                 var mutation = mutations[mutations.mutationFunction];
-                                result = progressiveSet(result, replacedPath, mutation[q.metrics[keys[key]]]({
-                                    value: value,
-                                    replacedPath: replacedPath,
+                                result = progressive_1.progressiveSet(result, replacedPath_1, mutation[q.metrics[keys[key]]]({
+                                    value: value_1,
+                                    replacedPath: replacedPath_1,
                                     result: result,
                                     config: {
                                         metrics: q.metrics[keys[key]],
@@ -730,28 +783,48 @@ var merge = function (tree, data, metricResolversData) {
                                 return "continue";
                             }
                         }
-                        result = progressiveSet(result, replacedPath, value, false);
                     }
                 };
                 for (var key in keys) {
-                    _loop_1();
+                    _loop_2();
                 }
+            };
+            for (var j = 0; j < resultData.length; j++) {
+                _loop_1();
             }
             return result;
         }, {});
     }
     if (Object.keys(batches).length === 1 && !!batches['___query']) {
-        return getMergedObject(queries, null, null);
+        var merged = getMergedObject(queries, null, null);
+        if (Object.values(batches)[0].some(function (q) { var _a; return ((_a = q.directives) === null || _a === void 0 ? void 0 : _a.length) > 0; })) {
+            return getMergedObject(queries, null, merged);
+        }
+        else {
+            return merged;
+        }
     }
     var res = Object.keys(batches).reduce(function (r, k) {
         r[k.replace('___query', '')] = getMergedObject(batches[k], null, null);
         return r;
     }, {});
-    return mutations.reduce(function (r, mutation) {
-        if (batches[mutation.name])
-            r[mutation.name] = getMergedObject(batches[mutation.name], mutation, r);
-        return r;
-    }, res);
+    // When
+    if (mutations.length > 0) {
+        return mutations.reduce(function (r, mutation) {
+            if (batches[mutation.name]) {
+                r[mutation.name] = getMergedObject(batches[mutation.name], mutation, r, res);
+            }
+            return r;
+        }, lodash_1.cloneDeep(res));
+    }
+    else {
+        return Object.keys(batches)
+            .filter(function (k) { return batches[k].some(function (q) { var _a; return ((_a = q.directives) === null || _a === void 0 ? void 0 : _a.length) > 0; }); })
+            .reduce(function (r, k) {
+            r[k.replace('___query', '')] = getMergedObject(batches[k], null, r, res);
+            return r;
+        }, lodash_1.cloneDeep(res));
+    }
 };
 exports.merge = merge;
 function replVars(str, obj) {
@@ -765,11 +838,6 @@ function shieldSeparator(str) {
     if (typeof str !== 'string')
         return str;
     return str.replace(/\./g, '$#@#');
-}
-function unshieldSeparator(str) {
-    if (typeof str !== 'string')
-        return str;
-    return str.replace(/\$#@#/, '.');
 }
 function getMergeStrings(tree, queries, idx, metricResolversData) {
     var _a, _b, _c, _d, _e, _f;
@@ -812,7 +880,7 @@ function getMergeStrings(tree, queries, idx, metricResolversData) {
             throw 'The query is empty, you need specify metrics or dimensions';
     }
     if (query.mutation && !query.filters) {
-        query.filters = argumentsToObject(tree.arguments);
+        query.filters = arguments_1.argumentsToObject(tree.arguments);
         query.name = ((_c = tree.alias) === null || _c === void 0 ? void 0 : _c.value) || null;
         query.mutationFunction = ((_d = tree.name) === null || _d === void 0 ? void 0 : _d.value) || null;
     }
@@ -843,12 +911,13 @@ function getMergeStrings(tree, queries, idx, metricResolversData) {
 function mergeMetric(tree, query, metricResolversData) {
     var _a, _b, _c, _d, _e, _f;
     var name = tree.name.value;
-    var args = argumentsToObject(tree.arguments);
+    var args = arguments_1.argumentsToObject(tree.arguments);
     if ((args === null || args === void 0 ? void 0 : args.type) === 'Array') {
         if ((_a = tree.alias) === null || _a === void 0 ? void 0 : _a.value)
             name = (_b = tree.alias) === null || _b === void 0 ? void 0 : _b.value;
         query.path += (!!query.path ? '.' : '') + "[@" + name + "=:" + name + "]";
         query.metrics["" + name] = "" + query.path + (!!query.path ? '.' : '') + name;
+        directives_1.parseDirective(tree, query, query.metrics["" + name]);
     }
     else {
         if (!!query.mutation)
@@ -858,18 +927,21 @@ function mergeMetric(tree, query, metricResolversData) {
         if ((_e = tree.alias) === null || _e === void 0 ? void 0 : _e.value)
             name = (_f = tree.alias) === null || _f === void 0 ? void 0 : _f.value;
         query.metrics["" + name] = "" + query.path + (!!query.path ? '.' : '') + name;
+        directives_1.parseDirective(tree, query, query.metrics["" + name]);
     }
 }
 function mergeDimension(tree, query) {
-    var args = argumentsToObject(tree.arguments);
+    var args = arguments_1.argumentsToObject(tree.arguments);
     if ((args === null || args === void 0 ? void 0 : args.type) === 'Array') {
         if (!!(args === null || args === void 0 ? void 0 : args.cutoff)) {
             query.cutoff = "" + query.path + (!!query.path ? '.' : '') + "[@" + tree.name.value + "=:" + tree.name.value + "]";
         }
         query.path += (!!query.path ? '.' : '') + "[@" + tree.name.value + "=:" + tree.name.value + "]";
+        directives_1.parseDirective(tree, query);
     }
     else {
         query.path += (!!query.path ? '.' : '') + ":" + tree.name.value;
+        directives_1.parseDirective(tree, query);
     }
 }
 var comparisonFunction = {
@@ -893,7 +965,7 @@ var metricResolversData = {
     pick: function (tree, query) {
         var _a;
         var name = "" + ((_a = tree.name) === null || _a === void 0 ? void 0 : _a.value);
-        var args = argumentsToObject(tree.arguments);
+        var args = arguments_1.argumentsToObject(tree.arguments);
         if (!query.skip)
             query.skip = {};
         if (query.path === ':pick')
@@ -907,20 +979,18 @@ var metricResolversData = {
     diff: function (tree, query) {
         var _a;
         var name = "" + ((_a = tree.name) === null || _a === void 0 ? void 0 : _a.value);
-        var args = argumentsToObject(tree.arguments);
         if (!query.diff)
             query.diff = {};
         if (query.path.startsWith(':diff') || query.path.startsWith(':diff.'))
             query.path = query.path.replace(/:diff\.?/, '');
         query.diff["" + query.path + (!!query.path ? '.' : '') + name] = function (_a) {
             var value = _a.value, replacedPath = _a.replacedPath, fullObject = _a.fullObject;
-            return (value / progressiveGet(fullObject[query.filters.by], replacedPath) - 1);
+            return (value / progressive_1.progressiveGet(fullObject[query.filters.by], replacedPath) - 1);
         };
     },
     blank: function (tree, query) {
         var _a;
         var name = ((_a = tree.name) === null || _a === void 0 ? void 0 : _a.value) + " ";
-        var args = argumentsToObject(tree.arguments);
         if (!query.skip)
             query.skip = {};
         if (query.path.startsWith(':blank.') || query.path.startsWith(':blank'))
@@ -932,140 +1002,6 @@ var metricResolversData = {
 };
 function isNumber(val) {
     return +val + '' == val + '';
-}
-/*
-var k = {};
-progressiveSet(k, 'book.test.one', 1)
-progressiveSet(k, 'book.two.one', 3)
-progressiveSet(k, 'book.dumbo.[].one', 3)
-progressiveSet(k, 'book.dumbo.[].twenty', 434)
-progressiveSet(k, 'book.dumbo.[].second', '3dqd25')
-progressiveSet(k, 'book.dumbo.[1].leela', 'fry')
-progressiveSet(k, 'book.dumbo.[@one=3].leela', 'fry')
-console.log(JSON.stringify(k))
-*/
-function progressiveGet(object, queryPath) {
-    var pathArray = queryPath.split(/\./).map(function (p) { return unshieldSeparator(p); });
-    return pathArray.reduce(function (r, pathStep, i) {
-        if (Array.isArray(r)) {
-            return r.find(function (o) { return Object.values(o).includes(pathStep); });
-        }
-        if (!r)
-            return NaN;
-        return r[pathStep];
-    }, object);
-}
-function progressiveSet(object, queryPath, value, summItUp) {
-    var pathArray = queryPath.split(/\./).map(function (p) { return unshieldSeparator(p); });
-    var property = pathArray.splice(-1);
-    if (queryPath.startsWith('[') &&
-        !Array.isArray(object) &&
-        Object.keys(object).length === 0)
-        object = [];
-    var leaf = object;
-    var pathHistory = [{ leaf: leaf, namedArrayIndex: null }];
-    pathArray.forEach(function (pathStep, i) {
-        var _a;
-        var namedArrayIndex = null;
-        if (pathStep.startsWith('[') && !Array.isArray(leaf)) {
-            var key = pathStep.slice(1, pathStep.length - 1);
-            if ((key !== 0 && !key) || Number.isInteger(+key)) {
-                leaf['arr'] = [];
-                leaf = leaf['arr'];
-            }
-            else if (key.startsWith('@')) {
-                key = key.slice(1);
-                var filterBy = key.split('=');
-                if (!leaf[filterBy[0]])
-                    leaf[filterBy[0]] = [];
-                leaf = leaf[filterBy[0]];
-            }
-        }
-        if (Array.isArray(leaf)) {
-            var key = pathStep.slice(1, pathStep.length - 1);
-            if (key !== 0 && !key) {
-                leaf.push({});
-                leaf = leaf[leaf.length - 1];
-            }
-            else if (Number.isInteger(+key)) {
-                leaf = leaf[+key];
-            }
-            else if (key.startsWith('@')) {
-                key = key.slice(1);
-                var filterBy_1 = key.split('=');
-                namedArrayIndex = filterBy_1;
-                var found = leaf.find(function (a) { return a[filterBy_1[0]] == '' + filterBy_1[1]; });
-                if (!!found) {
-                    leaf = found;
-                }
-                else {
-                    leaf.push((_a = {}, _a[filterBy_1[0]] = filterBy_1[1], _a));
-                    leaf = leaf[leaf.length - 1];
-                }
-            }
-        }
-        else {
-            var nextStep = pathArray[i + 1];
-            if (!!nextStep &&
-                nextStep.startsWith('[') &&
-                nextStep.endsWith(']') &&
-                !leaf[pathStep]) {
-                leaf[pathStep] = [];
-            }
-            if (!leaf[pathStep])
-                leaf[pathStep] = {}; //todo guess if there should be an array
-            leaf = leaf[pathStep];
-        }
-        pathHistory = pathHistory.concat([{ leaf: leaf, namedArrayIndex: namedArrayIndex }]);
-    });
-    if (summItUp && !!leaf[property]) {
-        leaf[property] += value;
-    }
-    else {
-        leaf[property] = value;
-    }
-    if (value === undefined) {
-        pathHistory.reverse();
-        pathHistory.forEach(function (_a, i) {
-            var step = _a.leaf, namedArrayIndex = _a.namedArrayIndex;
-            if (Array.isArray(step)) {
-                var spliceIndex = Object.values(step).findIndex(function (val, i) {
-                    var previousStepNameddArrayIndex = pathHistory[i - 1] && pathHistory[i - 1].namedArrayIndex;
-                    if (Array.isArray(val) &&
-                        !val.reduce(function (r, v) { return r || v !== undefined; }, false))
-                        return true;
-                    if (!Object.keys(val).reduce(function (r, vk) {
-                        return (r ||
-                            (val[vk] !== undefined &&
-                                (!previousStepNameddArrayIndex ||
-                                    !(previousStepNameddArrayIndex[0] === vk &&
-                                        previousStepNameddArrayIndex[1] == val[vk]))));
-                    }, false))
-                        return true;
-                });
-                if (!!~spliceIndex)
-                    step.splice(spliceIndex, 1);
-            }
-            else {
-                var spliceKey = Object.keys(step).find(function (val, i) {
-                    if (!step[val])
-                        return false;
-                    if (namedArrayIndex &&
-                        val == namedArrayIndex[0] &&
-                        step[val] == namedArrayIndex[1])
-                        return true;
-                    if (Array.isArray(step[val]) &&
-                        !step[val].reduce(function (r, v) { return r || v !== undefined; }, false))
-                        return true;
-                    if (!Object.values(step[val]).reduce(function (r, v) { return r || v !== undefined; }, false))
-                        return true;
-                });
-                if (!!spliceKey)
-                    delete step[spliceKey];
-            }
-        });
-    }
-    return object;
 }
 function withFilters(filters) {
     return function (knexPipe) {
@@ -1084,14 +1020,6 @@ function withFilters(filters) {
 function flattenObject(o) {
     var keys = Object.keys(o);
     return keys.length === 1 ? o[keys[0]] : keys.map(function (k) { return o[k]; });
-}
-function argumentsToObject(args) {
-    if (!args)
-        return null;
-    return args.reduce(function (r, a) {
-        var _a;
-        return (__assign(__assign({}, r), (_a = {}, _a[a.name.value] = a.value.value, _a)));
-    }, {});
 }
 /*
 
