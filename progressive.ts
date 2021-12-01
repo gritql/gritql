@@ -163,13 +163,15 @@ export function iterateProgressive(
       return
     }
 
+
+
     if (keys[index].startsWith(':')) {
       const objKeys = Object.keys(obj)
 
       objKeys.forEach((key) => {
         iterateKeys(obj[key], keys, index + 1, [...currentKeys, key])
       })
-    } else if (keys[index] === '[]') {
+    } else if (keys[index].startsWith('[') && keys[index].endsWith(']')) {
       obj.forEach((el, i) => {
         iterateKeys(el, keys, index + 1, [...currentKeys, i])
       })
