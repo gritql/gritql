@@ -293,6 +293,12 @@ Array [
 ]
 `;
 
+exports[`SQL gqlBuilder single query percentile 1`] = `
+Array [
+  "select PERCENTILE_CONT(0.5) WITHIN GROUP(ORDER BY \\"price\\") AS \\"median\\" from \\"table\\"",
+]
+`;
+
 exports[`SQL merge array on top position 1`] = `
 Array [
   Object {
