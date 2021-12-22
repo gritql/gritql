@@ -445,6 +445,19 @@ function parseFilters(tree, query, knex) {
     return transformFilters(args.concat({ name: { value: 'from' }, value: { value: query.table } }), query, knex);
 }
 var metricResolvers = {
+    percentile: function (tree, query, knex) {
+        if (!tree.arguments)
+            throw 'Percentile function requires arguments';
+        var args = arguments_1.argumentsToObject(tree.arguments);
+        if (!args.a)
+            throw "Percentile function requires 'a' as argument";
+        query.promise = query.promise.select(knex.raw("PERCENTILE_CONT(??) WITHIN GROUP(ORDER BY ??) AS ??", [
+            parseFloat(args.factor) || 0.5,
+            buildFullName(args, query, args.a, false),
+            tree.alias.value,
+        ]));
+        query.metrics.push(tree.alias.value);
+    },
     sum: function (tree, query, knex) {
         if (!tree.arguments)
             throw 'Sum function requires arguments';

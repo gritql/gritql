@@ -354,14 +354,14 @@ function queryBuilder(
       !tree.with
     )
       parseDimension(tree, query, knex)
-      
+
     selections.sort((a, b) => {
       if (!b.selectionSet === !a.selectionSet) {
         return 0
       } else if (!b.selectionSet) {
-        return -1;
+        return -1
       } else {
-        return 1;
+        return 1
       }
     })
 
@@ -369,8 +369,7 @@ function queryBuilder(
       if (!!t.selectionSet && haveMetric && haveDimension) {
         const newIdx = queries.length
         queries[newIdx] = { ...queries[idx] }
-        if (!!query.metrics)
-          queries[newIdx].metrics = cloneDeep(query.metrics)
+        if (!!query.metrics) queries[newIdx].metrics = cloneDeep(query.metrics)
         if (!!query.dimensions)
           queries[newIdx].dimensions = cloneDeep(query.dimensions)
 
@@ -503,6 +502,20 @@ function parseFilters(tree, query, knex) {
   )
 }
 const metricResolvers = {
+  percentile: (tree, query, knex) => {
+    if (!tree.arguments) throw 'Percentile function requires arguments'
+    const args = argumentsToObject(tree.arguments)
+    if (!args.a) throw "Percentile function requires 'a' as argument"
+    query.promise = query.promise.select(
+      knex.raw(`PERCENTILE_CONT(??) WITHIN GROUP(ORDER BY ??) AS ??`, [
+        parseFloat(args.factor) || 0.5,
+        buildFullName(args, query, args.a, false),
+        tree.alias.value,
+      ]),
+    )
+
+    query.metrics.push(tree.alias.value)
+  },
   sum: (tree, query, knex) => {
     if (!tree.arguments) throw 'Sum function requires arguments'
     const args = argumentsToObject(tree.arguments)
