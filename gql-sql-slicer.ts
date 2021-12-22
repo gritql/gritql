@@ -1099,13 +1099,11 @@ function mergeDimension(tree, query) {
 
   if (args?.type === 'Array') {
     if (!!args?.cutoff) {
-      query.cutoff = `${query.path}${!!query.path ? '.' : ''}[@${
-        tree.name.value
-      }=:${tree.name.value}]`
+      query.cutoff = `${query.path}${!!query.path ? '.' : ''}[@${tree.name.value
+        }=:${tree.name.value}]`
     }
-    query.path += `${!!query.path ? '.' : ''}[@${tree.name.value}=:${
-      tree.name.value
-    }]`
+    query.path += `${!!query.path ? '.' : ''}[@${tree.name.value}=:${tree.name.value
+      }]`
     parseDirective(tree, query)
   } else {
     query.path += `${!!query.path ? '.' : ''}:${tree.name.value}`
@@ -1153,6 +1151,22 @@ const metricResolversData = {
     }) => {
       return (
         value / progressiveGet(fullObject[query.filters.by], replacedPath) - 1
+      )
+    }
+  },
+  divide: (tree, query) => {
+    const name = `${tree.name?.value}`
+    if (!query.divide) query.divide = {}
+    if (query.path.startsWith(':divide') || query.path.startsWith(':divide.'))
+      query.path = query.path.replace(/:divide\.?/, '')
+
+    query.divide[`${query.path}${!!query.path ? '.' : ''}${name}`] = ({
+      value,
+      replacedPath,
+      fullObject,
+    }) => {
+      return (
+        value / progressiveGet(fullObject[query.filters.by], replacedPath)
       )
     }
   },
