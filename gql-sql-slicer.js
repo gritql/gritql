@@ -1001,6 +1001,18 @@ var metricResolversData = {
             return (value / progressive_1.progressiveGet(fullObject[query.filters.by], replacedPath) - 1);
         };
     },
+    divideBy: function (tree, query) {
+        var _a;
+        var name = "" + ((_a = tree.name) === null || _a === void 0 ? void 0 : _a.value);
+        if (!query.divideBy)
+            query.divideBy = {};
+        if (query.path.startsWith(':divideBy') || query.path.startsWith(':divideBy.'))
+            query.path = query.path.replace(/:divideBy\.?/, '');
+        query.divideBy["" + query.path + (!!query.path ? '.' : '') + name] = function (_a) {
+            var value = _a.value, replacedPath = _a.replacedPath, fullObject = _a.fullObject;
+            return (value / progressive_1.progressiveGet(fullObject[query.filters.by], replacedPath));
+        };
+    },
     blank: function (tree, query) {
         var _a;
         var name = ((_a = tree.name) === null || _a === void 0 ? void 0 : _a.value) + " ";

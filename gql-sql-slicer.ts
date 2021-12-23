@@ -1154,13 +1154,13 @@ const metricResolversData = {
       )
     }
   },
-  divide: (tree, query) => {
+  divideBy: (tree, query) => {
     const name = `${tree.name?.value}`
-    if (!query.divide) query.divide = {}
-    if (query.path.startsWith(':divide') || query.path.startsWith(':divide.'))
-      query.path = query.path.replace(/:divide\.?/, '')
+    if (!query.divideBy) query.divideBy = {}
+    if (query.path.startsWith(':divideBy') || query.path.startsWith(':divideBy.'))
+      query.path = query.path.replace(/:divideBy\.?/, '')
 
-    query.divide[`${query.path}${!!query.path ? '.' : ''}${name}`] = ({
+    query.divideBy[`${query.path}${!!query.path ? '.' : ''}${name}`] = ({
       value,
       replacedPath,
       fullObject,
