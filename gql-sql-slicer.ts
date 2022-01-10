@@ -878,6 +878,7 @@ export const merge = (
                   result,
                   fullObject,
                   originFullObject,
+                  queries: quer,
                 })
 
                 // Important for directives which will not change value

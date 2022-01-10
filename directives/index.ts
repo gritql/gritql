@@ -16,6 +16,7 @@ export interface PostExecutedContext {
   path: string
   query: any
   data: { [key: string]: any }
+  type: string
 }
 
 export const preExecutedDirectives = {
@@ -34,11 +35,13 @@ export const postExecutedDirectives = {
 
   // Argumnets
   // to: query name
-  // diff: (context: PostExecutedContext) => {}
+  diff: (context: PostExecutedContext) => {},
 
   // Divide value by max value
   // Arguments
   // to: query name
+  // or
+  // group: group name
   indexed: (context: PostExecutedContext) => {
     if (!context.tree.arguments) {
       throw 'Indexed directive requires arguments'
@@ -46,26 +49,53 @@ export const postExecutedDirectives = {
 
     const args = argumentsToObject(context.tree.arguments)
 
-    if (!args.to) {
-      throw "Indexed directive requires 'to' argument"
+    if (!args.to && !args.group) {
+      throw "Indexed directive requires 'to' or 'group' argument"
+    } else if (args.to && args.group) {
+      throw "Indexed directive can handle only 'to' or 'group' argument at once"
     }
 
-    const transformer = ({ value, originFullObject }) => {
+    context.data.members = new Set()
+
+    context.data.members.add(context.query.name)
+
+    if (!args.group) {
+      context.data.members.add(args.to)
+    } else {
+      context.data.group = args.group
+    }
+
+    const transformer = ({ value, originFullObject, queries }) => {
       function calculateMax(val: number) {
         context.data.max = Math.max(val, context.data.max || 0)
       }
 
+      if (args.group) {
+        if (!context.data.groupingIsDone) {
+          queries.forEach((q) => {
+            const directives = q.directives.filter(
+              (d) =>
+                d.context.group === context.data.group &&
+                d.context.type === 'indexed',
+            )
+
+            if (directives.length > 0) {
+              context.data.members.add(q.name)
+            }
+          })
+
+          context.data.groupingIsDone = true
+        }
+      }
+
       if (context.data.max == null && originFullObject) {
-        iterateProgressive(
-          originFullObject[context.query.name],
-          context.path,
-          calculateMax,
-        )
-        iterateProgressive(
-          originFullObject[args.to],
-          context.path,
-          calculateMax,
-        )
+        Array.from<string>(context.data.members).forEach((member) => {
+          iterateProgressive(
+            originFullObject[member],
+            context.path,
+            calculateMax,
+          )
+        })
       }
 
       if (context.data.max != null) {
@@ -90,6 +120,10 @@ export const postExecutedDirectives = {
   // filter: (context: PostExecutedContext) => {
   //
   // }
+
+  // groupOn: (context: PostExecutedContext) => {}
+
+  // groupBy: (context: PostExecutedContext) => {}
 }
 
 export function parseDirective(tree: DocumentNode, query, path?: string) {
@@ -105,6 +139,7 @@ export function parseDirective(tree: DocumentNode, query, path?: string) {
             path: path || query.path,
             query,
             data: {},
+            type: directive.name.value,
           }),
         )
       }
