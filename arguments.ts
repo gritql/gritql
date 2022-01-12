@@ -12,6 +12,8 @@ function parseValue(value) {
       (r, a) => ({ ...r, [a.name.value]: parseValue(a.value) }),
       {},
     )
+  } else if (value.kind === 'FloatValue') {
+    return parseFloat(value.value)
   } else {
     return value.value
   }

@@ -426,64 +426,60 @@ function parseDimension(tree, query, knex) {
   query.groupIndex++
   const args = transformLinkedArgs(argumentsToObject(tree.arguments), query)
 
-  if (args?.groupBy) {
-    if (args.groupBy.startsWith('each:')) {
-      let [_, amount] = args.groupBy.split(':')
+  if (args?.groupByEach) {
+    const amount = parseFloat(args.groupByEach)
 
-      amount = parseInt(amount, 10)
-
-      query.promise = query.promise
-        .select(
-          knex.raw(
-            `(CAST(CEIL(??)/?? AS INT)*?? || '-' || CAST(CEIL(??)/?? AS INT)*??+??) as ??`,
-            [
-              buildFullName(args, query, tree.name.value, false),
-              amount,
-              amount,
-              buildFullName(args, query, tree.name.value, false),
-              amount,
-              amount,
-              amount - 1,
-              tree.name.value,
-            ],
-          ),
-        )
-        .groupBy(
-          knex.raw('CAST(CEIL(??)/?? AS INT)', [
+    query.promise = query.promise
+      .select(
+        knex.raw(
+          `(CAST(CEIL(??)/?? AS INT)*?? || '-' || CAST(CEIL(??)/?? AS INT)*??+??) as ??`,
+          [
             buildFullName(args, query, tree.name.value, false),
             amount,
-          ]),
-        )
-    } else {
-      const pre_trunc = withFilters(query.filters)(
-        knex
-          .select([
-            '*',
-            knex.raw(`date_trunc(?, ??) as ??`, [
-              args?.groupBy,
-              tree.name.value,
-              `${tree.name.value}_${args?.groupBy}`,
-            ]),
-          ])
-          .from(args.from || query.table),
+            amount,
+            buildFullName(args, query, tree.name.value, false),
+            amount,
+            amount,
+            amount - 1,
+            tree.name.value,
+          ],
+        ),
       )
-      query.promise = query.promise.from(pre_trunc.as(args.from || query.table))
-
-      query.promise = query.promise.select(
-        knex.raw(`?? as ??`, [
-          `${tree.name.value}_${args?.groupBy}`,
-          tree.name.value,
+      .groupBy(
+        knex.raw('CAST(CEIL(??)/?? AS INT)', [
+          buildFullName(args, query, tree.name.value, false),
+          amount,
         ]),
       )
-      query.promise = query.promise.groupBy(
-        knex.raw(`??`, [`${tree.name.value}_${args?.groupBy}`]),
-      )
+  } else if (args?.groupBy) {
+    const pre_trunc = withFilters(query.filters)(
+      knex
+        .select([
+          '*',
+          knex.raw(`date_trunc(?, ??) as ??`, [
+            args?.groupBy,
+            tree.name.value,
+            `${tree.name.value}_${args?.groupBy}`,
+          ]),
+        ])
+        .from(args.from || query.table),
+    )
+    query.promise = query.promise.from(pre_trunc.as(args.from || query.table))
 
-      if (!query.replaceWith) query.replaceWith = {}
-      query.replaceWith[tree.name.value] = {
-        value: `${tree.name.value}_${args?.groupBy}`,
-        index: query.groupIndex,
-      }
+    query.promise = query.promise.select(
+      knex.raw(`?? as ??`, [
+        `${tree.name.value}_${args?.groupBy}`,
+        tree.name.value,
+      ]),
+    )
+    query.promise = query.promise.groupBy(
+      knex.raw(`??`, [`${tree.name.value}_${args?.groupBy}`]),
+    )
+
+    if (!query.replaceWith) query.replaceWith = {}
+    query.replaceWith[tree.name.value] = {
+      value: `${tree.name.value}_${args?.groupBy}`,
+      index: query.groupIndex,
     }
   } else {
     query.promise = query.promise.select(

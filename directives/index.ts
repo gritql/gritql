@@ -47,11 +47,15 @@ const resolvers = {
   },
 }
 
-function findResolvers(keys, value, args) {
+function findResolvers(keys, value, args, name?: string) {
   return keys.some((k) => {
     const resolver = resolvers[k] || resolvers.eq
+    const isNotDefaultResolver = !!resolvers[k]
 
-    return !resolver(value, args[k])
+    return !resolver(
+      value,
+      args[isNotDefaultResolver && name ? `${name}_${k}` : k],
+    )
   })
 }
 
@@ -246,7 +250,7 @@ export const postExecutedDirectives = {
             const keys = filterPropertyKey(argsKeys, key)
 
             return keys.length > 0
-              ? findResolvers(keys, globalObj[key], args)
+              ? findResolvers(keys, globalObj[key], args, key)
               : false
           })
 
@@ -289,6 +293,7 @@ export const postExecutedDirectives = {
     const args = argumentsToObject(context.tree.arguments)
 
     context.data.members = new Set()
+    context.data.checked = new Set()
 
     const argsKeys = Object.keys(args).filter((k) => k !== 'replacers')
 
@@ -301,11 +306,11 @@ export const postExecutedDirectives = {
       path,
       data,
       value,
-      fullObject,
       key,
       globalReplacedPath,
       originFullObject,
       batches,
+      result,
     }) => {
       if (!originFullObject) {
         return {}
@@ -319,16 +324,20 @@ export const postExecutedDirectives = {
       )
 
       const isNotFirstTime = context.data.members.has(row)
+      const isAlreadyChecked = context.data.checked.has(row)
 
       const matched =
         isNotFirstTime ||
-        Object.keys(currentData).some((key) => {
-          const keys = filterPropertyKey(argsKeys, key)
+        (!isAlreadyChecked &&
+          Object.keys(currentData).some((key) => {
+            const keys = filterPropertyKey(argsKeys, key)
 
-          return keys.length > 0
-            ? !findResolvers(keys, currentData[key], args)
-            : false
-        })
+            return keys.length > 0
+              ? !findResolvers(keys, currentData[key], args, key)
+              : false
+          }))
+
+      context.data.checked.add(row)
 
       if (matched) {
         context.data.members.add(row)
@@ -339,15 +348,13 @@ export const postExecutedDirectives = {
         )
 
         const currentGroupData = progressiveGet(
-          Object.keys(batches).length > 1
-            ? fullObject[context.query.name]
-            : fullObject,
+          result,
           newPath.replace(new RegExp(`\\.${key}$`), ''),
         )
 
         const newValue =
           typeof currentGroupData?.[key] === 'number'
-            ? currentGroupData?.[key] + (currentData?.[key] || 0) + value
+            ? currentGroupData?.[key] + value
             : value
 
         return {

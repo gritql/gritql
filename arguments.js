@@ -28,6 +28,9 @@ function parseValue(value) {
             return (__assign(__assign({}, r), (_a = {}, _a[a.name.value] = parseValue(a.value), _a)));
         }, {});
     }
+    else if (value.kind === 'FloatValue') {
+        return parseFloat(value.value);
+    }
     else {
         return value.value;
     }

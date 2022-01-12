@@ -34,10 +34,11 @@ var resolvers = {
         return a <= b;
     }
 };
-function findResolvers(keys, value, args) {
+function findResolvers(keys, value, args, name) {
     return keys.some(function (k) {
         var resolver = resolvers[k] || resolvers.eq;
-        return !resolver(value, args[k]);
+        var isNotDefaultResolver = !!resolvers[k];
+        return !resolver(value, args[isNotDefaultResolver && name ? name + "_" + k : k]);
     });
 }
 function filterPropertyKey(keys, key) {
@@ -191,7 +192,7 @@ exports.postExecutedDirectives = {
                     var skip = Object.keys(globalObj_1).some(function (key) {
                         var keys = filterPropertyKey(argsKeys_1, key);
                         return keys.length > 0
-                            ? findResolvers(keys, globalObj_1[key], args)
+                            ? findResolvers(keys, globalObj_1[key], args, key)
                             : false;
                     });
                     if (skip) {
@@ -228,13 +229,14 @@ exports.postExecutedDirectives = {
         }
         var args = arguments_1.argumentsToObject(context.tree.arguments);
         context.data.members = new Set();
+        context.data.checked = new Set();
         var argsKeys = Object.keys(args).filter(function (k) { return k !== 'replacers'; });
         if (argsKeys.length === 0) {
             throw 'GroupOn directive requires at least one grouping condition';
         }
         var transfomer = function (_a) {
             var _b;
-            var row = _a.row, path = _a.path, data = _a.data, value = _a.value, fullObject = _a.fullObject, key = _a.key, globalReplacedPath = _a.globalReplacedPath, originFullObject = _a.originFullObject, batches = _a.batches;
+            var row = _a.row, path = _a.path, data = _a.data, value = _a.value, key = _a.key, globalReplacedPath = _a.globalReplacedPath, originFullObject = _a.originFullObject, batches = _a.batches, result = _a.result;
             if (!originFullObject) {
                 return {};
             }
@@ -242,21 +244,22 @@ exports.postExecutedDirectives = {
                 ? originFullObject[context.query.name]
                 : originFullObject, globalReplacedPath);
             var isNotFirstTime = context.data.members.has(row);
+            var isAlreadyChecked = context.data.checked.has(row);
             var matched = isNotFirstTime ||
-                Object.keys(currentData).some(function (key) {
-                    var keys = filterPropertyKey(argsKeys, key);
-                    return keys.length > 0
-                        ? !findResolvers(keys, currentData[key], args)
-                        : false;
-                });
+                (!isAlreadyChecked &&
+                    Object.keys(currentData).some(function (key) {
+                        var keys = filterPropertyKey(argsKeys, key);
+                        return keys.length > 0
+                            ? !findResolvers(keys, currentData[key], args, key)
+                            : false;
+                    }));
+            context.data.checked.add(row);
             if (matched) {
                 context.data.members.add(row);
                 var newPath = progressive_1.replVars(path, __assign(__assign({}, data), args.replacers)).replace(/:join\./g, '');
-                var currentGroupData = progressive_1.progressiveGet(Object.keys(batches).length > 1
-                    ? fullObject[context.query.name]
-                    : fullObject, newPath.replace(new RegExp("\\." + key + "$"), ''));
+                var currentGroupData = progressive_1.progressiveGet(result, newPath.replace(new RegExp("\\." + key + "$"), ''));
                 var newValue = typeof (currentGroupData === null || currentGroupData === void 0 ? void 0 : currentGroupData[key]) === 'number'
-                    ? (currentGroupData === null || currentGroupData === void 0 ? void 0 : currentGroupData[key]) + ((currentData === null || currentData === void 0 ? void 0 : currentData[key]) || 0) + value
+                    ? (currentGroupData === null || currentGroupData === void 0 ? void 0 : currentGroupData[key]) + value
                     : value;
                 return {
                     replacers: !isNotFirstTime

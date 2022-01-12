@@ -386,50 +386,47 @@ function parseDimension(tree, query, knex) {
         query.groupIndex = 0;
     query.groupIndex++;
     var args = transformLinkedArgs(arguments_1.argumentsToObject(tree.arguments), query);
-    if (args === null || args === void 0 ? void 0 : args.groupBy) {
-        if (args.groupBy.startsWith('each:')) {
-            var _b = args.groupBy.split(':'), _ = _b[0], amount = _b[1];
-            amount = parseInt(amount, 10);
-            query.promise = query.promise
-                .select(knex.raw("(CAST(CEIL(??)/?? AS INT)*?? || '-' || CAST(CEIL(??)/?? AS INT)*??+??) as ??", [
-                buildFullName(args, query, tree.name.value, false),
-                amount,
-                amount,
-                buildFullName(args, query, tree.name.value, false),
-                amount,
-                amount,
-                amount - 1,
+    if (args === null || args === void 0 ? void 0 : args.groupByEach) {
+        var amount = parseFloat(args.groupByEach);
+        query.promise = query.promise
+            .select(knex.raw("(CAST(CEIL(??)/?? AS INT)*?? || '-' || CAST(CEIL(??)/?? AS INT)*??+??) as ??", [
+            buildFullName(args, query, tree.name.value, false),
+            amount,
+            amount,
+            buildFullName(args, query, tree.name.value, false),
+            amount,
+            amount,
+            amount - 1,
+            tree.name.value,
+        ]))
+            .groupBy(knex.raw('CAST(CEIL(??)/?? AS INT)', [
+            buildFullName(args, query, tree.name.value, false),
+            amount,
+        ]));
+    }
+    else if (args === null || args === void 0 ? void 0 : args.groupBy) {
+        var pre_trunc = withFilters(query.filters)(knex
+            .select([
+            '*',
+            knex.raw("date_trunc(?, ??) as ??", [
+                args === null || args === void 0 ? void 0 : args.groupBy,
                 tree.name.value,
-            ]))
-                .groupBy(knex.raw('CAST(CEIL(??)/?? AS INT)', [
-                buildFullName(args, query, tree.name.value, false),
-                amount,
-            ]));
-        }
-        else {
-            var pre_trunc = withFilters(query.filters)(knex
-                .select([
-                '*',
-                knex.raw("date_trunc(?, ??) as ??", [
-                    args === null || args === void 0 ? void 0 : args.groupBy,
-                    tree.name.value,
-                    tree.name.value + "_" + (args === null || args === void 0 ? void 0 : args.groupBy),
-                ]),
-            ])
-                .from(args.from || query.table));
-            query.promise = query.promise.from(pre_trunc.as(args.from || query.table));
-            query.promise = query.promise.select(knex.raw("?? as ??", [
                 tree.name.value + "_" + (args === null || args === void 0 ? void 0 : args.groupBy),
-                tree.name.value,
-            ]));
-            query.promise = query.promise.groupBy(knex.raw("??", [tree.name.value + "_" + (args === null || args === void 0 ? void 0 : args.groupBy)]));
-            if (!query.replaceWith)
-                query.replaceWith = {};
-            query.replaceWith[tree.name.value] = {
-                value: tree.name.value + "_" + (args === null || args === void 0 ? void 0 : args.groupBy),
-                index: query.groupIndex
-            };
-        }
+            ]),
+        ])
+            .from(args.from || query.table));
+        query.promise = query.promise.from(pre_trunc.as(args.from || query.table));
+        query.promise = query.promise.select(knex.raw("?? as ??", [
+            tree.name.value + "_" + (args === null || args === void 0 ? void 0 : args.groupBy),
+            tree.name.value,
+        ]));
+        query.promise = query.promise.groupBy(knex.raw("??", [tree.name.value + "_" + (args === null || args === void 0 ? void 0 : args.groupBy)]));
+        if (!query.replaceWith)
+            query.replaceWith = {};
+        query.replaceWith[tree.name.value] = {
+            value: tree.name.value + "_" + (args === null || args === void 0 ? void 0 : args.groupBy),
+            index: query.groupIndex
+        };
     }
     else {
         query.promise = query.promise.select(buildFullName(args, query, tree.name.value, false));
