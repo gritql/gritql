@@ -5,7 +5,7 @@ var __spreadArray = (this && this.__spreadArray) || function (to, from) {
     return to;
 };
 exports.__esModule = true;
-exports.iterateProgressive = exports.progressiveSet = exports.progressiveGet = void 0;
+exports.replVars = exports.iterateProgressive = exports.progressiveSet = exports.progressiveGet = void 0;
 function unshieldSeparator(str) {
     if (typeof str !== 'string')
         return str;
@@ -26,6 +26,15 @@ function progressiveGet(object, queryPath) {
     var pathArray = queryPath.split(/\./).map(function (p) { return unshieldSeparator(p); });
     return pathArray.reduce(function (r, pathStep, i) {
         if (Array.isArray(r)) {
+            if (pathStep.startsWith('[') && pathStep.endsWith(']')) {
+                var path = pathStep.slice(0, -1).slice(2);
+                var separatorIndex = path.indexOf('=');
+                var _a = [
+                    path.slice(0, separatorIndex),
+                    path.slice(separatorIndex + 1),
+                ], step_1 = _a[0], value_1 = _a[1];
+                return r.find(function (o) { return o[step_1] == value_1; });
+            }
             return r.find(function (o) { return Object.values(o).includes(pathStep); });
         }
         if (!r)
@@ -175,3 +184,16 @@ function iterateProgressive(obj, key, callback) {
     return iterateKeys(obj, key.split('.'));
 }
 exports.iterateProgressive = iterateProgressive;
+function shieldSeparator(str) {
+    if (typeof str !== 'string')
+        return str;
+    return str.replace(/\./g, '$#@#');
+}
+function replVars(str, obj) {
+    var keys = Object.keys(obj);
+    for (var key in keys) {
+        str = str.replace(":" + keys[key], shieldSeparator(obj[keys[key]]));
+    }
+    return str;
+}
+exports.replVars = replVars;

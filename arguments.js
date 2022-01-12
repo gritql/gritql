@@ -17,7 +17,18 @@ function argumentsToObject(args) {
         return null;
     return args.reduce(function (r, a) {
         var _a;
-        return (__assign(__assign({}, r), (_a = {}, _a[a.name.value] = a.value.value, _a)));
+        return (__assign(__assign({}, r), (_a = {}, _a[a.name.value] = parseValue(a.value), _a)));
     }, {});
 }
 exports.argumentsToObject = argumentsToObject;
+function parseValue(value) {
+    if (value.kind === 'ObjectValue') {
+        return value.fields.reduce(function (r, a) {
+            var _a;
+            return (__assign(__assign({}, r), (_a = {}, _a[a.name.value] = parseValue(a.value), _a)));
+        }, {});
+    }
+    else {
+        return value.value;
+    }
+}

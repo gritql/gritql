@@ -18,6 +18,18 @@ export function progressiveGet(object, queryPath) {
   const pathArray = queryPath.split(/\./).map((p) => unshieldSeparator(p))
   return pathArray.reduce((r, pathStep, i) => {
     if (Array.isArray(r)) {
+      if (pathStep.startsWith('[') && pathStep.endsWith(']')) {
+        const path = pathStep.slice(0, -1).slice(2)
+        const separatorIndex = path.indexOf('=')
+
+        const [step, value] = [
+          path.slice(0, separatorIndex),
+          path.slice(separatorIndex + 1),
+        ]
+
+        return r.find((o) => o[step] == value)
+      }
+
       return r.find((o) => Object.values(o).includes(pathStep))
     }
     if (!r) return NaN
@@ -182,4 +194,17 @@ export function iterateProgressive(
   }
 
   return iterateKeys(obj, key.split('.'))
+}
+
+function shieldSeparator(str) {
+  if (typeof str !== 'string') return str
+  return str.replace(/\./g, '$#@#')
+}
+
+export function replVars(str, obj) {
+  const keys = Object.keys(obj)
+  for (var key in keys) {
+    str = str.replace(`:${keys[key]}`, shieldSeparator(obj[keys[key]]))
+  }
+  return str
 }

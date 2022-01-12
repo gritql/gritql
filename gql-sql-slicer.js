@@ -387,28 +387,49 @@ function parseDimension(tree, query, knex) {
     query.groupIndex++;
     var args = transformLinkedArgs(arguments_1.argumentsToObject(tree.arguments), query);
     if (args === null || args === void 0 ? void 0 : args.groupBy) {
-        var pre_trunc = withFilters(query.filters)(knex
-            .select([
-            '*',
-            knex.raw("date_trunc(?, ??) as ??", [
-                args === null || args === void 0 ? void 0 : args.groupBy,
+        if (args.groupBy.startsWith('each:')) {
+            var _b = args.groupBy.split(':'), _ = _b[0], amount = _b[1];
+            amount = parseInt(amount, 10);
+            query.promise = query.promise
+                .select(knex.raw("(CAST(CEIL(??)/?? AS INT)*?? || '-' || CAST(CEIL(??)/?? AS INT)*??+??) as ??", [
+                buildFullName(args, query, tree.name.value, false),
+                amount,
+                amount,
+                buildFullName(args, query, tree.name.value, false),
+                amount,
+                amount,
+                amount - 1,
                 tree.name.value,
+            ]))
+                .groupBy(knex.raw('CAST(CEIL(??)/?? AS INT)', [
+                buildFullName(args, query, tree.name.value, false),
+                amount,
+            ]));
+        }
+        else {
+            var pre_trunc = withFilters(query.filters)(knex
+                .select([
+                '*',
+                knex.raw("date_trunc(?, ??) as ??", [
+                    args === null || args === void 0 ? void 0 : args.groupBy,
+                    tree.name.value,
+                    tree.name.value + "_" + (args === null || args === void 0 ? void 0 : args.groupBy),
+                ]),
+            ])
+                .from(args.from || query.table));
+            query.promise = query.promise.from(pre_trunc.as(args.from || query.table));
+            query.promise = query.promise.select(knex.raw("?? as ??", [
                 tree.name.value + "_" + (args === null || args === void 0 ? void 0 : args.groupBy),
-            ]),
-        ])
-            .from(args.from || query.table));
-        query.promise = query.promise.from(pre_trunc.as(args.from || query.table));
-        query.promise = query.promise.select(knex.raw("?? as ??", [
-            tree.name.value + "_" + (args === null || args === void 0 ? void 0 : args.groupBy),
-            tree.name.value,
-        ]));
-        query.promise = query.promise.groupBy(knex.raw("??", [tree.name.value + "_" + (args === null || args === void 0 ? void 0 : args.groupBy)]));
-        if (!query.replaceWith)
-            query.replaceWith = {};
-        query.replaceWith[tree.name.value] = {
-            value: tree.name.value + "_" + (args === null || args === void 0 ? void 0 : args.groupBy),
-            index: query.groupIndex
-        };
+                tree.name.value,
+            ]));
+            query.promise = query.promise.groupBy(knex.raw("??", [tree.name.value + "_" + (args === null || args === void 0 ? void 0 : args.groupBy)]));
+            if (!query.replaceWith)
+                query.replaceWith = {};
+            query.replaceWith[tree.name.value] = {
+                value: tree.name.value + "_" + (args === null || args === void 0 ? void 0 : args.groupBy),
+                index: query.groupIndex
+            };
+        }
     }
     else {
         query.promise = query.promise.select(buildFullName(args, query, tree.name.value, false));
@@ -538,7 +559,7 @@ var metricResolvers = {
     unique: function (tree, query, knex) {
         var args = tree.arguments && arguments_1.argumentsToObject(tree.arguments);
         var field = buildFullName(args, query, (args === null || args === void 0 ? void 0 : args.a) || tree.alias.value, false);
-        query.promise = query.promise.select(field);
+        query.promise = query.promise.select(field + " as " + tree.alias.value);
         query.promise = query.promise.groupBy(field);
         query.metrics.push(tree.alias.value);
     },
@@ -549,7 +570,7 @@ var metricResolvers = {
         if (!args.from)
             throw "From function requires 'from' as argument";
         var field = buildFullName(args, query, (args === null || args === void 0 ? void 0 : args.a) || tree.alias.value, false);
-        query.promise = query.promise.select(field);
+        query.promise = query.promise.select(field + " as " + tree.alias.value);
         query.metrics.push(tree.alias.value);
     },
     avg: function (tree, query, knex) {
@@ -731,7 +752,7 @@ var merge = function (tree, data, metricResolversData) {
         r[key].push(q);
         return r;
     }, {});
-    function getMergedObject(quer, mutations, fullObject, originFullObject) {
+    function getMergedObject(batches, quer, mutations, fullObject, originFullObject) {
         if (!!quer[0].skipMerge) {
             return quer.reduce(function (result, q) {
                 result.push(data[q.bid]);
@@ -747,34 +768,78 @@ var merge = function (tree, data, metricResolversData) {
                 var keys = Object.keys(resultData[j]);
                 var _loop_2 = function () {
                     if (q.metrics[keys[key]]) {
-                        var replacedPath_1 = replVars(q.metrics[keys[key]], resultData[j]).replace(/:join\./g, '');
+                        var replacedPath_1 = progressive_1.replVars(q.metrics[keys[key]], resultData[j]).replace(/:join\./g, '');
                         var value_1 = resultData[j][keys[key]];
+                        var skip_1 = false;
+                        var skipAll_1 = false;
                         q.directives
                             .filter(function (directiveFunction) {
-                            return directiveFunction.context.path === q.metrics[keys[key]];
+                            if (directiveFunction.context.on === 'metric') {
+                                return directiveFunction.context.path === q.metrics[keys[key]];
+                            }
+                            else {
+                                return q.metrics[keys[key]].startsWith(directiveFunction.context.path);
+                            }
                         })
                             .forEach(function (directiveFunction) {
+                            var path = q.metrics[keys[key]];
+                            var _a = [
+                                replacedPath_1.slice(0, replacedPath_1.lastIndexOf('.')),
+                                path.slice(0, path.lastIndexOf('.')),
+                                replacedPath_1.slice(replacedPath_1.lastIndexOf('.') + 1),
+                            ], globalReplacedPath = _a[0], globalPath = _a[1], pathKey = _a[2];
                             var directiveResult = directiveFunction({
                                 value: value_1,
                                 originValue: resultData[j][keys[key]],
+                                data: resultData[j],
+                                path: path,
+                                key: pathKey,
+                                globalPath: globalPath,
+                                globalReplacedPath: globalReplacedPath,
+                                row: j,
                                 replacedPath: replacedPath_1,
                                 result: result,
                                 fullObject: fullObject,
-                                originFullObject: originFullObject
+                                originFullObject: originFullObject,
+                                queries: quer,
+                                batches: batches
                             });
                             // Important for directives which will not change value
                             if (directiveResult.hasOwnProperty('value')) {
                                 value_1 = directiveResult.value;
                             }
+                            if (directiveResult.skipAll) {
+                                skipAll_1 = directiveResult.skipAll;
+                            }
+                            if (directiveResult.skip) {
+                                skip_1 = directiveResult.skip;
+                            }
+                            if (directiveResult.path) {
+                                replacedPath_1 = directiveResult.path;
+                            }
+                            if (directiveResult.replacers) {
+                                Object.keys(directiveResult.replacers).forEach(function (k) {
+                                    result = progressive_1.progressiveSet(result, replacedPath_1.slice(0, replacedPath_1.lastIndexOf('.')) +
+                                        '.' +
+                                        k, directiveResult.replacers[k], false);
+                                });
+                            }
                         });
+                        if (skipAll_1) {
+                            j++;
+                            return "break";
+                        }
+                        if (skip_1) {
+                            return "continue";
+                        }
                         if (!!mutations) {
                             if (mutations.skip) {
                                 var checks_1 = mutations['skip'];
-                                var skip = Object.keys(checks_1).some(function (k) {
+                                var skip_2 = Object.keys(checks_1).some(function (k) {
                                     //relying on pick by fix that
-                                    return !checks_1[k](progressive_1.progressiveGet(fullObject[mutations.filters.by], replVars(k, resultData[j])));
+                                    return !checks_1[k](progressive_1.progressiveGet(fullObject[mutations.filters.by], progressive_1.replVars(k, resultData[j])));
                                 });
-                                if (skip)
+                                if (skip_2)
                                     return "continue";
                             }
                         }
@@ -799,7 +864,9 @@ var merge = function (tree, data, metricResolversData) {
                     }
                 };
                 for (var key in keys) {
-                    _loop_2();
+                    var state_1 = _loop_2();
+                    if (state_1 === "break")
+                        break;
                 }
             };
             for (var j = 0; j < resultData.length; j++) {
@@ -809,23 +876,23 @@ var merge = function (tree, data, metricResolversData) {
         }, {});
     }
     if (Object.keys(batches).length === 1 && !!batches['___query']) {
-        var merged = getMergedObject(queries, null, null);
+        var merged = getMergedObject(batches, queries, null, null);
         if (Object.values(batches)[0].some(function (q) { var _a; return ((_a = q.directives) === null || _a === void 0 ? void 0 : _a.length) > 0; })) {
-            return getMergedObject(queries, null, merged);
+            return getMergedObject(batches, queries, null, merged);
         }
         else {
             return merged;
         }
     }
     var res = Object.keys(batches).reduce(function (r, k) {
-        r[k.replace('___query', '')] = getMergedObject(batches[k], null, null);
+        r[k.replace('___query', '')] = getMergedObject(batches, batches[k], null, null);
         return r;
     }, {});
     // When
     if (mutations.length > 0) {
         return mutations.reduce(function (r, mutation) {
             if (batches[mutation.name]) {
-                r[mutation.name] = getMergedObject(batches[mutation.name], mutation, r, res);
+                r[mutation.name] = getMergedObject(batches, batches[mutation.name], mutation, r, res);
             }
             return r;
         }, lodash_1.cloneDeep(res));
@@ -834,24 +901,12 @@ var merge = function (tree, data, metricResolversData) {
         return Object.keys(batches)
             .filter(function (k) { return batches[k].some(function (q) { var _a; return ((_a = q.directives) === null || _a === void 0 ? void 0 : _a.length) > 0; }); })
             .reduce(function (r, k) {
-            r[k.replace('___query', '')] = getMergedObject(batches[k], null, r, res);
+            r[k.replace('___query', '')] = getMergedObject(batches, batches[k], null, r, res);
             return r;
         }, lodash_1.cloneDeep(res));
     }
 };
 exports.merge = merge;
-function replVars(str, obj) {
-    var keys = Object.keys(obj);
-    for (var key in keys) {
-        str = str.replace(":" + keys[key], shieldSeparator(obj[keys[key]]));
-    }
-    return str;
-}
-function shieldSeparator(str) {
-    if (typeof str !== 'string')
-        return str;
-    return str.replace(/\./g, '$#@#');
-}
 function getMergeStrings(tree, queries, idx, metricResolversData) {
     var _a, _b, _c, _d, _e, _f;
     if (queries === void 0) { queries = []; }
@@ -930,7 +985,7 @@ function mergeMetric(tree, query, metricResolversData) {
             name = (_b = tree.alias) === null || _b === void 0 ? void 0 : _b.value;
         query.path += (!!query.path ? '.' : '') + "[@" + name + "=:" + name + "]";
         query.metrics["" + name] = "" + query.path + (!!query.path ? '.' : '') + name;
-        directives_1.parseDirective(tree, query, query.metrics["" + name]);
+        return directives_1.parseDirective(tree, query, 'metric', query.metrics["" + name]);
     }
     else {
         if (!!query.mutation)
@@ -940,7 +995,7 @@ function mergeMetric(tree, query, metricResolversData) {
         if ((_e = tree.alias) === null || _e === void 0 ? void 0 : _e.value)
             name = (_f = tree.alias) === null || _f === void 0 ? void 0 : _f.value;
         query.metrics["" + name] = "" + query.path + (!!query.path ? '.' : '') + name;
-        directives_1.parseDirective(tree, query, query.metrics["" + name]);
+        return directives_1.parseDirective(tree, query, 'metric', query.metrics["" + name]);
     }
 }
 function mergeDimension(tree, query) {
@@ -950,11 +1005,11 @@ function mergeDimension(tree, query) {
             query.cutoff = "" + query.path + (!!query.path ? '.' : '') + "[@" + tree.name.value + "=:" + tree.name.value + "]";
         }
         query.path += (!!query.path ? '.' : '') + "[@" + tree.name.value + "=:" + tree.name.value + "]";
-        directives_1.parseDirective(tree, query);
+        return directives_1.parseDirective(tree, query, 'dimension');
     }
     else {
         query.path += (!!query.path ? '.' : '') + ":" + tree.name.value;
-        directives_1.parseDirective(tree, query);
+        return directives_1.parseDirective(tree, query, 'dimension');
     }
 }
 var comparisonFunction = {

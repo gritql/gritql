@@ -1,6 +1,11 @@
 import { DocumentNode, DirectiveNode } from 'graphql'
 import { argumentsToObject } from '../arguments'
-import { iterateProgressive } from '../progressive'
+import {
+  iterateProgressive,
+  progressiveGet,
+  progressiveSet,
+  replVars,
+} from '../progressive'
 
 export interface PreExecutedContext {
   tree: DirectiveNode
@@ -17,6 +22,43 @@ export interface PostExecutedContext {
   query: any
   data: { [key: string]: any }
   type: string
+  on: 'dimension' | 'metric'
+  name: string
+}
+
+const resolvers = {
+  in: (a: any, b: any[]) => {
+    return b.includes(a)
+  },
+  eq: (a: any, b: any) => {
+    return a == b
+  },
+  gte: (a: any, b: any) => {
+    return a >= b
+  },
+  gt: (a: any, b: any) => {
+    return a > b
+  },
+  lt: (a: any, b: any) => {
+    return a < b
+  },
+  lte: (a: any, b: any) => {
+    return a <= b
+  },
+}
+
+function findResolvers(keys, value, args) {
+  return keys.some((k) => {
+    const resolver = resolvers[k] || resolvers.eq
+
+    return !resolver(value, args[k])
+  })
+}
+
+function filterPropertyKey(keys, key) {
+  return keys
+    .filter((k) => k.startsWith(key + '_') || k === key)
+    .map((k) => k.split('_').slice(-1)[0])
 }
 
 export const preExecutedDirectives = {
@@ -31,11 +73,46 @@ export const postExecutedDirectives = {
   //
   // },
 
-  // omit: (context: PostExecutedContext) => {},
+  omit: (context: PostExecutedContext) => {
+    const transformer = () => {
+      return {
+        skip: true,
+      }
+    }
+
+    transformer.context = context
+
+    return transformer
+  },
 
   // Argumnets
-  // to: query name
-  diff: (context: PostExecutedContext) => {},
+  // by: query name
+  diff: (context: PostExecutedContext) => {
+    if (!context.tree.arguments) {
+      throw 'Diff directive requires arguments'
+    }
+
+    const args = argumentsToObject(context.tree.arguments)
+
+    if (!args.by) {
+      throw "Diff directive requires 'by' argument"
+    }
+
+    const transformer = ({ replacedPath, originFullObject, value }) => {
+      if (originFullObject) {
+        return {
+          value:
+            value / progressiveGet(originFullObject[args.by], replacedPath) - 1,
+        }
+      } else {
+        return { value }
+      }
+    }
+
+    transformer.context = context
+
+    return transformer
+  },
 
   // Divide value by max value
   // Arguments
@@ -65,23 +142,25 @@ export const postExecutedDirectives = {
       context.data.group = args.group
     }
 
-    const transformer = ({ value, originFullObject, queries }) => {
+    const transformer = ({ value, originFullObject, batches }) => {
       function calculateMax(val: number) {
         context.data.max = Math.max(val, context.data.max || 0)
       }
 
       if (args.group) {
         if (!context.data.groupingIsDone) {
-          queries.forEach((q) => {
-            const directives = q.directives.filter(
-              (d) =>
-                d.context.group === context.data.group &&
-                d.context.type === 'indexed',
-            )
+          Object.keys(batches).forEach((k) => {
+            batches[k].forEach((q) => {
+              const directives = q.directives.filter(
+                (d) =>
+                  d.context.group === context.data.group &&
+                  d.context.type === 'indexed',
+              )
 
-            if (directives.length > 0) {
-              context.data.members.add(q.name)
-            }
+              if (directives.length > 0) {
+                context.data.members.add(q.name)
+              }
+            })
           })
 
           context.data.groupingIsDone = true
@@ -111,22 +190,198 @@ export const postExecutedDirectives = {
   },
 
   // Arguments
+  // For dimensions
   // [metricName: name]: any
   // [[`${metricName}_gt`]]: any
   // [[`${metricName}_gte`]]: any
   // [[`${metricName}_lt`]]: any
   // [[`${metricName}_lte`]]: any
   // [[`${metricName}_in`]]: any
-  // filter: (context: PostExecutedContext) => {
-  //
-  // }
+  // For metrics
+  // in: any
+  // lte: any
+  // lt: any
+  // gte: any
+  // eq: any
+  // gt: any
+  filter: (context: PostExecutedContext) => {
+    if (!context.tree.arguments) {
+      throw 'Filter directive requires arguments'
+    }
 
-  // groupOn: (context: PostExecutedContext) => {}
+    const args = argumentsToObject(context.tree.arguments)
+
+    context.data.members = new Set()
+
+    const transformer = ({
+      value,
+      globalReplacedPath,
+      originFullObject,
+      row,
+      batches,
+    }) => {
+      if (originFullObject) {
+        const argsKeys = Object.keys(args)
+
+        if (context.on === 'metric') {
+          return {
+            skip: findResolvers(argsKeys, value, args),
+          }
+        } else {
+          if (context.data.members.has(row)) {
+            return {
+              skip: true,
+              skipAll: true,
+            }
+          }
+
+          const globalObj = progressiveGet(
+            Object.keys(batches).length > 1
+              ? originFullObject[context.query.name]
+              : originFullObject,
+            globalReplacedPath,
+          )
+
+          const skip = Object.keys(globalObj).some((key) => {
+            const keys = filterPropertyKey(argsKeys, key)
+
+            return keys.length > 0
+              ? findResolvers(keys, globalObj[key], args)
+              : false
+          })
+
+          if (skip) {
+            context.data.members.add(row)
+          }
+
+          return {
+            skip,
+            skipAll: skip,
+          }
+        }
+      } else {
+        return {}
+      }
+    }
+
+    transformer.context = context
+
+    return transformer
+  },
+
+  // Arguments
+  // [metricName: name]: any
+  // [[`${metricName}_gt`]]: any
+  // [[`${metricName}_gte`]]: any
+  // [[`${metricName}_lt`]]: any
+  // [[`${metricName}_lte`]]: any
+  // [[`${metricName}_in`]]: any
+  // replacers: Replacers which need to be applyied when grouped
+  // current behavior of grouping:
+  // * determine what we can group
+  // * sum numbers && use last string
+  // * replace via replacers
+  groupOn: (context: PostExecutedContext) => {
+    if (!context.tree.arguments) {
+      throw 'GroupOn directive requires arguments'
+    }
+
+    const args = argumentsToObject(context.tree.arguments)
+
+    context.data.members = new Set()
+
+    const argsKeys = Object.keys(args).filter((k) => k !== 'replacers')
+
+    if (argsKeys.length === 0) {
+      throw 'GroupOn directive requires at least one grouping condition'
+    }
+
+    const transfomer = ({
+      row,
+      path,
+      data,
+      value,
+      fullObject,
+      key,
+      globalReplacedPath,
+      originFullObject,
+      batches,
+    }) => {
+      if (!originFullObject) {
+        return {}
+      }
+
+      const currentData = progressiveGet(
+        Object.keys(batches).length > 1
+          ? originFullObject[context.query.name]
+          : originFullObject,
+        globalReplacedPath,
+      )
+
+      const isNotFirstTime = context.data.members.has(row)
+
+      const matched =
+        isNotFirstTime ||
+        Object.keys(currentData).some((key) => {
+          const keys = filterPropertyKey(argsKeys, key)
+
+          return keys.length > 0
+            ? !findResolvers(keys, currentData[key], args)
+            : false
+        })
+
+      if (matched) {
+        context.data.members.add(row)
+
+        const newPath = replVars(path, { ...data, ...args.replacers }).replace(
+          /:join\./g,
+          '',
+        )
+
+        const currentGroupData = progressiveGet(
+          Object.keys(batches).length > 1
+            ? fullObject[context.query.name]
+            : fullObject,
+          newPath.replace(new RegExp(`\\.${key}$`), ''),
+        )
+
+        const newValue =
+          typeof currentGroupData?.[key] === 'number'
+            ? currentGroupData?.[key] + (currentData?.[key] || 0) + value
+            : value
+
+        return {
+          replacers: !isNotFirstTime
+            ? {
+                ...currentData,
+                ...currentGroupData,
+                [key]: newValue,
+                ...args.replacers,
+              }
+            : null,
+          path: newPath,
+          value: newValue,
+          skip: !isNotFirstTime,
+        }
+      } else {
+        return {}
+      }
+    }
+
+    transfomer.context = context
+
+    return transfomer
+  },
 
   // groupBy: (context: PostExecutedContext) => {}
 }
 
-export function parseDirective(tree: DocumentNode, query, path?: string) {
+export function parseDirective(
+  tree: DocumentNode,
+  query,
+  on: string,
+  path?: string,
+) {
   if (!query.directives) query.directives = []
 
   if (tree.directives) {
@@ -140,6 +395,8 @@ export function parseDirective(tree: DocumentNode, query, path?: string) {
             query,
             data: {},
             type: directive.name.value,
+            on,
+            name: tree.alias?.value || tree.name?.value,
           }),
         )
       }
