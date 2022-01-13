@@ -136,6 +136,109 @@ Object {
 }
 `;
 
+exports[`SQL gql directives @diff directive 1`] = `
+Array [
+  "select \\"channels\\", sum(\\"sessions\\") as \\"value\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Adult' and \\"ecom_benchmarking\\".\\"country\\" = 'DE' group by \\"channels\\"",
+  "select \\"channels\\", sum(\\"sessions\\") as \\"value\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Adult' and \\"ecom_benchmarking\\".\\"country\\" = 'DE' group by \\"channels\\"",
+]
+`;
+
+exports[`SQL gql directives @diff directive 2`] = `
+Object {
+  "prevSeries": Object {
+    "Organic": Object {
+      "value": 0.6666666666666667,
+    },
+    "Social": Object {
+      "value": 1,
+    },
+  },
+  "series": Object {
+    "Organic": Object {
+      "value": -0.4,
+    },
+    "Social": Object {
+      "value": -0.5,
+    },
+  },
+}
+`;
+
+exports[`SQL gql directives @filter directive 1`] = `
+Array [
+  "select \\"channels\\", sum(\\"sessions\\") as \\"value\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Adult' and \\"ecom_benchmarking\\".\\"country\\" = 'DE' group by \\"channels\\"",
+  "select \\"channels\\", sum(\\"sessions\\") as \\"value\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Adult' and \\"ecom_benchmarking\\".\\"country\\" = 'DE' group by \\"channels\\"",
+]
+`;
+
+exports[`SQL gql directives @filter directive 2`] = `
+Object {
+  "prevSeries": Object {
+    "Social": Object {
+      "value": 2,
+    },
+  },
+  "series": Object {},
+}
+`;
+
+exports[`SQL gql directives @filter directive on metrics 1`] = `
+Array [
+  "select \\"channels\\", sum(\\"sessions\\") as \\"value\\", \\"rank\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Adult' and \\"ecom_benchmarking\\".\\"country\\" = 'DE' group by \\"channels\\"",
+  "select \\"channels\\", sum(\\"sessions\\") as \\"value\\", \\"rank\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Adult' and \\"ecom_benchmarking\\".\\"country\\" = 'DE' group by \\"channels\\"",
+]
+`;
+
+exports[`SQL gql directives @filter directive on metrics 2`] = `
+Object {
+  "prevSeries": Object {
+    "Organic": Object {
+      "rank": 2,
+      "value": 5,
+    },
+    "Social": Object {
+      "rank": 1,
+    },
+  },
+  "series": Object {
+    "Organic": Object {
+      "rank": 2,
+      "value": 3,
+    },
+    "Social": Object {
+      "rank": 1,
+    },
+  },
+}
+`;
+
+exports[`SQL gql directives @groupOn directive 1`] = `
+Array [
+  "select \\"channels\\", sum(\\"sessions\\") as \\"value\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Adult' and \\"ecom_benchmarking\\".\\"country\\" = 'DE' group by \\"channels\\"",
+  "select \\"channels\\", sum(\\"sessions\\") as \\"value\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Adult' and \\"ecom_benchmarking\\".\\"country\\" = 'DE' group by \\"channels\\"",
+]
+`;
+
+exports[`SQL gql directives @groupOn directive 2`] = `
+Object {
+  "prevSeries": Object {
+    "Organic": Object {
+      "value": 5,
+    },
+    "Other": Object {
+      "channels": "Other",
+      "value": 2,
+    },
+  },
+  "series": Object {
+    "Other": Object {
+      "channels": "Other",
+      "value": 4,
+    },
+  },
+}
+`;
+
 exports[`SQL gql directives @indexed directive 1`] = `
 Array [
   "select \\"channels\\", sum(\\"sessions\\") as \\"value\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Adult' and \\"ecom_benchmarking\\".\\"country\\" = 'DE' group by \\"channels\\"",
@@ -159,6 +262,62 @@ Object {
     },
     "Social": Object {
       "value": 0.2,
+    },
+  },
+}
+`;
+
+exports[`SQL gql directives @indexed directive groups 1`] = `
+Array [
+  "select \\"channels\\", sum(\\"sessions\\") as \\"value\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Adult' and \\"ecom_benchmarking\\".\\"country\\" = 'DE' group by \\"channels\\"",
+  "select \\"channels\\", sum(\\"sessions\\") as \\"value\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Adult' and \\"ecom_benchmarking\\".\\"country\\" = 'DE' group by \\"channels\\"",
+]
+`;
+
+exports[`SQL gql directives @indexed directive groups 2`] = `
+Object {
+  "prevSeries": Object {
+    "Organic": Object {
+      "value": 1,
+    },
+    "Social": Object {
+      "value": 0.4,
+    },
+  },
+  "series": Object {
+    "Organic": Object {
+      "value": 0.6,
+    },
+    "Social": Object {
+      "value": 0.2,
+    },
+  },
+}
+`;
+
+exports[`SQL gql directives @omit directive 1`] = `
+Array [
+  "select \\"channels\\", sum(\\"sessions\\") as \\"value\\", \\"rank\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Adult' and \\"ecom_benchmarking\\".\\"country\\" = 'DE' group by \\"channels\\"",
+  "select \\"channels\\", sum(\\"sessions\\") as \\"value\\", \\"rank\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Adult' and \\"ecom_benchmarking\\".\\"country\\" = 'DE' group by \\"channels\\"",
+]
+`;
+
+exports[`SQL gql directives @omit directive 2`] = `
+Object {
+  "prevSeries": Object {
+    "Organic": Object {
+      "value": 5,
+    },
+    "Social": Object {
+      "value": 2,
+    },
+  },
+  "series": Object {
+    "Organic": Object {
+      "value": 3,
+    },
+    "Social": Object {
+      "value": 1,
     },
   },
 }
@@ -223,6 +382,12 @@ Array [
 exports[`SQL gqlBuilder request tuning all together 1`] = `
 Array [
   "select \\"channels\\", sum(\\"sessions\\")/NULLIF(sum(sum(\\"sessions\\")) over (), 0)::float4 as \\"share\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Travel_and_Tourism' and \\"ecom_benchmarking\\".\\"country\\" = 'US' and \\"ecom_benchmarking\\".\\"date\\" > '2020-10-13' and \\"ecom_benchmarking\\".\\"date\\" < '2021-04-13' group by \\"channels\\" order by \\"share\\" desc limit 5 offset 3",
+]
+`;
+
+exports[`SQL gqlBuilder request tuning groupByEach 1`] = `
+Array [
+  "select (CAST(CEIL(\\"price\\")/50 AS INT)*50 || '-' || CAST(CEIL(\\"price\\")/50 AS INT)*50+49) as \\"price\\", sum(\\"sessions\\")/NULLIF(sum(sum(\\"sessions\\")) over (), 0)::float4 as \\"share\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Travel_and_Tourism' and \\"ecom_benchmarking\\".\\"country\\" = 'US' and \\"ecom_benchmarking\\".\\"date\\" > '2020-10-13' and \\"ecom_benchmarking\\".\\"date\\" < '2021-04-13' group by CAST(CEIL(\\"price\\")/50 AS INT) order by \\"share\\" asc",
 ]
 `;
 

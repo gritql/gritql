@@ -5,7 +5,7 @@ const knexConstructor = require('knex')
 import { argumentsToObject } from './arguments'
 import { parseDirective } from './directives'
 import { gaQueryBuilder, gaMetricResolvers } from './gql-ga-slicer'
-import { progressiveGet, progressiveSet } from './progressive'
+import { progressiveGet, progressiveSet, replVars } from './progressive'
 import { cloneDeep } from 'lodash'
 
 type TagObject = {
@@ -426,7 +426,32 @@ function parseDimension(tree, query, knex) {
   query.groupIndex++
   const args = transformLinkedArgs(argumentsToObject(tree.arguments), query)
 
-  if (args?.groupBy) {
+  if (args?.groupByEach) {
+    const amount = parseFloat(args.groupByEach)
+
+    query.promise = query.promise
+      .select(
+        knex.raw(
+          `(CAST(CEIL(??)/?? AS INT)*?? || '-' || CAST(CEIL(??)/?? AS INT)*??+??) as ??`,
+          [
+            buildFullName(args, query, tree.name.value, false),
+            amount,
+            amount,
+            buildFullName(args, query, tree.name.value, false),
+            amount,
+            amount,
+            amount - 1,
+            tree.name.value,
+          ],
+        ),
+      )
+      .groupBy(
+        knex.raw('CAST(CEIL(??)/?? AS INT)', [
+          buildFullName(args, query, tree.name.value, false),
+          amount,
+        ]),
+      )
+  } else if (args?.groupBy) {
     const pre_trunc = withFilters(query.filters)(
       knex
         .select([
@@ -600,7 +625,7 @@ const metricResolvers = {
 
     const field = buildFullName(args, query, args?.a || tree.alias.value, false)
 
-    query.promise = query.promise.select(field)
+    query.promise = query.promise.select(`${field} as ${tree.alias.value}`)
     query.promise = query.promise.groupBy(field)
 
     query.metrics.push(tree.alias.value)
@@ -614,7 +639,7 @@ const metricResolvers = {
 
     const field = buildFullName(args, query, args?.a || tree.alias.value, false)
 
-    query.promise = query.promise.select(field)
+    query.promise = query.promise.select(`${field} as ${tree.alias.value}`)
 
     query.metrics.push(tree.alias.value)
   },
@@ -840,7 +865,13 @@ export const merge = (
       return r
     }, {})
 
-  function getMergedObject(quer, mutations, fullObject, originFullObject?) {
+  function getMergedObject(
+    batches,
+    quer,
+    mutations,
+    fullObject,
+    originFullObject?,
+  ) {
     if (!!quer[0].skipMerge) {
       return quer.reduce((result, q) => {
         result.push(data[q.bid])
@@ -856,35 +887,91 @@ export const merge = (
       const resultData = data[q.bid]
       for (var j = 0; j < resultData.length; j++) {
         const keys = Object.keys(resultData[j])
-
         for (var key in keys) {
           if (q.metrics[keys[key]]) {
-            const replacedPath = replVars(
+            let replacedPath = replVars(
               q.metrics[keys[key]],
               resultData[j],
             ).replace(/:join\./g, '')
 
             let value = resultData[j][keys[key]]
+            let skip = false
+            let skipAll = false
 
             q.directives
               .filter((directiveFunction) => {
-                return directiveFunction.context.path === q.metrics[keys[key]]
+                if (directiveFunction.context.on === 'metric') {
+                  return directiveFunction.context.path === q.metrics[keys[key]]
+                } else {
+                  return q.metrics[keys[key]].startsWith(
+                    directiveFunction.context.path,
+                  )
+                }
               })
               .forEach((directiveFunction) => {
+                const path = q.metrics[keys[key]]
+                const [globalReplacedPath, globalPath, pathKey] = [
+                  replacedPath.slice(0, replacedPath.lastIndexOf('.')),
+                  path.slice(0, path.lastIndexOf('.')),
+                  replacedPath.slice(replacedPath.lastIndexOf('.') + 1),
+                ]
+
                 const directiveResult = directiveFunction({
                   value,
                   originValue: resultData[j][keys[key]],
+                  data: resultData[j],
+                  path,
+                  key: pathKey,
+                  globalPath,
+                  globalReplacedPath,
+                  row: j,
                   replacedPath,
                   result,
                   fullObject,
                   originFullObject,
+                  queries: quer,
+                  batches,
                 })
 
                 // Important for directives which will not change value
                 if (directiveResult.hasOwnProperty('value')) {
                   value = directiveResult.value
                 }
+
+                if (directiveResult.skipAll) {
+                  skipAll = directiveResult.skipAll
+                }
+
+                if (directiveResult.skip) {
+                  skip = directiveResult.skip
+                }
+
+                if (directiveResult.path) {
+                  replacedPath = directiveResult.path
+                }
+
+                if (directiveResult.replacers) {
+                  Object.keys(directiveResult.replacers).forEach((k) => {
+                    result = progressiveSet(
+                      result,
+                      replacedPath.slice(0, replacedPath.lastIndexOf('.')) +
+                        '.' +
+                        k,
+                      directiveResult.replacers[k],
+                      false,
+                    )
+                  })
+                }
               })
+
+            if (skipAll) {
+              j++
+              break
+            }
+
+            if (skip) {
+              continue
+            }
 
             if (!!mutations) {
               if (mutations.skip) {
@@ -936,17 +1023,22 @@ export const merge = (
   }
 
   if (Object.keys(batches).length === 1 && !!batches['___query']) {
-    const merged = getMergedObject(queries, null, null)
+    const merged = getMergedObject(batches, queries, null, null)
 
     if (Object.values<any>(batches)[0].some((q) => q.directives?.length > 0)) {
-      return getMergedObject(queries, null, merged)
+      return getMergedObject(batches, queries, null, merged)
     } else {
       return merged
     }
   }
 
   const res = Object.keys(batches).reduce((r, k) => {
-    r[k.replace('___query', '')] = getMergedObject(batches[k], null, null)
+    r[k.replace('___query', '')] = getMergedObject(
+      batches,
+      batches[k],
+      null,
+      null,
+    )
     return r
   }, {})
 
@@ -955,6 +1047,7 @@ export const merge = (
     return mutations.reduce((r, mutation) => {
       if (batches[mutation.name]) {
         r[mutation.name] = getMergedObject(
+          batches,
           batches[mutation.name],
           mutation,
           r,
@@ -967,24 +1060,17 @@ export const merge = (
     return Object.keys(batches)
       .filter((k) => batches[k].some((q) => q.directives?.length > 0))
       .reduce((r, k) => {
-        r[k.replace('___query', '')] = getMergedObject(batches[k], null, r, res)
+        r[k.replace('___query', '')] = getMergedObject(
+          batches,
+          batches[k],
+          null,
+          r,
+          res,
+        )
 
         return r
       }, cloneDeep(res))
   }
-}
-
-function replVars(str, obj) {
-  const keys = Object.keys(obj)
-  for (var key in keys) {
-    str = str.replace(`:${keys[key]}`, shieldSeparator(obj[keys[key]]))
-  }
-  return str
-}
-
-function shieldSeparator(str) {
-  if (typeof str !== 'string') return str
-  return str.replace(/\./g, '$#@#')
 }
 
 function getMergeStrings(
@@ -1082,7 +1168,7 @@ function mergeMetric(tree, query, metricResolversData) {
     if (tree.alias?.value) name = tree.alias?.value
     query.path += `${!!query.path ? '.' : ''}[@${name}=:${name}]`
     query.metrics[`${name}`] = `${query.path}${!!query.path ? '.' : ''}${name}`
-    parseDirective(tree, query, query.metrics[`${name}`])
+    return parseDirective(tree, query, 'metric', query.metrics[`${name}`])
   } else {
     if (!!query.mutation)
       return metricResolversData[query.mutationFunction](tree, query)
@@ -1090,7 +1176,7 @@ function mergeMetric(tree, query, metricResolversData) {
       return metricResolversData[tree.name?.value](tree, query)
     if (tree.alias?.value) name = tree.alias?.value
     query.metrics[`${name}`] = `${query.path}${!!query.path ? '.' : ''}${name}`
-    parseDirective(tree, query, query.metrics[`${name}`])
+    return parseDirective(tree, query, 'metric', query.metrics[`${name}`])
   }
 }
 
@@ -1102,12 +1188,13 @@ function mergeDimension(tree, query) {
       query.cutoff = `${query.path}${!!query.path ? '.' : ''}[@${tree.name.value
         }=:${tree.name.value}]`
     }
-    query.path += `${!!query.path ? '.' : ''}[@${tree.name.value}=:${tree.name.value
-      }]`
-    parseDirective(tree, query)
+    query.path += `${!!query.path ? '.' : ''}[@${tree.name.value}=:${
+      tree.name.value
+    }]`
+    return parseDirective(tree, query, 'dimension')
   } else {
     query.path += `${!!query.path ? '.' : ''}:${tree.name.value}`
-    parseDirective(tree, query)
+    return parseDirective(tree, query, 'dimension')
   }
 }
 const comparisonFunction = {
