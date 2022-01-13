@@ -1036,7 +1036,7 @@ describe('SQL', () => {
       }
       prevSeries: fetch(category:"Adult", country:"DE") {
             channels {
-                value: sum(a: sessions) @indexed(group: fisrt)
+                value: sum(a: sessions) @indexed(group: first)
             }
         
        }
