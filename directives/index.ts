@@ -157,7 +157,7 @@ export const postExecutedDirectives = {
             batches[k].forEach((q) => {
               const directives = q.directives.filter(
                 (d) =>
-                  d.context.group === context.data.group &&
+                  d.context.data.group === context.data.group &&
                   d.context.type === 'indexed',
               )
 

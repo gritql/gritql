@@ -123,7 +123,7 @@ exports.postExecutedDirectives = {
                     Object.keys(batches).forEach(function (k) {
                         batches[k].forEach(function (q) {
                             var directives = q.directives.filter(function (d) {
-                                return d.context.group === context.data.group &&
+                                return d.context.data.group === context.data.group &&
                                     d.context.type === 'indexed';
                             });
                             if (directives.length > 0) {
