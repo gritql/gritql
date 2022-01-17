@@ -222,6 +222,8 @@ function join(type) {
         else {
             filters_1.applyRawJoin(query, knex, type, args.table, args.on);
         }
+        query.joins = query.joins || [];
+        query.joins.push(args.table);
     };
 }
 var gqlToDb = function (opts) {
@@ -1175,7 +1177,7 @@ function withFilters(filters) {
                 ? filter.filter(function (a) { return a !== 'in'; })
                 : filter[1] === 'search'
                     ? [
-                        knexNext.raw("to_tsvector('simple', ??) @@ plainto_tsquery('simple', ?)::text || ':*')::tsquery)", [filter[0], filter[2]]),
+                        knexNext.raw("to_tsvector('simple', ??) @@ (plainto_tsquery('simple', ?)::text || ':*')::tsquery)", [filter[0], filter[2]]),
                     ]
                     : filter);
         }, knexPipe);

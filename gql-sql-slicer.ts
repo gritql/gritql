@@ -247,6 +247,9 @@ function join(type: JoinType) {
     } else {
       applyRawJoin(query, knex, type, args.table, args.on)
     }
+
+    query.joins = query.joins || []
+    query.joins.push(args.table)
   }
 }
 
@@ -1437,7 +1440,7 @@ function withFilters(filters) {
           : filter[1] === 'search'
           ? [
               knexNext.raw(
-                `to_tsvector('simple', ??) @@ plainto_tsquery('simple', ?)::text || ':*')::tsquery)`,
+                `to_tsvector('simple', ??) @@ (plainto_tsquery('simple', ?)::text || ':*')::tsquery)`,
                 [filter[0], filter[2]],
               ),
             ]
