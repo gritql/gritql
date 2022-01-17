@@ -12,6 +12,7 @@
     "build": "tsc gql-sql-slicer.ts"
   },
   "dependencies": {
+    "@types/lodash": "^4.14.178",
     "graphql": "^14.1.1",
     "graphql-tag": "^2.10.1",
     "knex": "^0.95.1",

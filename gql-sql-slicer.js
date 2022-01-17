@@ -57,6 +57,7 @@ var directives_1 = require("./directives");
 var gql_ga_slicer_1 = require("./gql-ga-slicer");
 var progressive_1 = require("./progressive");
 var lodash_1 = require("lodash");
+var filters_1 = require("./filters");
 var JoinType;
 (function (JoinType) {
     JoinType["DEFAULT"] = "join";
@@ -68,10 +69,34 @@ var JoinType;
     JoinType["RIGHT_OUTER"] = "rightOuterJoin";
     JoinType["FULL_OUTER"] = "fullOuterJoin";
 })(JoinType || (JoinType = {}));
+function changeQueryTable(query, knex, table, dropJoins) {
+    if (table !== query.table) {
+        query.table = table;
+        query.promise.from(query.table);
+        if (dropJoins) {
+            query.joins = [];
+        }
+        query.search = {};
+        query.preparedAdvancedFilters = filters_1.parseAdvancedFilters(query, knex, query.advancedFilters, true);
+    }
+    return query;
+}
 function transformFilters(args, query, knex) {
     return args.reduce(function (res, arg) {
         if (arg.name.value === 'from') {
             return res;
+        }
+        // We need to ensure that we are not in join context
+        if (!!knex) {
+            if (arg.name.value === 'table') {
+                changeQueryTable(query, knex, arg.value.value, false);
+                return res;
+            }
+            if (arg.name.value === 'filters') {
+                query.advancedFilters = arguments_1.argumentsToObject(arg.value.fields);
+                query.preparedAdvancedFilters = filters_1.parseAdvancedFilters(query, knex, query.advancedFilters, true);
+                return res;
+            }
         }
         if (Object.values(JoinType).includes(arg.name.value)) {
             if (query && knex) {
@@ -82,10 +107,27 @@ function transformFilters(args, query, knex) {
                 throw "Join can't be called inside of join";
             }
         }
+        if (arg.name.value === 'search') {
+            var elements_1 = arguments_1.argumentsToObject(arg.value.value);
+            return res.concat([
+                Object.keys(elements_1).reduce(function (accum, k) {
+                    var _a;
+                    var _b, _c;
+                    var key = filters_1.buildFullName(args, query, k, false);
+                    var v = elements_1[k];
+                    if ((_b = query.search) === null || _b === void 0 ? void 0 : _b[key]) {
+                        throw "Search for " + key + " already defined";
+                    }
+                    query.search = __assign(__assign({}, query.search), (_a = {}, _a[key] = ((_c = query.search) === null || _c === void 0 ? void 0 : _c[key]) || v, _a));
+                    accum.push([key, 'search', v]);
+                    return accum;
+                }, []),
+            ]);
+        }
         if (arg.name.value.endsWith('_gt'))
             return res.concat([
                 [
-                    buildFullName(args, query, arg.name.value.replace('_gt', ''), false),
+                    filters_1.buildFullName(args, query, arg.name.value.replace('_gt', ''), false),
                     '>',
                     arg.value.value,
                 ],
@@ -93,7 +135,7 @@ function transformFilters(args, query, knex) {
         if (arg.name.value.endsWith('_gte'))
             return res.concat([
                 [
-                    buildFullName(args, query, arg.name.value.replace('_gte', ''), false),
+                    filters_1.buildFullName(args, query, arg.name.value.replace('_gte', ''), false),
                     '>=',
                     arg.value.value,
                 ],
@@ -101,7 +143,7 @@ function transformFilters(args, query, knex) {
         if (arg.name.value.endsWith('_lt'))
             return res.concat([
                 [
-                    buildFullName(args, query, arg.name.value.replace('_lt', ''), false),
+                    filters_1.buildFullName(args, query, arg.name.value.replace('_lt', ''), false),
                     '<',
                     arg.value.value,
                 ],
@@ -109,7 +151,7 @@ function transformFilters(args, query, knex) {
         if (arg.name.value.endsWith('_lte'))
             return res.concat([
                 [
-                    buildFullName(args, query, arg.name.value.replace('_lte', ''), false),
+                    filters_1.buildFullName(args, query, arg.name.value.replace('_lte', ''), false),
                     '<=',
                     arg.value.value,
                 ],
@@ -117,7 +159,7 @@ function transformFilters(args, query, knex) {
         if (arg.name.value.endsWith('_like'))
             return res.concat([
                 [
-                    buildFullName(args, query, arg.name.value.replace('_like', ''), false),
+                    filters_1.buildFullName(args, query, arg.name.value.replace('_like', ''), false),
                     'LIKE',
                     arg.value.value,
                 ],
@@ -125,26 +167,15 @@ function transformFilters(args, query, knex) {
         if (arg.name.value.endsWith('_in'))
             return res.concat([
                 [
-                    buildFullName(args, query, arg.name.value.replace('_in', ''), false),
+                    filters_1.buildFullName(args, query, arg.name.value.replace('_in', ''), false),
                     'in',
                     arg.value.value.split('|'),
                 ],
             ]);
         return res.concat([
-            [buildFullName(args, query, arg.name.value, false), '=', arg.value.value],
+            [filters_1.buildFullName(args, query, arg.name.value, false), '=', arg.value.value],
         ]);
     }, []);
-}
-function buildFullName(args, query, field, evaluateOnlyWithLinkSymbol) {
-    if (evaluateOnlyWithLinkSymbol === void 0) { evaluateOnlyWithLinkSymbol = true; }
-    args = Array.isArray(args) ? arguments_1.argumentsToObject(args) : args;
-    var table = args.from || query.table;
-    if (!field.startsWith('@') && (evaluateOnlyWithLinkSymbol || !args.from)) {
-        return field;
-    }
-    else {
-        return table + "." + field.replace(/^@/, '');
-    }
 }
 function join(type) {
     return function (tree, query, knex) {
@@ -162,30 +193,35 @@ function join(type) {
             'by_like',
             'by_in',
         ].filter(function (key) { return args[key] !== undefined; });
-        if (!byKeys.length)
-            throw "Join function requires 'by' as argument";
-        var filters = transformFilters((tree.arguments || tree.fields)
-            .filter(function (_a) {
-            var value = _a.name.value;
-            return byKeys.includes(value);
-        })
-            .concat({ name: { value: 'from' }, value: { value: args.table } }), query);
-        query.promise[type](args.table, function () {
-            var _this = this;
-            //this.on(function () {
-            filters.forEach(function (_a, index) {
-                var _ = _a[0], operator = _a[1], value = _a[2];
-                var onFunc = index === 0 ? _this.on : _this.andOn;
-                var _b = value.split(':'), leftSide = _b[0], rightSide = _b[1];
-                if (!leftSide || !rightSide) {
-                    throw "'by' argument inside Join function must include two fields (divided with :)";
-                }
-                leftSide = buildFullName({}, query, leftSide);
-                rightSide = buildFullName({ from: args.table }, query, rightSide);
-                onFunc.call(_this, leftSide, operator, rightSide);
+        if (!byKeys.length && (!args.on || Object.keys(args.on).length === 0))
+            throw "Join function requires 'by' or 'on' as argument";
+        if (byKeys.length) {
+            var filters_2 = transformFilters((tree.arguments || tree.fields)
+                .filter(function (_a) {
+                var value = _a.name.value;
+                return byKeys.includes(value);
+            })
+                .concat({ name: { value: 'from' }, value: { value: args.table } }), query);
+            query.promise[type](args.table, function () {
+                var _this = this;
+                //this.on(function () {
+                filters_2.forEach(function (_a, index) {
+                    var _ = _a[0], operator = _a[1], value = _a[2];
+                    var onFunc = index === 0 ? _this.on : _this.andOn;
+                    var _b = value.split(':'), leftSide = _b[0], rightSide = _b[1];
+                    if (!leftSide || !rightSide) {
+                        throw "'by' argument inside Join function must include two fields (divided with :)";
+                    }
+                    leftSide = filters_1.buildFullName({}, query, leftSide);
+                    rightSide = filters_1.buildFullName({ from: args.table }, query, rightSide);
+                    onFunc.call(_this, leftSide, operator, rightSide);
+                });
+                //})
             });
-            //})
-        });
+        }
+        else {
+            filters_1.applyRawJoin(query, knex, type, args.table, args.on);
+        }
     };
 }
 var gqlToDb = function (opts) {
@@ -217,15 +253,21 @@ var gqlToDb = function (opts) {
                     queries = queryBuilder(null, definitions_1, undefined, undefined, knex, __assign(__assign({}, metricResolvers), customMetricResolvers))
                         .filter(function (q) { return !q.skip; })
                         .map(function (q) {
+                        q.promise = filters_1.applyFilters(q, q.promise, knex);
+                        return q;
+                    })
+                        .map(function (q) {
                         if (q.postQueryProcessing)
                             q.postQueryProcessing(definitions_1, q, knex);
                         if (q.generatePromise)
                             q.promise = q.generatePromise(q);
                         return q;
                     });
-                    sql = queries.map(function (q) { return q.promise.toString(); });
+                    sql = queries
+                        .filter(function (q) { return !q.isWith; })
+                        .map(function (q) { return q.promise.toString(); });
                     return [4 /*yield*/, beforeDbHandler({
-                            queries: queries,
+                            queries: queries.filter(function (q) { return !q.isWith; }),
                             sql: sql,
                             definitions: definitions_1
                         })];
@@ -268,7 +310,7 @@ var gqlToDb = function (opts) {
 };
 exports.gqlToDb = gqlToDb;
 function queryBuilder(table, tree, queries, idx, knex, metricResolvers) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p;
     if (queries === void 0) { queries = []; }
     if (idx === void 0) { idx = undefined; }
     //console.log(queries.map(q => q.promise._statements))
@@ -298,29 +340,46 @@ function queryBuilder(table, tree, queries, idx, knex, metricResolvers) {
         }, queries);
     }
     if (!query.filters &&
-        (tree.name.value === 'fetch' || tree.name.value === 'fetchPlain')) {
+        (tree.name.value === 'fetch' ||
+            tree.name.value === 'fetchPlain' ||
+            tree.name.value === 'with')) {
         query.name = ((_j = tree.alias) === null || _j === void 0 ? void 0 : _j.value) || null;
         query.table = table;
         query.promise = knex.select().from(table);
+        query.joins = [];
         query.filters = parseFilters(tree, query, knex);
-        //if(filters)
         query.promise = withFilters(query.filters)(query.promise);
+        if (tree.name.value === 'with') {
+            query.isWith = true;
+        }
+        if (query.table === undefined) {
+            throw 'Table name must be specified trought table argument or query name';
+        }
+        if (!query.isWith) {
+            queries
+                .filter(function (q) { return q !== query && q.isWith; })
+                .forEach(function (q) {
+                query.promise = query.promise["with"](q.name, q.promise);
+            });
+        }
         if (!((_k = tree.selectionSet) === null || _k === void 0 ? void 0 : _k.selections))
             throw 'The query is empty, you need specify metrics or dimensions';
     }
     //console.log(JSON.stringify(tree, null, 2))
-    if (query.name === undefined)
+    if (query.name === undefined) {
         throw 'Builder: Cant find fetch in the payload';
+    }
     if (!!((_l = tree.selectionSet) === null || _l === void 0 ? void 0 : _l.selections)) {
         var selections = tree.selectionSet.selections;
-        var _p = selections.reduce(function (r, s) {
+        var _q = selections.reduce(function (r, s) {
             //check multiple dimensions we also need to split queries in the case
             if (r[1] && !!s.selectionSet)
                 return [true, true];
             return [r[0] || !s.selectionSet, r[1] || !!s.selectionSet];
-        }, [false, false]), haveMetric_1 = _p[0], haveDimension_1 = _p[1];
+        }, [false, false]), haveMetric_1 = _q[0], haveDimension_1 = _q[1];
         if (((_m = tree.name) === null || _m === void 0 ? void 0 : _m.value) !== 'fetch' &&
             ((_o = tree.name) === null || _o === void 0 ? void 0 : _o.value) !== 'fetchPlain' &&
+            ((_p = tree.name) === null || _p === void 0 ? void 0 : _p.value) !== 'with' &&
             !tree["with"])
             parseDimension(tree, query, knex);
         selections.sort(function (a, b) {
@@ -342,7 +401,7 @@ function queryBuilder(table, tree, queries, idx, knex, metricResolvers) {
                     queries[newIdx].metrics = lodash_1.cloneDeep(query.metrics);
                 if (!!query.dimensions)
                     queries[newIdx].dimensions = lodash_1.cloneDeep(query.dimensions);
-                queries[newIdx].promise = copyKnex(query.promise, knex);
+                queries[newIdx].promise = query.promise.clone();
                 queries[newIdx].idx = newIdx;
                 return queryBuilder(table, t, queries, newIdx, knex, metricResolvers);
             }
@@ -360,13 +419,13 @@ function parseMetric(tree, query, knex, metricResolvers) {
     if (tree.alias && metricResolvers[(_a = tree.name) === null || _a === void 0 ? void 0 : _a.value])
         return metricResolvers[(_b = tree.name) === null || _b === void 0 ? void 0 : _b.value](tree, query, knex);
     if (!((_c = tree.alias) === null || _c === void 0 ? void 0 : _c.value)) {
-        query.promise = query.promise.select("" + buildFullName(args, query, tree.name.value));
+        query.promise = query.promise.select("" + filters_1.buildFullName(args, query, tree.name.value));
     }
     else {
-        query.promise = query.promise.select(buildFullName(args, query, tree.name.value) + " as " + tree.alias.value);
+        query.promise = query.promise.select(filters_1.buildFullName(args, query, tree.name.value) + " as " + tree.alias.value);
     }
     if ((args === null || args === void 0 ? void 0 : args.sort) == 'desc' || (args === null || args === void 0 ? void 0 : args.sort) == 'asc')
-        query.promise.orderBy(buildFullName(args, query, tree.name.value), args === null || args === void 0 ? void 0 : args.sort);
+        query.promise.orderBy(filters_1.buildFullName(args, query, tree.name.value), args === null || args === void 0 ? void 0 : args.sort);
     if (args === null || args === void 0 ? void 0 : args.limit)
         query.promise.limit(args === null || args === void 0 ? void 0 : args.limit);
     query.metrics.push((_d = tree.name) === null || _d === void 0 ? void 0 : _d.value);
@@ -378,10 +437,11 @@ function transformLinkedArgs(args, query) {
     return args;
 }
 function parseDimension(tree, query, knex) {
+    var _a;
     if (Object.values(JoinType).includes(tree.name.value)) {
         return join(tree.name.value)(tree, query, knex);
     }
-    var _a = query.dimensions, dimensions = _a === void 0 ? [] : _a;
+    var _b = query.dimensions, dimensions = _b === void 0 ? [] : _b;
     if (!query.groupIndex)
         query.groupIndex = 0;
     query.groupIndex++;
@@ -389,23 +449,26 @@ function parseDimension(tree, query, knex) {
     if (args === null || args === void 0 ? void 0 : args.groupByEach) {
         var amount = parseFloat(args.groupByEach);
         query.promise = query.promise
-            .select(knex.raw("(CAST(CEIL(??)/?? AS INT)*?? || '-' || CAST(CEIL(??)/?? AS INT)*??+??) as ??", [
-            buildFullName(args, query, tree.name.value, false),
+            .select(knex.raw("(CAST(CEIL(??)/? AS INT)*? || '-' || CAST(CEIL(??)/? AS INT)*?+?) as ??", [
+            filters_1.buildFullName(args, query, tree.name.value, false),
             amount,
             amount,
-            buildFullName(args, query, tree.name.value, false),
+            filters_1.buildFullName(args, query, tree.name.value, false),
             amount,
             amount,
             amount - 1,
             tree.name.value,
         ]))
-            .groupBy(knex.raw('CAST(CEIL(??)/?? AS INT)', [
-            buildFullName(args, query, tree.name.value, false),
+            .groupBy(knex.raw('CAST(CEIL(??)/? AS INT)', [
+            filters_1.buildFullName(args, query, tree.name.value, false),
             amount,
         ]));
     }
     else if (args === null || args === void 0 ? void 0 : args.groupBy) {
-        var pre_trunc = withFilters(query.filters)(knex
+        if (args.from !== query.table) {
+            query.preparedAdvancedFilters = filters_1.parseAdvancedFilters(query, knex, query.advancedFilters, true);
+        }
+        var pre_trunc = filters_1.applyFilters(query, withFilters(query.filters)(knex
             .select([
             '*',
             knex.raw("date_trunc(?, ??) as ??", [
@@ -414,8 +477,10 @@ function parseDimension(tree, query, knex) {
                 tree.name.value + "_" + (args === null || args === void 0 ? void 0 : args.groupBy),
             ]),
         ])
-            .from(args.from || query.table));
-        query.promise = query.promise.from(pre_trunc.as(args.from || query.table));
+            .from(args.from || query.table)), knex);
+        var table = ((_a = tree.alias) === null || _a === void 0 ? void 0 : _a.value) || args.from || query.table;
+        changeQueryTable(query, knex, table, true);
+        query.promise = query.promise.from(pre_trunc.as(table));
         query.promise = query.promise.select(knex.raw("?? as ??", [
             tree.name.value + "_" + (args === null || args === void 0 ? void 0 : args.groupBy),
             tree.name.value,
@@ -429,13 +494,13 @@ function parseDimension(tree, query, knex) {
         };
     }
     else {
-        query.promise = query.promise.select(buildFullName(args, query, tree.name.value, false));
-        query.promise = query.promise.groupBy(buildFullName(args, query, tree.name.value, false));
+        query.promise = query.promise.select(filters_1.buildFullName(args, query, tree.name.value, false));
+        query.promise = query.promise.groupBy(filters_1.buildFullName(args, query, tree.name.value, false));
     }
     if (!!(args === null || args === void 0 ? void 0 : args.sort_desc))
-        query.promise.orderBy(buildFullName(args, query, args === null || args === void 0 ? void 0 : args.sort_desc), 'desc');
+        query.promise.orderBy(filters_1.buildFullName(args, query, args === null || args === void 0 ? void 0 : args.sort_desc), 'desc');
     if (!!(args === null || args === void 0 ? void 0 : args.sort_asc))
-        query.promise.orderBy(buildFullName(args, query, args === null || args === void 0 ? void 0 : args.sort_asc), 'asc');
+        query.promise.orderBy(filters_1.buildFullName(args, query, args === null || args === void 0 ? void 0 : args.sort_asc), 'asc');
     if (!!(args === null || args === void 0 ? void 0 : args.limit))
         query.promise.limit(args === null || args === void 0 ? void 0 : args.limit);
     if (!!(args === null || args === void 0 ? void 0 : args.offset))
@@ -471,7 +536,7 @@ var metricResolvers = {
             throw "Percentile function requires 'a' as argument";
         query.promise = query.promise.select(knex.raw("PERCENTILE_CONT(??) WITHIN GROUP(ORDER BY ??) AS ??", [
             parseFloat(args.factor) || 0.5,
-            buildFullName(args, query, args.a, false),
+            filters_1.buildFullName(args, query, args.a, false),
             tree.alias.value,
         ]));
         query.metrics.push(tree.alias.value);
@@ -482,7 +547,7 @@ var metricResolvers = {
         var args = arguments_1.argumentsToObject(tree.arguments);
         if (!args.a)
             throw "Sum function requires 'a' as argument";
-        query.promise = query.promise.sum(buildFullName(args, query, args.a, false) + " as " + tree.alias.value);
+        query.promise = query.promise.sum(filters_1.buildFullName(args, query, args.a, false) + " as " + tree.alias.value);
         query.metrics.push(tree.alias.value);
     },
     min: function (tree, query, knex) {
@@ -491,7 +556,7 @@ var metricResolvers = {
         var args = arguments_1.argumentsToObject(tree.arguments);
         if (!args.a)
             throw "Min function requires 'a' as argument";
-        query.promise = query.promise.min(buildFullName(args, query, args.a, false) + " as " + tree.alias.value);
+        query.promise = query.promise.min(filters_1.buildFullName(args, query, args.a, false) + " as " + tree.alias.value);
         query.metrics.push(tree.alias.value);
     },
     max: function (tree, query, knex) {
@@ -500,7 +565,7 @@ var metricResolvers = {
         var args = arguments_1.argumentsToObject(tree.arguments);
         if (!args.a)
             throw "Max function requires 'a' as argument";
-        query.promise = query.promise.max(buildFullName(args, query, args.a, false) + " as " + tree.alias.value);
+        query.promise = query.promise.max(filters_1.buildFullName(args, query, args.a, false) + " as " + tree.alias.value);
         query.metrics.push(tree.alias.value);
     },
     count: function (tree, query, knex) {
@@ -509,7 +574,7 @@ var metricResolvers = {
         var args = arguments_1.argumentsToObject(tree.arguments);
         if (!args.a)
             throw "Count function requires 'a' as argument";
-        query.promise = query.promise.count(buildFullName(args, query, args.a, false) + " as " + tree.alias.value);
+        query.promise = query.promise.count(filters_1.buildFullName(args, query, args.a, false) + " as " + tree.alias.value);
         query.metrics.push(tree.alias.value);
     },
     countDistinct: function (tree, query, knex) {
@@ -518,7 +583,7 @@ var metricResolvers = {
         var args = arguments_1.argumentsToObject(tree.arguments);
         if (!args.a)
             throw "CountDistinct function requires 'a' as argument";
-        query.promise = query.promise.countDistinct(buildFullName(args, query, args.a, false) + " as " + tree.alias.value);
+        query.promise = query.promise.countDistinct(filters_1.buildFullName(args, query, args.a, false) + " as " + tree.alias.value);
         query.metrics.push(tree.alias.value);
     },
     join: join(JoinType.DEFAULT),
@@ -532,30 +597,58 @@ var metricResolvers = {
     ranking: function (tree, query, knex) {
         var _a;
         if (!tree.arguments)
-            throw 'Avg function requires arguments';
+            throw 'Ranking function requires arguments';
         var args = arguments_1.argumentsToObject(tree.arguments);
         if (!args.a)
             throw "Ranking function requires 'a' as argument";
         var partition = '';
         if (!!args.by) {
-            var partitionBy = buildFullName(args, query, args.by, false);
+            var partitionBy = filters_1.buildFullName(args, query, args.by, false);
             if ((_a = query.replaceWith) === null || _a === void 0 ? void 0 : _a[args.by]) {
                 partitionBy = query.replaceWith[args.by].value;
             }
             partition = knex.raw("partition by ??", [partitionBy]);
         }
-        query.promise = knex
+        var promise = knex
             .select('*')
             .select(knex.raw("DENSE_RANK() over (" + partition + " ORDER BY ?? desc) as ??", [
-            buildFullName(args, query, args.a, false),
+            filters_1.buildFullName(args, query, args.a, false),
             tree.alias.value,
         ]))
-            .from(query.promise.as('middleTable'));
+            .from(query.table || args.from);
+        var table = args.tableAlias || args.from || query.table;
+        query.promise
+            .select(filters_1.buildFullName({ from: table }, query, tree.alias.value, false))
+            .from(promise.as(args.tableAlias || query.table));
+        changeQueryTable(query, knex, table, true);
+        query.promise.groupBy(filters_1.buildFullName({ from: table }, query, tree.alias.value, false));
         query.metrics.push(tree.alias.value);
+    },
+    searchRanking: function (tree, query, knex) {
+        if (!tree.arguments)
+            throw 'SearchRanking function requires arguments';
+        var args = arguments_1.argumentsToObject(tree.arguments);
+        if (!args.a)
+            throw "SearchRanking function requires 'a' as argument";
+        var key = filters_1.buildFullName({ from: args.from || query.table }, query, args.a, false);
+        if (!query.search[key])
+            throw "SearchRanking requires search query for " + key + " field";
+        query.promise = query.promise.select(knex.raw("ts_rank(to_tsvector('simple', ??), (plainto_tsquery('simple', ?)::text || ':*')::tsquery) as ??", [key, query.search[key], tree.alias.value]));
+    },
+    searchHeadline: function (tree, query, knex) {
+        if (!tree.arguments)
+            throw 'SearchRanking function requires arguments';
+        var args = arguments_1.argumentsToObject(tree.arguments);
+        if (!args.a)
+            throw "SearchHeadline function requires 'a' as argument";
+        var key = filters_1.buildFullName({ from: args.from || query.table }, query, args.a, false);
+        if (!query.search[key])
+            throw "SearchHeadline requires search query for " + key + " field";
+        query.promise = query.promise.select(knex.raw("ts_headline('simple', ??, (plainto_tsquery('simple', ?)::text || ':*')::tsquery) as ??", [key, query.search[key], tree.alias.value]));
     },
     unique: function (tree, query, knex) {
         var args = tree.arguments && arguments_1.argumentsToObject(tree.arguments);
-        var field = buildFullName(args, query, (args === null || args === void 0 ? void 0 : args.a) || tree.alias.value, false);
+        var field = filters_1.buildFullName(args, query, (args === null || args === void 0 ? void 0 : args.a) || tree.alias.value, false);
         query.promise = query.promise.select(field + " as " + tree.alias.value);
         query.promise = query.promise.groupBy(field);
         query.metrics.push(tree.alias.value);
@@ -566,7 +659,7 @@ var metricResolvers = {
         var args = arguments_1.argumentsToObject(tree.arguments);
         if (!args.from)
             throw "From function requires 'from' as argument";
-        var field = buildFullName(args, query, (args === null || args === void 0 ? void 0 : args.a) || tree.alias.value, false);
+        var field = filters_1.buildFullName(args, query, (args === null || args === void 0 ? void 0 : args.a) || tree.alias.value, false);
         query.promise = query.promise.select(field + " as " + tree.alias.value);
         query.metrics.push(tree.alias.value);
     },
@@ -579,13 +672,13 @@ var metricResolvers = {
             throw "Avg function requires 'a' as argument";
         if (!!args.by) {
             query.promise.select(knex.raw("avg(??) over (partition by ??)::float4 as ??", [
-                buildFullName(args, query, args.a, false),
-                buildFullName(args, query, args.by, false),
+                filters_1.buildFullName(args, query, args.a, false),
+                filters_1.buildFullName(args, query, args.by, false),
                 tree.alias.value,
             ]));
         }
         else {
-            query.promise = query.promise.avg(buildFullName(args, query, args.a, false) + " as " + tree.alias.value);
+            query.promise = query.promise.avg(filters_1.buildFullName(args, query, args.a, false) + " as " + tree.alias.value);
         }
         query.metrics.push(tree.alias.value);
     },
@@ -598,8 +691,8 @@ var metricResolvers = {
         if (!args.per)
             throw "avgPerDimension function requires 'per' as argument";
         query.promise.select(knex.raw("sum(??)::float/COUNT(DISTINCT ??)::float4 as ??", [
-            buildFullName(args, query, args.a, false),
-            buildFullName(args, query, args.per, false),
+            filters_1.buildFullName(args, query, args.a, false),
+            filters_1.buildFullName(args, query, args.per, false),
             tree.alias.value,
         ]));
     },
@@ -612,15 +705,15 @@ var metricResolvers = {
             throw "Share  function requires 'a' as argument";
         var partition = '';
         if (!!args.by) {
-            var partitionBy = buildFullName(args, query, args.by, false);
+            var partitionBy = filters_1.buildFullName(args, query, args.by, false);
             if ((_a = query.replaceWith) === null || _a === void 0 ? void 0 : _a[args.by]) {
                 partitionBy = query.replaceWith[args.by].value;
             }
             partition = knex.raw("partition by ??", [partitionBy]);
         }
         query.promise = query.promise.select(knex.raw("sum(??)/NULLIF(sum(sum(??)) over (" + partition + "), 0)::float4 as ??", [
-            buildFullName(args, query, args.a, false),
-            buildFullName(args, query, args.a, false),
+            filters_1.buildFullName(args, query, args.a, false),
+            filters_1.buildFullName(args, query, args.a, false),
             tree.alias.value,
         ]));
         query.metrics.push(tree.alias.value);
@@ -634,11 +727,11 @@ var metricResolvers = {
         var partition = '';
         if (!!args.by)
             partition = knex.raw("partition by ??", [
-                buildFullName(args, query, args.by, false),
+                filters_1.buildFullName(args, query, args.by, false),
             ]);
         query.promise = query.promise.select(knex.raw("sum(??)/NULLIF(max(sum(??)::float) over (" + partition + "), 0)::float4 as ??", [
-            buildFullName(args, query, args.a, false),
-            buildFullName(args, query, args.a, false),
+            filters_1.buildFullName(args, query, args.a, false),
+            filters_1.buildFullName(args, query, args.a, false),
             tree.alias.value,
         ]));
         query.metrics.push(tree.alias.value);
@@ -661,9 +754,9 @@ var metricResolvers = {
             throw "Divide function requires 'by' as argument";
         query.promise = query.promise.select(knex.raw("cast(??(??) as float)/NULLIF(cast(??(??) as float), 0)::float4 as ??", [
             functions.a,
-            buildFullName(args, query, args.a, false),
+            filters_1.buildFullName(args, query, args.a, false),
             functions.by,
-            buildFullName(args, query, args.by, false),
+            filters_1.buildFullName(args, query, args.by, false),
             tree.alias.value,
         ]));
         query.metrics.push(tree.alias.value);
@@ -678,19 +771,19 @@ var metricResolvers = {
         if (!args.by)
             throw "aggrAverage function requires 'by' as argument";
         var internal = query.promise
-            .select(buildFullName(args, query, tree.alias.value, false))
-            .sum(buildFullName(args, query, args.to, false) + " as " + args.to)
-            .sum(buildFullName(args, query, args.by, false) + " as " + args.by)
+            .select(filters_1.buildFullName(args, query, tree.alias.value, false))
+            .sum(filters_1.buildFullName(args, query, args.to, false) + " as " + args.to)
+            .sum(filters_1.buildFullName(args, query, args.by, false) + " as " + args.by)
             .select(knex.raw("?? * sum(??) as \"aggrAverage\"", [
-            buildFullName(args, query, tree.alias.value, false),
-            buildFullName(args, query, args.to, false),
+            filters_1.buildFullName(args, query, tree.alias.value, false),
+            filters_1.buildFullName(args, query, args.to, false),
         ]))
-            .groupBy(buildFullName(args, query, tree.alias.value, false));
+            .groupBy(filters_1.buildFullName(args, query, tree.alias.value, false));
         if (args.to !== args.by)
-            internal = internal.sum(buildFullName(args, query, args.by, false) + " as " + args.by);
+            internal = internal.sum(filters_1.buildFullName(args, query, args.by, false) + " as " + args.by);
         query.promise = knex
             .select(query.dimensions)
-            .select(knex.raw("sum(\"aggrAverage\")/max(??)::float4  as \"" + ((_a = tree.alias) === null || _a === void 0 ? void 0 : _a.value) + "_aggrAverage\"", [buildFullName(args, query, args.by, false)]))
+            .select(knex.raw("sum(\"aggrAverage\")/max(??)::float4  as \"" + ((_a = tree.alias) === null || _a === void 0 ? void 0 : _a.value) + "_aggrAverage\"", [filters_1.buildFullName(args, query, args.by, false)]))
             .from(internal.as('middleTable'));
         if (!!query.dimensions && query.dimensions.length > 0) {
             query.promise = query.promise.groupBy(query.dimensions);
@@ -706,17 +799,17 @@ var metricResolvers = {
         if (!args.by)
             throw "weightAvg function requires 'by' as argument";
         var internal = query.promise
-            .select(buildFullName(args, query, args.a, false))
-            .sum(buildFullName(args, query, args.by, false) + " as " + args.by)
+            .select(filters_1.buildFullName(args, query, args.a, false))
+            .sum(filters_1.buildFullName(args, query, args.by, false) + " as " + args.by)
             .select(knex.raw("?? * sum(??)::float4 as \"weightAvg\"", [
-            buildFullName(args, query, args.a, false),
-            buildFullName(args, query, args.by, false),
+            filters_1.buildFullName(args, query, args.a, false),
+            filters_1.buildFullName(args, query, args.by, false),
         ]))
-            .groupBy(buildFullName(args, query, args.a, false));
+            .groupBy(filters_1.buildFullName(args, query, args.a, false));
         query.promise = knex
             .select(query.dimensions)
             .select(knex.raw("sum(\"weightAvg\")/sum(??)::float4 as \"" + ((_a = tree.alias) === null || _a === void 0 ? void 0 : _a.value) + "\"", [
-            buildFullName(args, query, args.by, false),
+            filters_1.buildFullName(args, query, args.by, false),
         ]))
             .from(internal.as('middleTable'));
         if (!!query.dimensions && query.dimensions.length > 0) {
@@ -724,23 +817,14 @@ var metricResolvers = {
         }
     },
     distinct: function (tree, query, knex) {
-        query.promise = query.promise.distinct(buildFullName((tree.arguments && arguments_1.argumentsToObject(tree.arguments)) || {}, query, tree.alias.value, false));
+        query.promise = query.promise.distinct(filters_1.buildFullName((tree.arguments && arguments_1.argumentsToObject(tree.arguments)) || {}, query, tree.alias.value, false));
     }
 };
-function copyKnex(knexObject, knex) {
-    var result = knex(knexObject._single.table);
-    return Object.keys(knexObject).reduce(function (k, key) {
-        if (key.startsWith('_') && !!knexObject[key]) {
-            k[key] = JSON.parse(JSON.stringify(knexObject[key]));
-        }
-        return k;
-    }, result);
-}
 var merge = function (tree, data, metricResolversData) {
     var queries = getMergeStrings(tree, undefined, undefined, metricResolversData);
     var mutations = queries.filter(function (q) { return !!q.mutation; });
     var batches = queries
-        .filter(function (q) { return !q.mutation; })
+        .filter(function (q) { return !q.mutation && !q.skipBatching; })
         .reduce(function (r, q, i) {
         var key = q.name || '___query';
         if (!r[key])
@@ -933,6 +1017,10 @@ function getMergeStrings(tree, queries, idx, metricResolversData) {
             return getMergeStrings(t, queries, queries.length - 1, metricResolversData);
         }, queries);
     }
+    if (tree.name.value === 'with') {
+        query.skipBatching = true;
+        return queries;
+    }
     if (!query.filters &&
         (tree.name.value === 'fetch' || tree.name.value === 'fetchPlain')) {
         query.name = ((_a = tree.alias) === null || _a === void 0 ? void 0 : _a.value) || null;
@@ -949,8 +1037,9 @@ function getMergeStrings(tree, queries, idx, metricResolversData) {
         query.name = ((_c = tree.alias) === null || _c === void 0 ? void 0 : _c.value) || null;
         query.mutationFunction = ((_d = tree.name) === null || _d === void 0 ? void 0 : _d.value) || null;
     }
-    if (query.name === undefined && !query.mutation)
+    if (query.name === undefined && !query.mutation) {
         throw 'Cant find fetch in the payload';
+    }
     if (!!((_e = tree.selectionSet) === null || _e === void 0 ? void 0 : _e.selections)) {
         var selections = tree.selectionSet.selections;
         var _g = selections.reduce(function (r, s) {
@@ -1058,11 +1147,12 @@ var metricResolversData = {
         var name = "" + ((_a = tree.name) === null || _a === void 0 ? void 0 : _a.value);
         if (!query.divideBy)
             query.divideBy = {};
-        if (query.path.startsWith(':divideBy') || query.path.startsWith(':divideBy.'))
+        if (query.path.startsWith(':divideBy') ||
+            query.path.startsWith(':divideBy.'))
             query.path = query.path.replace(/:divideBy\.?/, '');
         query.divideBy["" + query.path + (!!query.path ? '.' : '') + name] = function (_a) {
             var value = _a.value, replacedPath = _a.replacedPath, fullObject = _a.fullObject;
-            return (value / progressive_1.progressiveGet(fullObject[query.filters.by], replacedPath));
+            return value / progressive_1.progressiveGet(fullObject[query.filters.by], replacedPath);
         };
     },
     blank: function (tree, query) {
@@ -1077,26 +1167,19 @@ var metricResolversData = {
         };
     }
 };
-function isNumber(val) {
-    return +val + '' == val + '';
-}
 function withFilters(filters) {
     return function (knexPipe) {
         return filters.reduce(function (knexNext, filter, i) {
-            if (i === 0) {
-                if (filter[1] === 'in')
-                    return knexNext.whereIn.apply(knexNext, filter.filter(function (a) { return a !== 'in'; }));
-                return knexNext.where.apply(knexNext, filter);
-            }
-            if (filter[1] === 'in')
-                return knexNext.whereIn.apply(knexNext, filter.filter(function (a) { return a !== 'in'; }));
-            return knexNext.andWhere.apply(knexNext, filter);
+            var selector = i === 'in' ? 'whereIn' : i === 0 ? 'where' : 'andWhere';
+            return knexNext[selector].apply(knexNext, filter[1] === 'in'
+                ? filter.filter(function (a) { return a !== 'in'; })
+                : filter[1] === 'search'
+                    ? [
+                        knexNext.raw("to_tsvector('simple', ??) @@ plainto_tsquery('simple', ?)::text || ':*')::tsquery)", [filter[0], filter[2]]),
+                    ]
+                    : filter);
         }, knexPipe);
     };
-}
-function flattenObject(o) {
-    var keys = Object.keys(o);
-    return keys.length === 1 ? o[keys[0]] : keys.map(function (k) { return o[k]; });
 }
 /*
 
