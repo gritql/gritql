@@ -240,11 +240,20 @@ export const postExecutedDirectives = {
           }
 
           const globalObj = progressiveGet(
-            Object.keys(batches).length > 1
+            Object.keys(batches).length > 1 || context.query.name
               ? originFullObject[context.query.name]
               : originFullObject,
             globalReplacedPath,
           )
+
+          if (!globalObj) {
+            context.data.members.add(row)
+
+            return {
+              skip: true,
+              skipAll: true,
+            }
+          }
 
           const skip = Object.keys(globalObj).some((key) => {
             const keys = filterPropertyKey(argsKeys, key)
@@ -317,7 +326,7 @@ export const postExecutedDirectives = {
       }
 
       const currentData = progressiveGet(
-        Object.keys(batches).length > 1
+        Object.keys(batches).length > 1 || context.query.name
           ? originFullObject[context.query.name]
           : originFullObject,
         globalReplacedPath,
