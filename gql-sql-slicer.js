@@ -353,23 +353,28 @@ function queryBuilder(table, tree, queries, idx, knex, metricResolvers) {
     return queries;
 }
 function parseMetric(tree, query, knex, metricResolvers) {
-    var _a, _b, _c, _d;
+    var _a, _b, _c, _d, _e, _f;
     var args = arguments_1.argumentsToObject(tree.arguments);
-    var _e = query.metrics, metrics = _e === void 0 ? [] : _e;
+    var _g = query.metrics, metrics = _g === void 0 ? [] : _g;
     query.metrics = metrics;
     if (tree.alias && metricResolvers[(_a = tree.name) === null || _a === void 0 ? void 0 : _a.value])
         return metricResolvers[(_b = tree.name) === null || _b === void 0 ? void 0 : _b.value](tree, query, knex);
-    if (!((_c = tree.alias) === null || _c === void 0 ? void 0 : _c.value)) {
-        query.promise = query.promise.select("" + buildFullName(args, query, tree.name.value));
-    }
-    else {
-        query.promise = query.promise.select(buildFullName(args, query, tree.name.value) + " as " + tree.alias.value);
+    // Getters are needed only for additionaly selected fields by some specific functions
+    // example: price(groupByEach: 50) -> price: 0-50 -> groupByEach_min_price: 0 -> groupByEach_max_price: 50
+    // would be useful for further grouping && filtering
+    if (!((_c = query.getters) === null || _c === void 0 ? void 0 : _c.find(function (name) { var _a, _b; return name === (((_a = tree.alias) === null || _a === void 0 ? void 0 : _a.value) || ((_b = tree.name) === null || _b === void 0 ? void 0 : _b.value)); }))) {
+        if (!((_d = tree.alias) === null || _d === void 0 ? void 0 : _d.value)) {
+            query.promise = query.promise.select("" + buildFullName(args, query, tree.name.value));
+        }
+        else {
+            query.promise = query.promise.select(buildFullName(args, query, tree.name.value) + " as " + tree.alias.value);
+        }
     }
     if ((args === null || args === void 0 ? void 0 : args.sort) == 'desc' || (args === null || args === void 0 ? void 0 : args.sort) == 'asc')
         query.promise.orderBy(buildFullName(args, query, tree.name.value), args === null || args === void 0 ? void 0 : args.sort);
     if (args === null || args === void 0 ? void 0 : args.limit)
         query.promise.limit(args === null || args === void 0 ? void 0 : args.limit);
-    query.metrics.push((_d = tree.name) === null || _d === void 0 ? void 0 : _d.value);
+    query.metrics.push(((_e = tree.alias) === null || _e === void 0 ? void 0 : _e.value) || ((_f = tree.name) === null || _f === void 0 ? void 0 : _f.value));
 }
 function transformLinkedArgs(args, query) {
     if (args.from === '@') {
@@ -378,18 +383,20 @@ function transformLinkedArgs(args, query) {
     return args;
 }
 function parseDimension(tree, query, knex) {
+    var _a, _b, _c, _d, _e;
     if (Object.values(JoinType).includes(tree.name.value)) {
         return join(tree.name.value)(tree, query, knex);
     }
-    var _a = query.dimensions, dimensions = _a === void 0 ? [] : _a;
+    var _f = query.dimensions, dimensions = _f === void 0 ? [] : _f;
     if (!query.groupIndex)
         query.groupIndex = 0;
     query.groupIndex++;
     var args = transformLinkedArgs(arguments_1.argumentsToObject(tree.arguments), query);
     if (args === null || args === void 0 ? void 0 : args.groupByEach) {
         var amount = parseFloat(args.groupByEach);
+        query.getters = [];
         query.promise = query.promise
-            .select(knex.raw("(CAST(CEIL(??)/?? AS INT)*?? || '-' || CAST(CEIL(??)/?? AS INT)*??+??) as ??", [
+            .select(knex.raw("(CAST(CEIL(??)/?? AS INT)*?? || '-' || CAST(CEIL(??)/?? AS INT)*??+??) AS ??", [
             buildFullName(args, query, tree.name.value, false),
             amount,
             amount,
@@ -397,12 +404,25 @@ function parseDimension(tree, query, knex) {
             amount,
             amount,
             amount - 1,
-            tree.name.value,
+            ((_a = tree.alias) === null || _a === void 0 ? void 0 : _a.value) || tree.name.value,
+        ]), knex.raw("(CAST(CEIL(??)/?? AS INT)*??) AS ??", [
+            buildFullName(args, query, tree.name.value, false),
+            amount,
+            amount,
+            "groupByEach_min_" + (((_b = tree.alias) === null || _b === void 0 ? void 0 : _b.value) || tree.name.value),
+        ]), knex.raw("(CAST(CEIL(??)/?? AS INT)*??+??) AS ??", [
+            buildFullName(args, query, tree.name.value, false),
+            amount,
+            amount,
+            amount - 1,
+            "groupByEach_max_" + (((_c = tree.alias) === null || _c === void 0 ? void 0 : _c.value) || tree.name.value),
         ]))
             .groupBy(knex.raw('CAST(CEIL(??)/?? AS INT)', [
             buildFullName(args, query, tree.name.value, false),
             amount,
         ]));
+        query.getters.push("groupByEach_max_" + (((_d = tree.alias) === null || _d === void 0 ? void 0 : _d.value) || tree.name.value));
+        query.getters.push("groupByEach_min_" + (((_e = tree.alias) === null || _e === void 0 ? void 0 : _e.value) || tree.name.value));
     }
     else if (args === null || args === void 0 ? void 0 : args.groupBy) {
         var pre_trunc = withFilters(query.filters)(knex
@@ -1058,11 +1078,12 @@ var metricResolversData = {
         var name = "" + ((_a = tree.name) === null || _a === void 0 ? void 0 : _a.value);
         if (!query.divideBy)
             query.divideBy = {};
-        if (query.path.startsWith(':divideBy') || query.path.startsWith(':divideBy.'))
+        if (query.path.startsWith(':divideBy') ||
+            query.path.startsWith(':divideBy.'))
             query.path = query.path.replace(/:divideBy\.?/, '');
         query.divideBy["" + query.path + (!!query.path ? '.' : '') + name] = function (_a) {
             var value = _a.value, replacedPath = _a.replacedPath, fullObject = _a.fullObject;
-            return (value / progressive_1.progressiveGet(fullObject[query.filters.by], replacedPath));
+            return value / progressive_1.progressiveGet(fullObject[query.filters.by], replacedPath);
         };
     },
     blank: function (tree, query) {

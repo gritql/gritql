@@ -389,15 +389,25 @@ function parseMetric(tree, query, knex, metricResolvers) {
   query.metrics = metrics
   if (tree.alias && metricResolvers[tree.name?.value])
     return metricResolvers[tree.name?.value](tree, query, knex)
-  if (!tree.alias?.value) {
-    query.promise = query.promise.select(
-      `${buildFullName(args, query, tree.name.value)}`,
+  // Getters are needed only for additionaly selected fields by some specific functions
+  // example: price(groupByEach: 50) -> price: 0-50 -> groupByEach_min_price: 0 -> groupByEach_max_price: 50
+  // would be useful for further grouping && filtering
+  if (
+    !query.getters?.find(
+      (name) => name === (tree.alias?.value || tree.name?.value),
     )
-  } else {
-    query.promise = query.promise.select(
-      `${buildFullName(args, query, tree.name.value)} as ${tree.alias.value}`,
-    )
+  ) {
+    if (!tree.alias?.value) {
+      query.promise = query.promise.select(
+        `${buildFullName(args, query, tree.name.value)}`,
+      )
+    } else {
+      query.promise = query.promise.select(
+        `${buildFullName(args, query, tree.name.value)} as ${tree.alias.value}`,
+      )
+    }
   }
+
   if (args?.sort == 'desc' || args?.sort == 'asc')
     query.promise.orderBy(
       buildFullName(args, query, tree.name.value),
@@ -405,7 +415,7 @@ function parseMetric(tree, query, knex, metricResolvers) {
     )
   if (args?.limit) query.promise.limit(args?.limit)
 
-  query.metrics.push(tree.name?.value)
+  query.metrics.push(tree.alias?.value || tree.name?.value)
 }
 
 function transformLinkedArgs(args, query) {
@@ -428,11 +438,12 @@ function parseDimension(tree, query, knex) {
 
   if (args?.groupByEach) {
     const amount = parseFloat(args.groupByEach)
+    query.getters = []
 
     query.promise = query.promise
       .select(
         knex.raw(
-          `(CAST(CEIL(??)/?? AS INT)*?? || '-' || CAST(CEIL(??)/?? AS INT)*??+??) as ??`,
+          `(CAST(CEIL(??)/?? AS INT)*?? || '-' || CAST(CEIL(??)/?? AS INT)*??+??) AS ??`,
           [
             buildFullName(args, query, tree.name.value, false),
             amount,
@@ -441,9 +452,22 @@ function parseDimension(tree, query, knex) {
             amount,
             amount,
             amount - 1,
-            tree.name.value,
+            tree.alias?.value || tree.name.value,
           ],
         ),
+        knex.raw(`(CAST(CEIL(??)/?? AS INT)*??) AS ??`, [
+          buildFullName(args, query, tree.name.value, false),
+          amount,
+          amount,
+          `groupByEach_min_${tree.alias?.value || tree.name.value}`,
+        ]),
+        knex.raw(`(CAST(CEIL(??)/?? AS INT)*??+??) AS ??`, [
+          buildFullName(args, query, tree.name.value, false),
+          amount,
+          amount,
+          amount - 1,
+          `groupByEach_max_${tree.alias?.value || tree.name.value}`,
+        ]),
       )
       .groupBy(
         knex.raw('CAST(CEIL(??)/?? AS INT)', [
@@ -451,6 +475,13 @@ function parseDimension(tree, query, knex) {
           amount,
         ]),
       )
+
+    query.getters.push(
+      `groupByEach_max_${tree.alias?.value || tree.name.value}`,
+    )
+    query.getters.push(
+      `groupByEach_min_${tree.alias?.value || tree.name.value}`,
+    )
   } else if (args?.groupBy) {
     const pre_trunc = withFilters(query.filters)(
       knex
@@ -1185,8 +1216,9 @@ function mergeDimension(tree, query) {
 
   if (args?.type === 'Array') {
     if (!!args?.cutoff) {
-      query.cutoff = `${query.path}${!!query.path ? '.' : ''}[@${tree.name.value
-        }=:${tree.name.value}]`
+      query.cutoff = `${query.path}${!!query.path ? '.' : ''}[@${
+        tree.name.value
+      }=:${tree.name.value}]`
     }
     query.path += `${!!query.path ? '.' : ''}[@${tree.name.value}=:${
       tree.name.value
@@ -1244,7 +1276,10 @@ const metricResolversData = {
   divideBy: (tree, query) => {
     const name = `${tree.name?.value}`
     if (!query.divideBy) query.divideBy = {}
-    if (query.path.startsWith(':divideBy') || query.path.startsWith(':divideBy.'))
+    if (
+      query.path.startsWith(':divideBy') ||
+      query.path.startsWith(':divideBy.')
+    )
       query.path = query.path.replace(/:divideBy\.?/, '')
 
     query.divideBy[`${query.path}${!!query.path ? '.' : ''}${name}`] = ({
@@ -1252,9 +1287,7 @@ const metricResolversData = {
       replacedPath,
       fullObject,
     }) => {
-      return (
-        value / progressiveGet(fullObject[query.filters.by], replacedPath)
-      )
+      return value / progressiveGet(fullObject[query.filters.by], replacedPath)
     }
   },
   blank: (tree, query) => {
