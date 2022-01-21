@@ -439,11 +439,10 @@ function transformLinkedArgs(args, query) {
     return args;
 }
 function parseDimension(tree, query, knex) {
-    var _a;
     if (Object.values(JoinType).includes(tree.name.value)) {
         return join(tree.name.value)(tree, query, knex);
     }
-    var _b = query.dimensions, dimensions = _b === void 0 ? [] : _b;
+    var _a = query.dimensions, dimensions = _a === void 0 ? [] : _a;
     if (!query.groupIndex)
         query.groupIndex = 0;
     query.groupIndex++;
@@ -480,7 +479,7 @@ function parseDimension(tree, query, knex) {
             ]),
         ])
             .from(args.from || query.table)), knex);
-        var table = ((_a = tree.alias) === null || _a === void 0 ? void 0 : _a.value) || args.from || query.table;
+        var table = args.groupByAlias || args.from || query.table;
         changeQueryTable(query, knex, table, true);
         query.promise = query.promise.from(pre_trunc.as(table));
         query.promise = query.promise.select(knex.raw("?? as ??", [

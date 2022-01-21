@@ -568,7 +568,7 @@ function parseDimension(tree, query, knex) {
       knex,
     )
 
-    const table = tree.alias?.value || args.from || query.table
+    const table = args.groupByAlias || args.from || query.table
     changeQueryTable(query, knex, table, true)
 
     query.promise = query.promise.from(pre_trunc.as(table))
