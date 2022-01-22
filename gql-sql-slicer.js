@@ -1171,7 +1171,7 @@ var metricResolversData = {
 function withFilters(filters) {
     return function (knexPipe) {
         return filters.reduce(function (knexNext, filter, i) {
-            var selector = i === 'in' ? 'whereIn' : i === 0 ? 'where' : 'andWhere';
+            var selector = filter[1] === 'in' ? 'whereIn' : i === 0 ? 'where' : 'andWhere';
             return knexNext[selector].apply(knexNext, filter[1] === 'in'
                 ? filter.filter(function (a) { return a !== 'in'; })
                 : filter[1] === 'search'
