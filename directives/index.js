@@ -57,9 +57,11 @@ exports.postExecutedDirectives = {
     //
     // },
     omit: function (context) {
-        var transformer = function () {
+        var args = arguments_1.argumentsToObject(context.tree.arguments);
+        var transformer = function (_a) {
+            var originFullObject = _a.originFullObject;
             return {
-                skip: true
+                skip: (args === null || args === void 0 ? void 0 : args.full) ? true : !!originFullObject
             };
         };
         transformer.context = context;
