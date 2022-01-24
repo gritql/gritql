@@ -450,7 +450,7 @@ function parseDimension(tree, query, knex) {
     if (args === null || args === void 0 ? void 0 : args.groupByEach) {
         var amount = parseFloat(args.groupByEach);
         query.promise = query.promise
-            .select(knex.raw("(CAST(CEIL(??)/? AS INT)*? || '-' || CAST(CEIL(??)/? AS INT)*?+?) as ??", [
+            .select(knex.raw("(CAST(CEIL(??)/?? AS INT)*?? || '-' || CAST(CEIL(??)/?? AS INT)*??+??) as ??", [
             filters_1.buildFullName(args, query, tree.name.value, false),
             amount,
             amount,
@@ -460,7 +460,7 @@ function parseDimension(tree, query, knex) {
             amount - 1,
             tree.name.value,
         ]))
-            .groupBy(knex.raw('CAST(CEIL(??)/? AS INT)', [
+            .groupBy(knex.raw('CAST(CEIL(??)/?? AS INT)', [
             filters_1.buildFullName(args, query, tree.name.value, false),
             amount,
         ]));

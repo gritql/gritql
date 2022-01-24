@@ -522,7 +522,7 @@ function parseDimension(tree, query, knex) {
     query.promise = query.promise
       .select(
         knex.raw(
-          `(CAST(CEIL(??)/? AS INT)*? || '-' || CAST(CEIL(??)/? AS INT)*?+?) as ??`,
+          `(CAST(CEIL(??)/?? AS INT)*?? || '-' || CAST(CEIL(??)/?? AS INT)*??+??) as ??`,
           [
             buildFullName(args, query, tree.name.value, false),
             amount,
@@ -536,7 +536,7 @@ function parseDimension(tree, query, knex) {
         ),
       )
       .groupBy(
-        knex.raw('CAST(CEIL(??)/? AS INT)', [
+        knex.raw('CAST(CEIL(??)/?? AS INT)', [
           buildFullName(args, query, tree.name.value, false),
           amount,
         ]),
@@ -1108,8 +1108,8 @@ export const merge = (
                     result = progressiveSet(
                       result,
                       replacedPath.slice(0, replacedPath.lastIndexOf('.')) +
-                      '.' +
-                      k,
+                        '.' +
+                        k,
                       directiveResult.replacers[k],
                       false,
                     )
@@ -1344,11 +1344,13 @@ function mergeDimension(tree, query) {
 
   if (args?.type === 'Array') {
     if (!!args?.cutoff) {
-      query.cutoff = `${query.path}${!!query.path ? '.' : ''}[@${tree.name.value
-        }=:${tree.name.value}]`
+      query.cutoff = `${query.path}${!!query.path ? '.' : ''}[@${
+        tree.name.value
+      }=:${tree.name.value}]`
     }
-    query.path += `${!!query.path ? '.' : ''}[@${tree.name.value}=:${tree.name.value
-      }]`
+    query.path += `${!!query.path ? '.' : ''}[@${tree.name.value}=:${
+      tree.name.value
+    }]`
     return parseDirective(tree, query, 'dimension')
   } else {
     query.path += `${!!query.path ? '.' : ''}:${tree.name.value}`
@@ -1429,19 +1431,20 @@ const metricResolversData = {
 function withFilters(filters) {
   return (knexPipe) => {
     return filters.reduce((knexNext, filter, i) => {
-      const selector = filter[1] === 'in' ? 'whereIn' : i === 0 ? 'where' : 'andWhere'
+      const selector =
+        filter[1] === 'in' ? 'whereIn' : i === 0 ? 'where' : 'andWhere'
       return knexNext[selector].apply(
         knexNext,
         filter[1] === 'in'
           ? filter.filter((a) => a !== 'in')
           : filter[1] === 'search'
-            ? [
+          ? [
               knexNext.raw(
                 `to_tsvector('simple', ??) @@ (plainto_tsquery('simple', ?)::text || ':*')::tsquery)`,
                 [filter[0], filter[2]],
               ),
             ]
-            : filter,
+          : filter,
       )
     }, knexPipe)
   }
