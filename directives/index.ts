@@ -78,9 +78,11 @@ export const postExecutedDirectives = {
   // },
 
   omit: (context: PostExecutedContext) => {
-    const transformer = () => {
+    const args = argumentsToObject(context.tree.arguments)
+
+    const transformer = ({ originFullObject }) => {
       return {
-        skip: true,
+        skip: args?.full ? true : !!originFullObject,
       }
     }
 
