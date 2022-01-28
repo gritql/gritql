@@ -715,15 +715,21 @@ const metricResolvers = {
       partition = knex.raw(`partition by ??`, [partitionBy])
     }
 
-    const promise = knex
-      .select('*')
-      .select(
-        knex.raw(`DENSE_RANK() over (${partition} ORDER BY ?? desc) as ??`, [
-          buildFullName(args, query, args.a, false),
-          tree.alias.value,
-        ]),
-      )
-      .from(query.table || args.from)
+    const promise = applyFilters(
+      query,
+      withFilters(query.filters)(
+        knex
+          .select('*')
+          .select(
+            knex.raw(
+              `DENSE_RANK() over (${partition} ORDER BY ?? desc) as ??`,
+              [buildFullName(args, query, args.a, false), tree.alias.value],
+            ),
+          )
+          .from(query.table || args.from),
+      ),
+      knex,
+    )
 
     const table = args.tableAlias || args.from || query.table
 
