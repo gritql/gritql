@@ -188,9 +188,16 @@ exports.postExecutedDirectives = {
                             skipAll: true
                         };
                     }
-                    var globalObj_1 = progressive_1.progressiveGet(Object.keys(batches).length > 1
+                    var globalObj_1 = progressive_1.progressiveGet(Object.keys(batches).length > 1 || context.query.name
                         ? originFullObject[context.query.name]
                         : originFullObject, globalReplacedPath);
+                    if (!globalObj_1) {
+                        context.data.members.add(row);
+                        return {
+                            skip: true,
+                            skipAll: true
+                        };
+                    }
                     var skip = Object.keys(globalObj_1).some(function (key) {
                         var keys = filterPropertyKey(argsKeys_1, key);
                         return keys.length > 0
@@ -242,7 +249,7 @@ exports.postExecutedDirectives = {
             if (!originFullObject) {
                 return {};
             }
-            var currentData = progressive_1.progressiveGet(Object.keys(batches).length > 1
+            var currentData = progressive_1.progressiveGet(Object.keys(batches).length > 1 || context.query.name
                 ? originFullObject[context.query.name]
                 : originFullObject, globalReplacedPath);
             var isNotFirstTime = context.data.members.has(row);

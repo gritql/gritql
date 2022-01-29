@@ -610,13 +610,23 @@ var metricResolvers = {
             }
             partition = knex.raw("partition by ??", [partitionBy]);
         }
-        var promise = knex
+        var alg = 'DENSE_RANK';
+        if (args.alg === 'denseRank') {
+            alg = 'DENSE_RANK';
+        }
+        else if (args.alg === 'rank') {
+            alg = 'RANK';
+        }
+        else if (args.alg === 'rowNumber') {
+            alg = 'ROW_NUMBER';
+        }
+        var promise = filters_1.applyFilters(query, withFilters(query.filters)(knex
             .select('*')
-            .select(knex.raw("DENSE_RANK() over (" + partition + " ORDER BY ?? desc) as ??", [
+            .select(knex.raw(alg + "() over (" + partition + " ORDER BY ?? desc) as ??", [
             filters_1.buildFullName(args, query, args.a, false),
             tree.alias.value,
         ]))
-            .from(query.table || args.from);
+            .from(query.table || args.from)), knex);
         var table = args.tableAlias || args.from || query.table;
         query.promise
             .select(filters_1.buildFullName({ from: table }, query, tree.alias.value, false))
