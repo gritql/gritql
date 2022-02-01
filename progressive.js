@@ -124,13 +124,14 @@ function progressiveSet(object, queryPath, value, summItUp, hashContext) {
                 var filterBy_1 = key.split('=');
                 namedArrayIndex = filterBy_1;
                 // Fast indexing
+                var firstIndexInput = !hashContext[filterBy_1[0]];
                 hashContext[filterBy_1[0]] = hashContext[filterBy_1[0]] || {};
                 var found = void 0;
                 var index = (_b = hashContext[filterBy_1[0]]) === null || _b === void 0 ? void 0 : _b[filterBy_1[1]];
                 if (index != null) {
                     found = (_c = leaf[index]) !== null && _c !== void 0 ? _c : null;
                 }
-                if (found == null && !hashContext[filterBy_1[0]]) {
+                if (found == null && firstIndexInput) {
                     var foundIndex = leaf.findIndex(function (a) { return a[filterBy_1[0]] == '' + filterBy_1[1]; });
                     if (foundIndex !== -1) {
                         hashContext[filterBy_1[0]][filterBy_1[1]] = foundIndex;
@@ -254,33 +255,6 @@ function replVars(str, obj) {
     return str;
 }
 exports.replVars = replVars;
-/*function nextProgressiveSet(
-  hashContext: Record<string, any>,
-  object,
-  values: Record<string, any>,
-  pathKeys: string[],
-  value,
-) {
-  let objectCursor = object
-
-  for (let key of pathKeys) {
-    if (key.startsWith('[') && key.endsWith(']')) {
-      if (
-        objectCursor === object &&
-        !Array.isArray(object) &&
-        Object.keys(object).length === 0
-      ) {
-        object = []
-        objectCursor = object
-      }
-
-      const valueKey = key.slice(-2)
-    }
-  }
-}
-
-function nextProgressiveGet(hashContext, object, values, pathKeys, value) {}
-*/
 function getBatchContext(batches, by) {
     var _a, _b, _c;
     return ((_c = (_b = (_a = (batches[by] || batches['___query' + by])) === null || _a === void 0 ? void 0 : _a.find(function (q) { return q.name === by; })) === null || _b === void 0 ? void 0 : _b.hashContext) !== null && _c !== void 0 ? _c : {});
