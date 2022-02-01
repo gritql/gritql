@@ -276,34 +276,6 @@ export function replVars(str, obj) {
   return str
 }
 
-/*function nextProgressiveSet(
-  hashContext: Record<string, any>,
-  object,
-  values: Record<string, any>,
-  pathKeys: string[],
-  value,
-) {
-  let objectCursor = object
-
-  for (let key of pathKeys) {
-    if (key.startsWith('[') && key.endsWith(']')) {
-      if (
-        objectCursor === object &&
-        !Array.isArray(object) &&
-        Object.keys(object).length === 0
-      ) {
-        object = []
-        objectCursor = object
-      }
-
-      const valueKey = key.slice(-2)
-    }
-  }
-}
-
-function nextProgressiveGet(hashContext, object, values, pathKeys, value) {}
-*/
-
 export function getBatchContext(batches, by) {
   return (
     (batches[by] || batches['___query' + by])?.find((q) => q.name === by)
