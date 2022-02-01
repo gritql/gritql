@@ -121,6 +121,7 @@ export function progressiveSet(
         const filterBy = key.split('=')
         namedArrayIndex = filterBy
         // Fast indexing
+        const firstIndexInput = !hashContext[filterBy[0]]
         hashContext[filterBy[0]] = hashContext[filterBy[0]] || {}
         let found
         const index = hashContext[filterBy[0]]?.[filterBy[1]]
@@ -129,7 +130,7 @@ export function progressiveSet(
           found = leaf[index] ?? null
         }
 
-        if (found == null && !hashContext[filterBy[0]]) {
+        if (found == null && firstIndexInput) {
           const foundIndex = leaf.findIndex(
             (a) => a[filterBy[0]] == '' + filterBy[1],
           )
