@@ -78,10 +78,12 @@ exports.postExecutedDirectives = {
             throw "Diff directive requires 'by' argument";
         }
         var transformer = function (_a) {
-            var replacedPath = _a.replacedPath, originFullObject = _a.originFullObject, value = _a.value;
+            var replacedPath = _a.replacedPath, originFullObject = _a.originFullObject, value = _a.value, batches = _a.batches;
             if (originFullObject) {
                 return {
-                    value: value / progressive_1.progressiveGet(originFullObject[args.by], replacedPath) - 1
+                    value: value /
+                        progressive_1.progressiveGet(originFullObject[args.by], replacedPath, progressive_1.getBatchContext(batches, args.by)) -
+                        1
                 };
             }
             else {
@@ -173,7 +175,7 @@ exports.postExecutedDirectives = {
         var args = arguments_1.argumentsToObject(context.tree.arguments);
         context.data.members = new Set();
         var transformer = function (_a) {
-            var value = _a.value, globalReplacedPath = _a.globalReplacedPath, originFullObject = _a.originFullObject, row = _a.row, batches = _a.batches;
+            var value = _a.value, globalReplacedPath = _a.globalReplacedPath, originFullObject = _a.originFullObject, row = _a.row, batches = _a.batches, q = _a.q;
             if (originFullObject) {
                 var argsKeys_1 = Object.keys(args);
                 if (context.on === 'metric') {
@@ -190,7 +192,7 @@ exports.postExecutedDirectives = {
                     }
                     var globalObj_1 = progressive_1.progressiveGet(Object.keys(batches).length > 1 || context.query.name
                         ? originFullObject[context.query.name]
-                        : originFullObject, globalReplacedPath);
+                        : originFullObject, globalReplacedPath, q.hashContext);
                     if (!globalObj_1) {
                         context.data.members.add(row);
                         return {
@@ -245,13 +247,13 @@ exports.postExecutedDirectives = {
         }
         var transfomer = function (_a) {
             var _b;
-            var row = _a.row, path = _a.path, data = _a.data, value = _a.value, key = _a.key, globalReplacedPath = _a.globalReplacedPath, originFullObject = _a.originFullObject, batches = _a.batches, result = _a.result;
+            var row = _a.row, path = _a.path, data = _a.data, value = _a.value, key = _a.key, globalReplacedPath = _a.globalReplacedPath, originFullObject = _a.originFullObject, batches = _a.batches, result = _a.result, q = _a.q;
             if (!originFullObject) {
                 return {};
             }
             var currentData = progressive_1.progressiveGet(Object.keys(batches).length > 1 || context.query.name
                 ? originFullObject[context.query.name]
-                : originFullObject, globalReplacedPath);
+                : originFullObject, globalReplacedPath, q.hashContext);
             var isNotFirstTime = context.data.members.has(row);
             var isAlreadyChecked = context.data.checked.has(row);
             var matched = isNotFirstTime ||
@@ -266,7 +268,7 @@ exports.postExecutedDirectives = {
             if (matched) {
                 context.data.members.add(row);
                 var newPath = progressive_1.replVars(path, __assign(__assign({}, data), args.replacers)).replace(/:join\./g, '');
-                var currentGroupData = progressive_1.progressiveGet(result, newPath.replace(new RegExp("\\." + key + "$"), ''));
+                var currentGroupData = progressive_1.progressiveGet(result, newPath.replace(new RegExp("\\." + key + "$"), ''), q.hashContext);
                 var newValue = typeof (currentGroupData === null || currentGroupData === void 0 ? void 0 : currentGroupData[key]) === 'number'
                     ? (currentGroupData === null || currentGroupData === void 0 ? void 0 : currentGroupData[key]) + value
                     : value;

@@ -14,7 +14,7 @@ progressiveSet(k, 'book.dumbo.[1].leela', 'fry')
 progressiveSet(k, 'book.dumbo.[@one=3].leela', 'fry')
 console.log(JSON.stringify(k))
 */
-export function progressiveGet(object, queryPath) {
+export function progressiveGet(object, queryPath, hashContext = {}) {
   const pathArray = queryPath.split(/\./).map((p) => unshieldSeparator(p))
   return pathArray.reduce((r, pathStep, i) => {
     if (pathStep.startsWith('[') && pathStep.endsWith(']')) {
@@ -27,9 +27,39 @@ export function progressiveGet(object, queryPath) {
       ]
 
       if (Array.isArray(r)) {
-        return r.find((o) => o[step] == value)
+        // Fast indexing
+        let index = hashContext?.[step]?.[value]
+        if (index != null) {
+          return r[index]
+        }
+
+        index = r.findIndex((o) => o[step] == value)
+
+        if (index !== -1) {
+          hashContext[step] = hashContext[step] || {}
+          hashContext[step][value] = index
+
+          return r[index]
+        } else {
+          return NaN
+        }
       } else if (Array.isArray(r[step])) {
-        return r[step].find((o) => o[step] == value)
+        // Fast indexing
+        let index = hashContext?.[step]?.[value]
+        if (index != null) {
+          return r[step][index]
+        }
+
+        index = r[step].findIndex((o) => o[step] == value)
+
+        if (index !== -1) {
+          hashContext[step] = hashContext[step] || {}
+          hashContext[step][value] = index
+
+          return r[step][index]
+        } else {
+          return NaN
+        }
       } else if (r[pathStep]) {
         return r[pathStep]
       } else {
@@ -45,7 +75,13 @@ export function progressiveGet(object, queryPath) {
   }, object)
 }
 
-export function progressiveSet(object, queryPath, value, summItUp) {
+export function progressiveSet(
+  object,
+  queryPath,
+  value,
+  summItUp,
+  hashContext = {},
+) {
   const pathArray = queryPath.split(/\./).map((p) => unshieldSeparator(p))
   const property = pathArray.splice(-1)
   if (
@@ -84,11 +120,31 @@ export function progressiveSet(object, queryPath, value, summItUp) {
 
         const filterBy = key.split('=')
         namedArrayIndex = filterBy
-        const found = leaf.find((a) => a[filterBy[0]] == '' + filterBy[1])
+        // Fast indexing
+        hashContext[filterBy[0]] = hashContext[filterBy[0]] || {}
+        let found
+        const index = hashContext[filterBy[0]]?.[filterBy[1]]
+
+        if (index != null) {
+          found = leaf[index] ?? null
+        }
+
+        if (found == null && !hashContext[filterBy[0]]) {
+          const foundIndex = leaf.findIndex(
+            (a) => a[filterBy[0]] == '' + filterBy[1],
+          )
+
+          if (foundIndex !== -1) {
+            hashContext[filterBy[0]][filterBy[1]] = foundIndex
+            found = leaf[foundIndex]
+          }
+        }
+
         if (!!found) {
           leaf = found
         } else {
           leaf.push({ [filterBy[0]]: filterBy[1] })
+          hashContext[filterBy[0]][filterBy[1]] = leaf.length - 1
           leaf = leaf[leaf.length - 1]
         }
       }
@@ -117,7 +173,7 @@ export function progressiveSet(object, queryPath, value, summItUp) {
   if (value === undefined) {
     pathHistory.reverse()
 
-    pathHistory.forEach(({ leaf: step, namedArrayIndex }, i) => {
+    pathHistory.forEach(({ leaf: step, namedArrayIndex }) => {
       if (Array.isArray(step)) {
         const spliceIndex = Object.values(step).findIndex((val, i) => {
           const previousStepNameddArrayIndex =
@@ -142,7 +198,10 @@ export function progressiveSet(object, queryPath, value, summItUp) {
           )
             return true
         })
-        if (!!~spliceIndex) step.splice(spliceIndex, 1)
+        if (!!~spliceIndex) {
+          delete hashContext[namedArrayIndex[0]][step[spliceIndex]]
+          step.splice(spliceIndex, 1)
+        }
       } else {
         const spliceKey = Object.keys(step).find((val, i) => {
           if (!step[val]) return false
@@ -215,4 +274,39 @@ export function replVars(str, obj) {
     str = str.replace(`:${keys[key]}`, shieldSeparator(obj[keys[key]]))
   }
   return str
+}
+
+/*function nextProgressiveSet(
+  hashContext: Record<string, any>,
+  object,
+  values: Record<string, any>,
+  pathKeys: string[],
+  value,
+) {
+  let objectCursor = object
+
+  for (let key of pathKeys) {
+    if (key.startsWith('[') && key.endsWith(']')) {
+      if (
+        objectCursor === object &&
+        !Array.isArray(object) &&
+        Object.keys(object).length === 0
+      ) {
+        object = []
+        objectCursor = object
+      }
+
+      const valueKey = key.slice(-2)
+    }
+  }
+}
+
+function nextProgressiveGet(hashContext, object, values, pathKeys, value) {}
+*/
+
+export function getBatchContext(batches, by) {
+  return (
+    (batches[by] || batches['___query' + by])?.find((q) => q.name === by)
+      ?.hashContext ?? {}
+  )
 }

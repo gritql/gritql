@@ -5,7 +5,7 @@ var __spreadArray = (this && this.__spreadArray) || function (to, from) {
     return to;
 };
 exports.__esModule = true;
-exports.replVars = exports.iterateProgressive = exports.progressiveSet = exports.progressiveGet = void 0;
+exports.getBatchContext = exports.replVars = exports.iterateProgressive = exports.progressiveSet = exports.progressiveGet = void 0;
 function unshieldSeparator(str) {
     if (typeof str !== 'string')
         return str;
@@ -22,21 +22,49 @@ progressiveSet(k, 'book.dumbo.[1].leela', 'fry')
 progressiveSet(k, 'book.dumbo.[@one=3].leela', 'fry')
 console.log(JSON.stringify(k))
 */
-function progressiveGet(object, queryPath) {
+function progressiveGet(object, queryPath, hashContext) {
+    if (hashContext === void 0) { hashContext = {}; }
     var pathArray = queryPath.split(/\./).map(function (p) { return unshieldSeparator(p); });
     return pathArray.reduce(function (r, pathStep, i) {
+        var _a, _b;
         if (pathStep.startsWith('[') && pathStep.endsWith(']')) {
             var path = pathStep.slice(0, -1).slice(2);
             var separatorIndex = path.indexOf('=');
-            var _a = [
+            var _c = [
                 path.slice(0, separatorIndex),
                 path.slice(separatorIndex + 1),
-            ], step_1 = _a[0], value_1 = _a[1];
+            ], step_1 = _c[0], value_1 = _c[1];
             if (Array.isArray(r)) {
-                return r.find(function (o) { return o[step_1] == value_1; });
+                // Fast indexing
+                var index = (_a = hashContext === null || hashContext === void 0 ? void 0 : hashContext[step_1]) === null || _a === void 0 ? void 0 : _a[value_1];
+                if (index != null) {
+                    return r[index];
+                }
+                index = r.findIndex(function (o) { return o[step_1] == value_1; });
+                if (index !== -1) {
+                    hashContext[step_1] = hashContext[step_1] || {};
+                    hashContext[step_1][value_1] = index;
+                    return r[index];
+                }
+                else {
+                    return NaN;
+                }
             }
             else if (Array.isArray(r[step_1])) {
-                return r[step_1].find(function (o) { return o[step_1] == value_1; });
+                // Fast indexing
+                var index = (_b = hashContext === null || hashContext === void 0 ? void 0 : hashContext[step_1]) === null || _b === void 0 ? void 0 : _b[value_1];
+                if (index != null) {
+                    return r[step_1][index];
+                }
+                index = r[step_1].findIndex(function (o) { return o[step_1] == value_1; });
+                if (index !== -1) {
+                    hashContext[step_1] = hashContext[step_1] || {};
+                    hashContext[step_1][value_1] = index;
+                    return r[step_1][index];
+                }
+                else {
+                    return NaN;
+                }
             }
             else if (r[pathStep]) {
                 return r[pathStep];
@@ -54,7 +82,8 @@ function progressiveGet(object, queryPath) {
     }, object);
 }
 exports.progressiveGet = progressiveGet;
-function progressiveSet(object, queryPath, value, summItUp) {
+function progressiveSet(object, queryPath, value, summItUp, hashContext) {
+    if (hashContext === void 0) { hashContext = {}; }
     var pathArray = queryPath.split(/\./).map(function (p) { return unshieldSeparator(p); });
     var property = pathArray.splice(-1);
     if (queryPath.startsWith('[') &&
@@ -65,6 +94,7 @@ function progressiveSet(object, queryPath, value, summItUp) {
     var pathHistory = [{ leaf: leaf, namedArrayIndex: null }];
     pathArray.forEach(function (pathStep, i) {
         var _a;
+        var _b, _c;
         var namedArrayIndex = null;
         if (pathStep.startsWith('[') && !Array.isArray(leaf)) {
             var key = pathStep.slice(1, pathStep.length - 1);
@@ -93,12 +123,26 @@ function progressiveSet(object, queryPath, value, summItUp) {
                 key = key.slice(1);
                 var filterBy_1 = key.split('=');
                 namedArrayIndex = filterBy_1;
-                var found = leaf.find(function (a) { return a[filterBy_1[0]] == '' + filterBy_1[1]; });
+                // Fast indexing
+                hashContext[filterBy_1[0]] = hashContext[filterBy_1[0]] || {};
+                var found = void 0;
+                var index = (_b = hashContext[filterBy_1[0]]) === null || _b === void 0 ? void 0 : _b[filterBy_1[1]];
+                if (index != null) {
+                    found = (_c = leaf[index]) !== null && _c !== void 0 ? _c : null;
+                }
+                if (found == null && !hashContext[filterBy_1[0]]) {
+                    var foundIndex = leaf.findIndex(function (a) { return a[filterBy_1[0]] == '' + filterBy_1[1]; });
+                    if (foundIndex !== -1) {
+                        hashContext[filterBy_1[0]][filterBy_1[1]] = foundIndex;
+                        found = leaf[foundIndex];
+                    }
+                }
                 if (!!found) {
                     leaf = found;
                 }
                 else {
                     leaf.push((_a = {}, _a[filterBy_1[0]] = filterBy_1[1], _a));
+                    hashContext[filterBy_1[0]][filterBy_1[1]] = leaf.length - 1;
                     leaf = leaf[leaf.length - 1];
                 }
             }
@@ -125,7 +169,7 @@ function progressiveSet(object, queryPath, value, summItUp) {
     }
     if (value === undefined) {
         pathHistory.reverse();
-        pathHistory.forEach(function (_a, i) {
+        pathHistory.forEach(function (_a) {
             var step = _a.leaf, namedArrayIndex = _a.namedArrayIndex;
             if (Array.isArray(step)) {
                 var spliceIndex = Object.values(step).findIndex(function (val, i) {
@@ -142,8 +186,10 @@ function progressiveSet(object, queryPath, value, summItUp) {
                     }, false))
                         return true;
                 });
-                if (!!~spliceIndex)
+                if (!!~spliceIndex) {
+                    delete hashContext[namedArrayIndex[0]][step[spliceIndex]];
                     step.splice(spliceIndex, 1);
+                }
             }
             else {
                 var spliceKey = Object.keys(step).find(function (val, i) {
@@ -208,3 +254,35 @@ function replVars(str, obj) {
     return str;
 }
 exports.replVars = replVars;
+/*function nextProgressiveSet(
+  hashContext: Record<string, any>,
+  object,
+  values: Record<string, any>,
+  pathKeys: string[],
+  value,
+) {
+  let objectCursor = object
+
+  for (let key of pathKeys) {
+    if (key.startsWith('[') && key.endsWith(']')) {
+      if (
+        objectCursor === object &&
+        !Array.isArray(object) &&
+        Object.keys(object).length === 0
+      ) {
+        object = []
+        objectCursor = object
+      }
+
+      const valueKey = key.slice(-2)
+    }
+  }
+}
+
+function nextProgressiveGet(hashContext, object, values, pathKeys, value) {}
+*/
+function getBatchContext(batches, by) {
+    var _a, _b, _c;
+    return ((_c = (_b = (_a = (batches[by] || batches['___query' + by])) === null || _a === void 0 ? void 0 : _a.find(function (q) { return q.name === by; })) === null || _b === void 0 ? void 0 : _b.hashContext) !== null && _c !== void 0 ? _c : {});
+}
+exports.getBatchContext = getBatchContext;

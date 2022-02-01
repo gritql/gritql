@@ -894,7 +894,8 @@ var merge = function (tree, data, metricResolversData) {
                                 fullObject: fullObject,
                                 originFullObject: originFullObject,
                                 queries: quer,
-                                batches: batches
+                                batches: batches,
+                                q: q
                             });
                             // Important for directives which will not change value
                             if (directiveResult.hasOwnProperty('value')) {
@@ -913,7 +914,7 @@ var merge = function (tree, data, metricResolversData) {
                                 Object.keys(directiveResult.replacers).forEach(function (k) {
                                     result = progressive_1.progressiveSet(result, replacedPath_1.slice(0, replacedPath_1.lastIndexOf('.')) +
                                         '.' +
-                                        k, directiveResult.replacers[k], false);
+                                        k, directiveResult.replacers[k], false, q.hashContext);
                                 });
                             }
                         });
@@ -929,13 +930,13 @@ var merge = function (tree, data, metricResolversData) {
                                 var checks_1 = mutations['skip'];
                                 var skip_2 = Object.keys(checks_1).some(function (k) {
                                     //relying on pick by fix that
-                                    return !checks_1[k](progressive_1.progressiveGet(fullObject[mutations.filters.by], progressive_1.replVars(k, resultData[j])));
+                                    return !checks_1[k](progressive_1.progressiveGet(fullObject[mutations.filters.by], progressive_1.replVars(k, resultData[j]), progressive_1.getBatchContext(batches, mutations.filters.by)));
                                 });
                                 if (skip_2)
                                     return "continue";
                             }
                         }
-                        result = progressive_1.progressiveSet(result, replacedPath_1, value_1, false);
+                        result = progressive_1.progressiveSet(result, replacedPath_1, value_1, false, q.hashContext);
                         if (!!mutations) {
                             if (mutations[mutations.mutationFunction] &&
                                 mutations[mutations.mutationFunction][q.metrics[keys[key]]]) {
@@ -949,7 +950,7 @@ var merge = function (tree, data, metricResolversData) {
                                         resultData: resultData[j]
                                     },
                                     fullObject: fullObject
-                                }), false);
+                                }), false, q.hashContext);
                                 return "continue";
                             }
                         }
@@ -1006,6 +1007,9 @@ function getMergeStrings(tree, queries, idx, metricResolversData) {
     if (!!~idx && idx !== undefined && !queries[idx])
         queries[idx] = { idx: idx, name: undefined };
     var query = queries[idx];
+    if (query) {
+        query.hashContext = {};
+    }
     if (Array.isArray(tree)) {
         return tree.reduce(function (queries, t, i) {
             return getMergeStrings(t, queries, queries.length - 1, metricResolversData);
