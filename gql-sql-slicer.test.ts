@@ -135,6 +135,35 @@ describe('SQL', () => {
  
     `)
     })
+
+    test('complex queries using with example works', () => {
+      const querier = gqlToDb().beforeDbFetch(({ sql }) => {
+        expect(sql).toMatchSnapshot()
+      })
+
+      return querier(`query table {
+        productQuery: with(filters: { date: { gte: "2021-12-13", lte: "2022-01-09" }, price: { gte: 10 }, country: "DE", category: { in: ["Clothes", "Fashion"], nin: ["Bags"] } }) {
+              join(table: table_catalog, on: { product: "@product", country: "@country" }) {
+                  product (type: Array, from: table, sort_desc: value) {
+                      value: sum(a:value)
+                      price: unique(a:price, from: table_catalog)
+                      brand: unique(a:brand, from: table_catalog)
+                  }
+              }
+      }
+      all: fetch(table: productQuery) {
+          brand(type: Array, sort_desc: marketShare, limit: 10) {
+              price: percentile(a:price)
+              brand
+              marketShare: share(a:value)
+          }
+          count: countDistinct(a:brand)
+      }
+    }
+ 
+    `)
+    })
+
     test('two queries', () => {
       const querier = gqlToDb().beforeDbFetch(({ sql }) => {
         expect(sql).toMatchSnapshot()
@@ -213,6 +242,26 @@ describe('SQL', () => {
     `)
     })
 
+    test('Search query example works', () => {
+      const querier = gqlToDb().beforeDbFetch(({ sql }) => {
+        expect(sql).toMatchSnapshot()
+      })
+
+      return querier(`query table {
+      fetch(filters: { search: { brand: "Adidas", title: "T-shirt" }}) {
+          brand(type: Array, sort_desc: marketShare, limit: 10) {
+              title: unique(a:title) @omit
+              headlineTitle: searchHeadline(a:title)
+              rankingTitle: searchRanking(a:title)
+              headlineBrand: searchHeadline(a:brand)
+              rankingBrand: searchRanking(a:brand)
+          }
+      }
+    }
+ 
+    `)
+    })
+
     test('percentile', () => {
       const querier = gqlToDb().beforeDbFetch(({ sql }) => {
         expect(sql).toMatchSnapshot()
@@ -220,6 +269,18 @@ describe('SQL', () => {
       return querier(`query table{
       fetch{
         median: percentile(a:price)
+      }
+    }
+    `)
+    })
+
+    test('ranking', () => {
+      const querier = gqlToDb().beforeDbFetch(({ sql }) => {
+        expect(sql).toMatchSnapshot()
+      })
+      return querier(`query table{
+      fetch{
+        rank: ranking(a:price)
       }
     }
     `)

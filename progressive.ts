@@ -17,19 +17,27 @@ console.log(JSON.stringify(k))
 export function progressiveGet(object, queryPath) {
   const pathArray = queryPath.split(/\./).map((p) => unshieldSeparator(p))
   return pathArray.reduce((r, pathStep, i) => {
-    if (Array.isArray(r)) {
-      if (pathStep.startsWith('[') && pathStep.endsWith(']')) {
-        const path = pathStep.slice(0, -1).slice(2)
-        const separatorIndex = path.indexOf('=')
+    if (pathStep.startsWith('[') && pathStep.endsWith(']')) {
+      const path = pathStep.slice(0, -1).slice(2)
+      const separatorIndex = path.indexOf('=')
 
-        const [step, value] = [
-          path.slice(0, separatorIndex),
-          path.slice(separatorIndex + 1),
-        ]
+      const [step, value] = [
+        path.slice(0, separatorIndex),
+        path.slice(separatorIndex + 1),
+      ]
 
+      if (Array.isArray(r)) {
         return r.find((o) => o[step] == value)
+      } else if (Array.isArray(r[step])) {
+        return r[step].find((o) => o[step] == value)
+      } else if (r[pathStep]) {
+        return r[pathStep]
+      } else {
+        return NaN
       }
+    }
 
+    if (Array.isArray(r)) {
       return r.find((o) => Object.values(o).includes(pathStep))
     }
     if (!r) return NaN

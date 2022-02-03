@@ -7,6 +7,12 @@ import { parseDirective } from './directives'
 import { gaQueryBuilder, gaMetricResolvers } from './gql-ga-slicer'
 import { progressiveGet, progressiveSet, replVars } from './progressive'
 import { cloneDeep } from 'lodash'
+import {
+  applyFilters,
+  applyRawJoin,
+  buildFullName,
+  parseAdvancedFilters,
+} from './filters'
 
 type TagObject = {
   kind: 'OperationDefinition'
@@ -54,10 +60,48 @@ enum JoinType {
   FULL_OUTER = 'fullOuterJoin',
 }
 
+function changeQueryTable(query, knex, table: string, dropJoins: boolean) {
+  if (table !== query.table) {
+    query.table = table
+    query.promise.from(query.table)
+    if (dropJoins) {
+      query.joins = []
+    }
+    query.search = {}
+    query.preparedAdvancedFilters = parseAdvancedFilters(
+      query,
+      knex,
+      query.advancedFilters,
+      true,
+    )
+  }
+
+  return query
+}
+
 function transformFilters(args, query?, knex?) {
   return args.reduce((res, arg) => {
     if (arg.name.value === 'from') {
       return res
+    }
+
+    // We need to ensure that we are not in join context
+    if (!!knex) {
+      if (arg.name.value === 'table') {
+        changeQueryTable(query, knex, arg.value.value, false)
+        return res
+      }
+
+      if (arg.name.value === 'filters') {
+        query.advancedFilters = argumentsToObject(arg.value.fields)
+        query.preparedAdvancedFilters = parseAdvancedFilters(
+          query,
+          knex,
+          query.advancedFilters,
+          true,
+        )
+        return res
+      }
     }
 
     if (Object.values(JoinType).includes(arg.name.value)) {
@@ -67,6 +111,30 @@ function transformFilters(args, query?, knex?) {
       } else {
         throw "Join can't be called inside of join"
       }
+    }
+
+    if (arg.name.value === 'search') {
+      const elements = argumentsToObject(arg.value.value)
+
+      return res.concat([
+        Object.keys(elements).reduce((accum, k) => {
+          const key = buildFullName(args, query, k, false)
+          const v = elements[k]
+
+          if (query.search?.[key]) {
+            throw `Search for ${key} already defined`
+          }
+
+          query.search = {
+            ...query.search,
+            [key]: query.search?.[key] || v,
+          }
+
+          accum.push([key, 'search', v])
+
+          return accum
+        }, []),
+      ])
     }
 
     if (arg.name.value.endsWith('_gt'))
@@ -128,22 +196,6 @@ function transformFilters(args, query?, knex?) {
   }, [])
 }
 
-function buildFullName(
-  args: any | any[],
-  query,
-  field: string,
-  evaluateOnlyWithLinkSymbol = true,
-) {
-  args = Array.isArray(args) ? argumentsToObject(args) : args
-  const table = args.from || query.table
-
-  if (!field.startsWith('@') && (evaluateOnlyWithLinkSymbol || !args.from)) {
-    return field
-  } else {
-    return `${table}.${field.replace(/^@/, '')}`
-  }
-}
-
 function join(type: JoinType) {
   return (tree, query, knex) => {
     if (!tree.arguments && !tree.fields)
@@ -162,34 +214,42 @@ function join(type: JoinType) {
       'by_in',
     ].filter((key) => args[key] !== undefined)
 
-    if (!byKeys.length) throw "Join function requires 'by' as argument"
+    if (!byKeys.length && (!args.on || Object.keys(args.on).length === 0))
+      throw "Join function requires 'by' or 'on' as argument"
 
-    const filters = transformFilters(
-      (tree.arguments || tree.fields)
-        .filter(({ name: { value } }) => byKeys.includes(value))
-        .concat({ name: { value: 'from' }, value: { value: args.table } }),
-      query,
-    )
+    if (byKeys.length) {
+      const filters = transformFilters(
+        (tree.arguments || tree.fields)
+          .filter(({ name: { value } }) => byKeys.includes(value))
+          .concat({ name: { value: 'from' }, value: { value: args.table } }),
+        query,
+      )
 
-    query.promise[type](args.table, function () {
-      //this.on(function () {
-      filters.forEach(([_, operator, value], index) => {
-        const onFunc = index === 0 ? this.on : this.andOn
+      query.promise[type](args.table, function () {
+        //this.on(function () {
+        filters.forEach(([_, operator, value], index) => {
+          const onFunc = index === 0 ? this.on : this.andOn
 
-        let [leftSide, rightSide] = value.split(':')
+          let [leftSide, rightSide] = value.split(':')
 
-        if (!leftSide || !rightSide) {
-          throw "'by' argument inside Join function must include two fields (divided with :)"
-        }
+          if (!leftSide || !rightSide) {
+            throw "'by' argument inside Join function must include two fields (divided with :)"
+          }
 
-        leftSide = buildFullName({}, query, leftSide)
+          leftSide = buildFullName({}, query, leftSide)
 
-        rightSide = buildFullName({ from: args.table }, query, rightSide)
+          rightSide = buildFullName({ from: args.table }, query, rightSide)
 
-        onFunc.call(this, leftSide, operator, rightSide)
+          onFunc.call(this, leftSide, operator, rightSide)
+        })
+        //})
       })
-      //})
-    })
+    } else {
+      applyRawJoin(query, knex, type, args.table, args.on)
+    }
+
+    query.joins = query.joins || []
+    query.joins.push(args.table)
   }
 }
 
@@ -226,14 +286,21 @@ export const gqlToDb = (opts: any = { client: 'pg' }) => {
       )
         .filter((q) => !q.skip)
         .map((q) => {
+          q.promise = applyFilters(q, q.promise, knex)
+
+          return q
+        })
+        .map((q) => {
           if (q.postQueryProcessing) q.postQueryProcessing(definitions, q, knex)
           if (q.generatePromise) q.promise = q.generatePromise(q)
           return q
         })
 
-      const sql = queries.map((q) => q.promise.toString())
+      const sql = queries
+        .filter((q) => !q.isWith)
+        .map((q) => q.promise.toString())
       const preparedGqlQuery = await beforeDbHandler({
-        queries,
+        queries: queries.filter((q) => !q.isWith),
         sql,
         definitions,
       })
@@ -323,19 +390,40 @@ function queryBuilder(
   }
   if (
     !query.filters &&
-    (tree.name.value === 'fetch' || tree.name.value === 'fetchPlain')
+    (tree.name.value === 'fetch' ||
+      tree.name.value === 'fetchPlain' ||
+      tree.name.value === 'with')
   ) {
     query.name = tree.alias?.value || null
     query.table = table
     query.promise = knex.select().from(table)
+    query.joins = []
     query.filters = parseFilters(tree, query, knex)
-    //if(filters)
     query.promise = withFilters(query.filters)(query.promise)
+
+    if (tree.name.value === 'with') {
+      query.isWith = true
+    }
+
+    if (query.table === undefined) {
+      throw 'Table name must be specified trought table argument or query name'
+    }
+
+    if (!query.isWith) {
+      queries
+        .filter((q) => q !== query && q.isWith)
+        .forEach((q) => {
+          query.promise = query.promise.with(q.name, q.promise)
+        })
+    }
+
     if (!tree.selectionSet?.selections)
       throw 'The query is empty, you need specify metrics or dimensions'
   }
   //console.log(JSON.stringify(tree, null, 2))
-  if (query.name === undefined) throw 'Builder: Cant find fetch in the payload'
+  if (query.name === undefined) {
+    throw 'Builder: Cant find fetch in the payload'
+  }
 
   if (!!tree.selectionSet?.selections) {
     const selections = tree.selectionSet.selections
@@ -351,6 +439,7 @@ function queryBuilder(
     if (
       tree.name?.value !== 'fetch' &&
       tree.name?.value !== 'fetchPlain' &&
+      tree.name?.value !== 'with' &&
       !tree.with
     )
       parseDimension(tree, query, knex)
@@ -373,7 +462,7 @@ function queryBuilder(
         if (!!query.dimensions)
           queries[newIdx].dimensions = cloneDeep(query.dimensions)
 
-        queries[newIdx].promise = copyKnex(query.promise, knex)
+        queries[newIdx].promise = query.promise.clone()
         queries[newIdx].idx = newIdx
         return queryBuilder(table, t, queries, newIdx, knex, metricResolvers)
       }
@@ -381,6 +470,7 @@ function queryBuilder(
     }, queries)
   }
   parseMetric(tree, query, knex, metricResolvers)
+
   return queries
 }
 function parseMetric(tree, query, knex, metricResolvers) {
@@ -483,19 +573,36 @@ function parseDimension(tree, query, knex) {
       `groupByEach_min_${tree.alias?.value || tree.name.value}`,
     )
   } else if (args?.groupBy) {
-    const pre_trunc = withFilters(query.filters)(
-      knex
-        .select([
-          '*',
-          knex.raw(`date_trunc(?, ??) as ??`, [
-            args?.groupBy,
-            tree.name.value,
-            `${tree.name.value}_${args?.groupBy}`,
-          ]),
-        ])
-        .from(args.from || query.table),
+    if (args.from !== query.table) {
+      query.preparedAdvancedFilters = parseAdvancedFilters(
+        query,
+        knex,
+        query.advancedFilters,
+        true,
+      )
+    }
+
+    const pre_trunc = applyFilters(
+      query,
+      withFilters(query.filters)(
+        knex
+          .select([
+            '*',
+            knex.raw(`date_trunc(?, ??) as ??`, [
+              args?.groupBy,
+              tree.name.value,
+              `${tree.name.value}_${args?.groupBy}`,
+            ]),
+          ])
+          .from(args.from || query.table),
+      ),
+      knex,
     )
-    query.promise = query.promise.from(pre_trunc.as(args.from || query.table))
+
+    const table = args.groupByAlias || args.from || query.table
+    changeQueryTable(query, knex, table, true)
+
+    query.promise = query.promise.from(pre_trunc.as(table))
 
     query.promise = query.promise.select(
       knex.raw(`?? as ??`, [
@@ -626,7 +733,7 @@ const metricResolvers = {
   rightOuterJoin: join(JoinType.RIGHT_OUTER),
   fullOuterJoin: join(JoinType.FULL_OUTER),
   ranking: (tree, query, knex) => {
-    if (!tree.arguments) throw 'Avg function requires arguments'
+    if (!tree.arguments) throw 'Ranking function requires arguments'
     const args = argumentsToObject(tree.arguments)
     if (!args.a) throw "Ranking function requires 'a' as argument"
 
@@ -639,17 +746,90 @@ const metricResolvers = {
       partition = knex.raw(`partition by ??`, [partitionBy])
     }
 
-    query.promise = knex
-      .select('*')
-      .select(
-        knex.raw(`DENSE_RANK() over (${partition} ORDER BY ?? desc) as ??`, [
-          buildFullName(args, query, args.a, false),
-          tree.alias.value,
-        ]),
-      )
-      .from(query.promise.as('middleTable'))
+    let alg = 'DENSE_RANK'
+
+    if (args.alg === 'denseRank') {
+      alg = 'DENSE_RANK'
+    } else if (args.alg === 'rank') {
+      alg = 'RANK'
+    } else if (args.alg === 'rowNumber') {
+      alg = 'ROW_NUMBER'
+    }
+
+    const promise = applyFilters(
+      query,
+      withFilters(query.filters)(
+        knex
+          .select('*')
+          .select(
+            knex.raw(`${alg}() over (${partition} ORDER BY ?? desc) as ??`, [
+              buildFullName(args, query, args.a, false),
+              tree.alias.value,
+            ]),
+          )
+          .from(query.table || args.from),
+      ),
+      knex,
+    )
+
+    const table = args.tableAlias || args.from || query.table
+
+    query.promise
+      .select(buildFullName({ from: table }, query, tree.alias.value, false))
+      .from(promise.as(args.tableAlias || query.table))
+
+    changeQueryTable(query, knex, table, true)
+
+    query.promise.groupBy(
+      buildFullName({ from: table }, query, tree.alias.value, false),
+    )
 
     query.metrics.push(tree.alias.value)
+  },
+  searchRanking: (tree, query, knex) => {
+    if (!tree.arguments) throw 'SearchRanking function requires arguments'
+    const args = argumentsToObject(tree.arguments)
+    if (!args.a) throw "SearchRanking function requires 'a' as argument"
+
+    const key = buildFullName(
+      { from: args.from || query.table },
+      query,
+      args.a,
+      false,
+    )
+
+    if (!query.search[key])
+      throw `SearchRanking requires search query for ${key} field`
+
+    query.promise = query.promise.select(
+      knex.raw(
+        "ts_rank(to_tsvector('simple', ??), (plainto_tsquery('simple', ?)::text || ':*')::tsquery) as ??",
+        [key, query.search[key], tree.alias.value],
+      ),
+    )
+  },
+  searchHeadline: (tree, query, knex) => {
+    if (!tree.arguments) throw 'SearchRanking function requires arguments'
+    const args = argumentsToObject(tree.arguments)
+
+    if (!args.a) throw "SearchHeadline function requires 'a' as argument"
+
+    const key = buildFullName(
+      { from: args.from || query.table },
+      query,
+      args.a,
+      false,
+    )
+
+    if (!query.search[key])
+      throw `SearchHeadline requires search query for ${key} field`
+
+    query.promise = query.promise.select(
+      knex.raw(
+        "ts_headline('simple', ??, (plainto_tsquery('simple', ?)::text || ':*')::tsquery) as ??",
+        [key, query.search[key], tree.alias.value],
+      ),
+    )
   },
   unique: (tree, query, knex) => {
     const args = tree.arguments && argumentsToObject(tree.arguments)
@@ -861,17 +1041,6 @@ const metricResolvers = {
   },
 }
 
-function copyKnex(knexObject, knex) {
-  const result = knex(knexObject._single.table)
-
-  return Object.keys(knexObject).reduce((k, key) => {
-    if (key.startsWith('_') && !!knexObject[key]) {
-      k[key] = JSON.parse(JSON.stringify(knexObject[key]))
-    }
-    return k
-  }, result)
-}
-
 export const merge = (
   tree: Array<TagObject>,
   data: Array<any>,
@@ -887,7 +1056,7 @@ export const merge = (
   const mutations = queries.filter((q) => !!q.mutation)
 
   const batches = queries
-    .filter((q) => !q.mutation)
+    .filter((q) => !q.mutation && !q.skipBatching)
     .reduce((r, q, i) => {
       const key = q.name || '___query'
       if (!r[key]) r[key] = []
@@ -1142,6 +1311,11 @@ function getMergeStrings(
     }, queries)
   }
 
+  if (tree.name.value === 'with') {
+    query.skipBatching = true
+    return queries
+  }
+
   if (
     !query.filters &&
     (tree.name.value === 'fetch' || tree.name.value === 'fetchPlain')
@@ -1162,8 +1336,9 @@ function getMergeStrings(
     query.mutationFunction = tree.name?.value || null
   }
 
-  if (query.name === undefined && !query.mutation)
+  if (query.name === undefined && !query.mutation) {
     throw 'Cant find fetch in the payload'
+  }
 
   if (!!tree.selectionSet?.selections) {
     const selections = tree.selectionSet.selections
@@ -1300,34 +1475,26 @@ const metricResolversData = {
   },
 }
 
-function isNumber(val) {
-  return +val + '' == val + ''
-}
-
 function withFilters(filters) {
   return (knexPipe) => {
     return filters.reduce((knexNext, filter, i) => {
-      if (i === 0) {
-        if (filter[1] === 'in')
-          return knexNext.whereIn.apply(
-            knexNext,
-            filter.filter((a) => a !== 'in'),
-          )
-        return knexNext.where.apply(knexNext, filter)
-      }
-      if (filter[1] === 'in')
-        return knexNext.whereIn.apply(
-          knexNext,
-          filter.filter((a) => a !== 'in'),
-        )
-      return knexNext.andWhere.apply(knexNext, filter)
+      const selector =
+        filter[1] === 'in' ? 'whereIn' : i === 0 ? 'where' : 'andWhere'
+      return knexNext[selector].apply(
+        knexNext,
+        filter[1] === 'in'
+          ? filter.filter((a) => a !== 'in')
+          : filter[1] === 'search'
+          ? [
+              knexNext.raw(
+                `to_tsvector('simple', ??) @@ (plainto_tsquery('simple', ?)::text || ':*')::tsquery)`,
+                [filter[0], filter[2]],
+              ),
+            ]
+          : filter,
+      )
     }, knexPipe)
   }
-}
-
-function flattenObject(o) {
-  const keys = Object.keys(o)
-  return keys.length === 1 ? o[keys[0]] : keys.map((k) => o[k])
 }
 
 /*

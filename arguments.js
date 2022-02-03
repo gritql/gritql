@@ -31,6 +31,12 @@ function parseValue(value) {
     else if (value.kind === 'FloatValue') {
         return parseFloat(value.value);
     }
+    else if (value.kind === 'IntValue') {
+        return parseInt(value.value, 10);
+    }
+    else if (value.kind === 'ListValue') {
+        return value.values.map(parseValue);
+    }
     else {
         return value.value;
     }

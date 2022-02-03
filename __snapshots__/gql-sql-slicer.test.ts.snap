@@ -20,6 +20,13 @@ Array [
 ]
 `;
 
+exports[`SQL builder for mulyquery requests complex queries using with example works 1`] = `
+Array [
+  "with \\"productQuery\\" as (select \\"table\\".\\"product\\", sum(\\"value\\") as \\"value\\", \\"table_catalog\\".\\"price\\" as \\"price\\", \\"table_catalog\\".\\"brand\\" as \\"brand\\" from \\"table\\" JOIN \\"table_catalog\\" ON (\\"table_catalog\\".\\"product\\" = \\"table\\".\\"product\\") AND (\\"table_catalog\\".\\"country\\" = \\"table\\".\\"country\\") where ((\\"table\\".\\"date\\" >= '2021-12-13') AND (\\"table\\".\\"date\\" <= '2022-01-09')) AND ((\\"table\\".\\"price\\" >= 10)) AND (\\"table\\".\\"country\\" = 'DE') AND ((\\"table\\".\\"category\\" IN ('Clothes','Fashion')) AND (\\"table\\".\\"category\\" NOT IN('Bags'))) group by \\"table\\".\\"product\\", \\"table_catalog\\".\\"price\\", \\"table_catalog\\".\\"brand\\" order by \\"value\\" desc) select count(distinct \\"brand\\") as \\"count\\" from \\"productQuery\\"",
+  "with \\"productQuery\\" as (select \\"table\\".\\"product\\", sum(\\"value\\") as \\"value\\", \\"table_catalog\\".\\"price\\" as \\"price\\", \\"table_catalog\\".\\"brand\\" as \\"brand\\" from \\"table\\" JOIN \\"table_catalog\\" ON (\\"table_catalog\\".\\"product\\" = \\"table\\".\\"product\\") AND (\\"table_catalog\\".\\"country\\" = \\"table\\".\\"country\\") where ((\\"table\\".\\"date\\" >= '2021-12-13') AND (\\"table\\".\\"date\\" <= '2022-01-09')) AND ((\\"table\\".\\"price\\" >= 10)) AND (\\"table\\".\\"country\\" = 'DE') AND ((\\"table\\".\\"category\\" IN ('Clothes','Fashion')) AND (\\"table\\".\\"category\\" NOT IN('Bags'))) group by \\"table\\".\\"product\\", \\"table_catalog\\".\\"price\\", \\"table_catalog\\".\\"brand\\" order by \\"value\\" desc) select \\"brand\\", PERCENTILE_CONT(0.5) WITHIN GROUP(ORDER BY \\"price\\") AS \\"price\\", \\"brand\\", sum(\\"value\\")/NULLIF(sum(sum(\\"value\\")) over (), 0)::float4 as \\"marketShare\\" from \\"productQuery\\" group by \\"brand\\" order by \\"marketShare\\" desc limit 10",
+]
+`;
+
 exports[`SQL builder for mulyquery requests mixing the object 1`] = `
 Object {
   "desktop": Object {
@@ -415,6 +422,12 @@ Array [
 ]
 `;
 
+exports[`SQL gqlBuilder single query Search query example works 1`] = `
+Array [
+  "select \\"brand\\", \\"title\\" as \\"title\\", ts_headline('simple', \\"table\\".\\"title\\", (plainto_tsquery('simple', 'T-shirt')::text || ':*')::tsquery) as \\"headlineTitle\\", ts_rank(to_tsvector('simple', \\"table\\".\\"title\\"), (plainto_tsquery('simple', 'T-shirt')::text || ':*')::tsquery) as \\"rankingTitle\\", ts_headline('simple', \\"table\\".\\"brand\\", (plainto_tsquery('simple', 'Adidas')::text || ':*')::tsquery) as \\"headlineBrand\\", ts_rank(to_tsvector('simple', \\"table\\".\\"brand\\"), (plainto_tsquery('simple', 'Adidas')::text || ':*')::tsquery) as \\"rankingBrand\\" from \\"table\\" where (to_tsvector('simple', \\"table\\".\\"brand\\") @@ (plainto_tsquery('simple', 'Adidas')::text || ':*')::tsquery AND to_tsvector('simple', \\"table\\".\\"title\\") @@ (plainto_tsquery('simple', 'T-shirt')::text || ':*')::tsquery) group by \\"brand\\", \\"title\\" order by \\"marketShare\\" desc limit 10",
+]
+`;
+
 exports[`SQL gqlBuilder single query basic Array with sorting works 1`] = `
 Array [
   "select \\"channel\\", cast(\\"sum\\"(\\"revenue\\") as float)/NULLIF(cast(\\"sum\\"(\\"sessions\\") as float), 0)::float4 as \\"session_value\\" from \\"table\\" where \\"table\\".\\"category\\" = 'whatever' and \\"table\\".\\"country\\" = 'US' and \\"table\\".\\"date\\" > '2020-1-1' and \\"table\\".\\"date\\" < '2021-7-12' group by \\"channel\\" order by \\"session_value\\" desc",
@@ -461,6 +474,12 @@ Array [
 exports[`SQL gqlBuilder single query percentile 1`] = `
 Array [
   "select PERCENTILE_CONT(0.5) WITHIN GROUP(ORDER BY \\"price\\") AS \\"median\\" from \\"table\\"",
+]
+`;
+
+exports[`SQL gqlBuilder single query ranking 1`] = `
+Array [
+  "select \\"table\\".\\"rank\\" from (select *, DENSE_RANK() over ( ORDER BY \\"price\\" desc) as \\"rank\\" from \\"table\\") as \\"table\\" group by \\"table\\".\\"rank\\"",
 ]
 `;
 

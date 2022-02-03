@@ -25,16 +25,27 @@ console.log(JSON.stringify(k))
 function progressiveGet(object, queryPath) {
     var pathArray = queryPath.split(/\./).map(function (p) { return unshieldSeparator(p); });
     return pathArray.reduce(function (r, pathStep, i) {
-        if (Array.isArray(r)) {
-            if (pathStep.startsWith('[') && pathStep.endsWith(']')) {
-                var path = pathStep.slice(0, -1).slice(2);
-                var separatorIndex = path.indexOf('=');
-                var _a = [
-                    path.slice(0, separatorIndex),
-                    path.slice(separatorIndex + 1),
-                ], step_1 = _a[0], value_1 = _a[1];
+        if (pathStep.startsWith('[') && pathStep.endsWith(']')) {
+            var path = pathStep.slice(0, -1).slice(2);
+            var separatorIndex = path.indexOf('=');
+            var _a = [
+                path.slice(0, separatorIndex),
+                path.slice(separatorIndex + 1),
+            ], step_1 = _a[0], value_1 = _a[1];
+            if (Array.isArray(r)) {
                 return r.find(function (o) { return o[step_1] == value_1; });
             }
+            else if (Array.isArray(r[step_1])) {
+                return r[step_1].find(function (o) { return o[step_1] == value_1; });
+            }
+            else if (r[pathStep]) {
+                return r[pathStep];
+            }
+            else {
+                return NaN;
+            }
+        }
+        if (Array.isArray(r)) {
             return r.find(function (o) { return Object.values(o).includes(pathStep); });
         }
         if (!r)
