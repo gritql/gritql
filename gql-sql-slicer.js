@@ -425,10 +425,10 @@ function parseMetric(tree, query, knex, metricResolvers) {
     // would be useful for further grouping && filtering
     if (!((_c = query.getters) === null || _c === void 0 ? void 0 : _c.find(function (name) { var _a, _b; return name === (((_a = tree.alias) === null || _a === void 0 ? void 0 : _a.value) || ((_b = tree.name) === null || _b === void 0 ? void 0 : _b.value)); }))) {
         if (!((_d = tree.alias) === null || _d === void 0 ? void 0 : _d.value)) {
-            query.promise = query.promise.select("" + buildFullName(args, query, tree.name.value));
+            query.promise = query.promise.select("" + filters_1.buildFullName(args, query, tree.name.value));
         }
         else {
-            query.promise = query.promise.select(buildFullName(args, query, tree.name.value) + " as " + tree.alias.value);
+            query.promise = query.promise.select(filters_1.buildFullName(args, query, tree.name.value) + " as " + tree.alias.value);
         }
     }
     if ((args === null || args === void 0 ? void 0 : args.sort) == 'desc' || (args === null || args === void 0 ? void 0 : args.sort) == 'asc')
@@ -458,7 +458,7 @@ function parseDimension(tree, query, knex) {
         query.getters = [];
         query.promise = query.promise
             .select(knex.raw("(CAST(CEIL(??)/?? AS INT)*?? || '-' || CAST(CEIL(??)/?? AS INT)*??+??) AS ??", [
-            buildFullName(args, query, tree.name.value, false),
+            filters_1.buildFullName(args, query, tree.name.value, false),
             amount,
             amount,
             filters_1.buildFullName(args, query, tree.name.value, false),
@@ -467,12 +467,12 @@ function parseDimension(tree, query, knex) {
             amount - 1,
             ((_a = tree.alias) === null || _a === void 0 ? void 0 : _a.value) || tree.name.value,
         ]), knex.raw("(CAST(CEIL(??)/?? AS INT)*??) AS ??", [
-            buildFullName(args, query, tree.name.value, false),
+            filters_1.buildFullName(args, query, tree.name.value, false),
             amount,
             amount,
             "groupByEach_min_" + (((_b = tree.alias) === null || _b === void 0 ? void 0 : _b.value) || tree.name.value),
         ]), knex.raw("(CAST(CEIL(??)/?? AS INT)*??+??) AS ??", [
-            buildFullName(args, query, tree.name.value, false),
+            filters_1.buildFullName(args, query, tree.name.value, false),
             amount,
             amount,
             amount - 1,
