@@ -1,9 +1,9 @@
 import { DocumentNode, DirectiveNode } from 'graphql'
 import { argumentsToObject } from '../arguments'
 import {
+  getBatchContext,
   iterateProgressive,
   progressiveGet,
-  progressiveSet,
   replVars,
 } from '../progressive'
 
@@ -104,11 +104,22 @@ export const postExecutedDirectives = {
       throw "Diff directive requires 'by' argument"
     }
 
-    const transformer = ({ replacedPath, originFullObject, value }) => {
+    const transformer = ({
+      replacedPath,
+      originFullObject,
+      value,
+      batches,
+    }) => {
       if (originFullObject) {
         return {
           value:
-            value / progressiveGet(originFullObject[args.by], replacedPath) - 1,
+            value /
+              progressiveGet(
+                originFullObject[args.by],
+                replacedPath,
+                getBatchContext(batches, args.by),
+              ) -
+            1,
         }
       } else {
         return { value }
@@ -225,6 +236,7 @@ export const postExecutedDirectives = {
       originFullObject,
       row,
       batches,
+      q,
     }) => {
       if (originFullObject) {
         const argsKeys = Object.keys(args)
@@ -246,6 +258,7 @@ export const postExecutedDirectives = {
               ? originFullObject[context.query.name]
               : originFullObject,
             globalReplacedPath,
+            q.hashContext,
           )
 
           if (!globalObj) {
@@ -322,6 +335,7 @@ export const postExecutedDirectives = {
       originFullObject,
       batches,
       result,
+      q,
     }) => {
       if (!originFullObject) {
         return {}
@@ -332,6 +346,7 @@ export const postExecutedDirectives = {
           ? originFullObject[context.query.name]
           : originFullObject,
         globalReplacedPath,
+        q.hashContext,
       )
 
       const isNotFirstTime = context.data.members.has(row)
@@ -361,6 +376,7 @@ export const postExecutedDirectives = {
         const currentGroupData = progressiveGet(
           result,
           newPath.replace(new RegExp(`\\.${key}$`), ''),
+          q.hashContext,
         )
 
         const newValue =
