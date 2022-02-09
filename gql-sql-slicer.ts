@@ -5,7 +5,12 @@ const knexConstructor = require('knex')
 import { argumentsToObject } from './arguments'
 import { parseDirective } from './directives'
 import { gaQueryBuilder, gaMetricResolvers } from './gql-ga-slicer'
-import { progressiveGet, progressiveSet, replVars } from './progressive'
+import {
+  getBatchContext,
+  progressiveGet,
+  progressiveSet,
+  replVars,
+} from './progressive'
 import { cloneDeep } from 'lodash'
 import {
   applyFilters,
@@ -1131,6 +1136,7 @@ export const merge = (
                   originFullObject,
                   queries: quer,
                   batches,
+                  q,
                 })
 
                 // Important for directives which will not change value
@@ -1159,6 +1165,7 @@ export const merge = (
                         k,
                       directiveResult.replacers[k],
                       false,
+                      q.hashContext,
                     )
                   })
                 }
@@ -1182,6 +1189,7 @@ export const merge = (
                     progressiveGet(
                       fullObject[mutations.filters.by],
                       replVars(k, resultData[j]),
+                      getBatchContext(batches, mutations.filters.by),
                     ),
                   )
                 })
@@ -1189,7 +1197,13 @@ export const merge = (
               }
             }
 
-            result = progressiveSet(result, replacedPath, value, false)
+            result = progressiveSet(
+              result,
+              replacedPath,
+              value,
+              false,
+              q.hashContext,
+            )
 
             if (!!mutations) {
               if (
@@ -1211,6 +1225,7 @@ export const merge = (
                     fullObject,
                   }),
                   false,
+                  q.hashContext,
                 )
                 continue
               }
@@ -1282,6 +1297,10 @@ function getMergeStrings(
   if (!!~idx && idx !== undefined && !queries[idx])
     queries[idx] = { idx, name: undefined }
   const query = queries[idx]
+  if (query) {
+    query.hashContext = {}
+  }
+
   if (Array.isArray(tree)) {
     return tree.reduce(
       (queries, t, i) =>
