@@ -1,4 +1,15 @@
 "use strict";
+var __assign = (this && this.__assign) || function () {
+    __assign = Object.assign || function(t) {
+        for (var s, i = 1, n = arguments.length; i < n; i++) {
+            s = arguments[i];
+            for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p))
+                t[p] = s[p];
+        }
+        return t;
+    };
+    return __assign.apply(this, arguments);
+};
 var __spreadArray = (this && this.__spreadArray) || function (to, from) {
     for (var i = 0, il = from.length, j = to.length; i < il; i++, j++)
         to[j] = from[i];
@@ -26,24 +37,29 @@ function progressiveGet(object, queryPath, hashContext) {
     if (hashContext === void 0) { hashContext = {}; }
     var pathArray = queryPath.split(/\./).map(function (p) { return unshieldSeparator(p); });
     return pathArray.reduce(function (r, pathStep, i) {
-        var _a, _b;
+        var _a, _b, _c, _d;
         if (pathStep.startsWith('[') && pathStep.endsWith(']')) {
             var path = pathStep.slice(0, -1).slice(2);
             var separatorIndex = path.indexOf('=');
-            var _c = [
+            var _e = [
                 path.slice(0, separatorIndex),
                 path.slice(separatorIndex + 1),
-            ], step_1 = _c[0], value_1 = _c[1];
+            ], step_1 = _e[0], value_1 = _e[1];
+            var indexStep = "$" + step_1;
             if (Array.isArray(r)) {
                 // Fast indexing
-                var index = (_a = hashContext === null || hashContext === void 0 ? void 0 : hashContext[step_1]) === null || _a === void 0 ? void 0 : _a[value_1];
+                var index = (_b = (_a = hashContext === null || hashContext === void 0 ? void 0 : hashContext["$" + step_1]) === null || _a === void 0 ? void 0 : _a[value_1]) === null || _b === void 0 ? void 0 : _b.index;
                 if (index != null) {
+                    hashContext = hashContext[indexStep][value_1];
                     return r[index];
                 }
                 index = r.findIndex(function (o) { return o[step_1] == value_1; });
                 if (index !== -1) {
-                    hashContext[step_1] = hashContext[step_1] || {};
-                    hashContext[step_1][value_1] = index;
+                    hashContext[indexStep] = hashContext[indexStep] || {
+                        $prevHashContext: hashContext
+                    };
+                    hashContext[indexStep][value_1] = __assign(__assign({ $prevHashContext: hashContext[indexStep] }, hashContext[indexStep][value_1]), { index: index });
+                    hashContext = hashContext[indexStep][value_1];
                     return r[index];
                 }
                 else {
@@ -52,14 +68,18 @@ function progressiveGet(object, queryPath, hashContext) {
             }
             else if (Array.isArray(r[step_1])) {
                 // Fast indexing
-                var index = (_b = hashContext === null || hashContext === void 0 ? void 0 : hashContext[step_1]) === null || _b === void 0 ? void 0 : _b[value_1];
+                var index = (_d = (_c = hashContext === null || hashContext === void 0 ? void 0 : hashContext[indexStep]) === null || _c === void 0 ? void 0 : _c[value_1]) === null || _d === void 0 ? void 0 : _d.index;
                 if (index != null) {
+                    hashContext = hashContext[indexStep];
                     return r[step_1][index];
                 }
                 index = r[step_1].findIndex(function (o) { return o[step_1] == value_1; });
                 if (index !== -1) {
-                    hashContext[step_1] = hashContext[step_1] || {};
-                    hashContext[step_1][value_1] = index;
+                    hashContext[indexStep] = hashContext[indexStep] || {
+                        $prevHashContext: hashContext
+                    };
+                    hashContext[indexStep][value_1] = __assign(__assign({ $prevHashContext: hashContext[indexStep] }, hashContext[indexStep][value_1]), { index: index });
+                    hashContext = hashContext[indexStep][value_1];
                     return r[step_1][index];
                 }
                 else {
@@ -67,6 +87,10 @@ function progressiveGet(object, queryPath, hashContext) {
                 }
             }
             else if (r[pathStep]) {
+                hashContext["$" + pathStep] = hashContext["$" + pathStep] || {
+                    $prevHashContext: hashContext
+                };
+                hashContext = hashContext["$" + pathStep];
                 return r[pathStep];
             }
             else {
@@ -76,8 +100,12 @@ function progressiveGet(object, queryPath, hashContext) {
         if (Array.isArray(r)) {
             return r.find(function (o) { return Object.values(o).includes(pathStep); });
         }
-        if (!r)
+        if (r == undefined)
             return NaN;
+        hashContext["$" + pathStep] = hashContext["$" + pathStep] || {
+            $prevHashContext: hashContext
+        };
+        hashContext = hashContext["$" + pathStep];
         return r[pathStep];
     }, object);
 }
@@ -94,7 +122,7 @@ function progressiveSet(object, queryPath, value, summItUp, hashContext) {
     var pathHistory = [{ leaf: leaf, namedArrayIndex: null }];
     pathArray.forEach(function (pathStep, i) {
         var _a;
-        var _b, _c;
+        var _b, _c, _d;
         var namedArrayIndex = null;
         if (pathStep.startsWith('[') && !Array.isArray(leaf)) {
             var key = pathStep.slice(1, pathStep.length - 1);
@@ -123,27 +151,32 @@ function progressiveSet(object, queryPath, value, summItUp, hashContext) {
                 key = key.slice(1);
                 var filterBy_1 = key.split('=');
                 namedArrayIndex = filterBy_1;
+                var indexStep = "$" + filterBy_1[0];
                 // Fast indexing
-                var firstIndexInput = !hashContext[filterBy_1[0]];
-                hashContext[filterBy_1[0]] = hashContext[filterBy_1[0]] || {};
+                var firstIndexInput = !hashContext[indexStep];
+                hashContext[indexStep] = hashContext[indexStep] || {
+                    $prevHashContext: hashContext
+                };
                 var found = void 0;
-                var index = (_b = hashContext[filterBy_1[0]]) === null || _b === void 0 ? void 0 : _b[filterBy_1[1]];
+                var index = (_c = (_b = hashContext[indexStep]) === null || _b === void 0 ? void 0 : _b[filterBy_1[1]]) === null || _c === void 0 ? void 0 : _c.index;
                 if (index != null) {
-                    found = (_c = leaf[index]) !== null && _c !== void 0 ? _c : null;
+                    found = (_d = leaf[index]) !== null && _d !== void 0 ? _d : null;
                 }
                 if (found == null && firstIndexInput) {
                     var foundIndex = leaf.findIndex(function (a) { return a[filterBy_1[0]] == '' + filterBy_1[1]; });
                     if (foundIndex !== -1) {
-                        hashContext[filterBy_1[0]][filterBy_1[1]] = foundIndex;
+                        hashContext[indexStep][filterBy_1[1]] = __assign(__assign({ $prevHashContext: hashContext[indexStep] }, hashContext[indexStep][filterBy_1[1]]), { index: foundIndex });
                         found = leaf[foundIndex];
                     }
                 }
                 if (!!found) {
                     leaf = found;
+                    hashContext = hashContext[indexStep][filterBy_1[1]];
                 }
                 else {
                     leaf.push((_a = {}, _a[filterBy_1[0]] = filterBy_1[1], _a));
-                    hashContext[filterBy_1[0]][filterBy_1[1]] = leaf.length - 1;
+                    hashContext[indexStep][filterBy_1[1]] = __assign(__assign({ $prevHashContext: hashContext[indexStep] }, hashContext[indexStep][filterBy_1[1]]), { index: leaf.length - 1 });
+                    hashContext = hashContext[indexStep][filterBy_1[1]];
                     leaf = leaf[leaf.length - 1];
                 }
             }
@@ -158,6 +191,10 @@ function progressiveSet(object, queryPath, value, summItUp, hashContext) {
             }
             if (!leaf[pathStep])
                 leaf[pathStep] = {}; //todo guess if there should be an array
+            hashContext["" + pathStep] = hashContext["" + pathStep] || {
+                $prevHashContext: hashContext
+            };
+            hashContext = hashContext["" + pathStep];
             leaf = leaf[pathStep];
         }
         pathHistory = pathHistory.concat([{ leaf: leaf, namedArrayIndex: namedArrayIndex }]);
@@ -188,7 +225,7 @@ function progressiveSet(object, queryPath, value, summItUp, hashContext) {
                         return true;
                 });
                 if (!!~spliceIndex) {
-                    delete hashContext[namedArrayIndex[0]][step[spliceIndex]];
+                    delete hashContext["$" + namedArrayIndex[0]][step[spliceIndex]];
                     step.splice(spliceIndex, 1);
                 }
             }
@@ -206,8 +243,15 @@ function progressiveSet(object, queryPath, value, summItUp, hashContext) {
                     if (!Object.values(step[val]).reduce(function (r, v) { return r || v !== undefined; }, false))
                         return true;
                 });
-                if (!!spliceKey)
+                if (!!spliceKey) {
+                    if (hashContext.$prevHashContext[spliceKey] === hashContext) {
+                        delete hashContext.$prevHashContext[spliceKey];
+                    }
                     delete step[spliceKey];
+                }
+            }
+            if (hashContext.$prevHashContext) {
+                hashContext = hashContext.$prevHashContext;
             }
         });
     }
