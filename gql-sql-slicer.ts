@@ -487,11 +487,8 @@ function parseMetric(tree, query, knex, metricResolvers) {
   // Getters are needed only for additionaly selected fields by some specific functions
   // example: price(groupByEach: 50) -> price: 0-50 -> groupByEach_min_price: 0 -> groupByEach_max_price: 50
   // would be useful for further grouping && filtering
-  if (
-    !query.getters?.find(
-      (name) => name === (tree.alias?.value || tree.name?.value),
-    )
-  ) {
+  const isInGetters = query.getters?.find((name) => name === tree.name?.value)
+  if (!isInGetters) {
     if (!tree.alias?.value) {
       query.promise = query.promise.select(
         `${buildFullName(args, query, tree.name.value)}`,
@@ -510,7 +507,9 @@ function parseMetric(tree, query, knex, metricResolvers) {
     )
   if (args?.limit) query.promise.limit(args?.limit)
 
-  query.metrics.push(tree.alias?.value || tree.name?.value)
+  query.metrics.push(
+    isInGetters ? tree.name?.value : tree.alias?.value || tree.name?.value,
+  )
 }
 
 function transformLinkedArgs(args, query) {
@@ -533,7 +532,7 @@ function parseDimension(tree, query, knex) {
 
   if (args?.groupByEach) {
     const amount = parseFloat(args.groupByEach)
-    query.getters = []
+    query.getters = query.getters || []
 
     query.promise = query.promise
       .select(
@@ -1392,23 +1391,39 @@ function getMergeStrings(
 
 function mergeMetric(tree, query, metricResolversData) {
   let name = tree.alias?.value || tree.name.value
+  const fieldName = tree.name.value
+  const isInGetters = query.getters?.find((name) => name === fieldName)
   const args = argumentsToObject(tree.arguments)
   if (args?.type === 'Array') {
     query.path += `${!!query.path ? '.' : ''}[@${name}=:${name}]`
-    query.metrics[`${name}`] = `${query.path}${!!query.path ? '.' : ''}${name}`
+    query.metrics[`${isInGetters ? fieldName : name}`] = `${query.path}${
+      !!query.path ? '.' : ''
+    }${name}`
     return parseDirective(tree, query, 'metric', query.metrics[`${name}`])
   } else {
     if (!!query.mutation)
       return metricResolversData[query.mutationFunction](tree, query)
     if (tree.alias && metricResolversData[tree.name?.value])
       return metricResolversData[tree.name?.value](tree, query)
-    query.metrics[`${name}`] = `${query.path}${!!query.path ? '.' : ''}${name}`
+    query.metrics[`${isInGetters ? fieldName : name}`] = `${query.path}${
+      !!query.path ? '.' : ''
+    }${name}`
     return parseDirective(tree, query, 'metric', query.metrics[`${name}`])
   }
 }
 
 function mergeDimension(tree, query) {
   const args = argumentsToObject(tree.arguments)
+  query.getters = query.getters || []
+
+  if (args?.groupByEach) {
+    query.getters.push(
+      `groupByEach_max_${tree.alias?.value || tree.name.value}`,
+    )
+    query.getters.push(
+      `groupByEach_min_${tree.alias?.value || tree.name.value}`,
+    )
+  }
 
   let name = !!query.mutation
     ? tree.name.value

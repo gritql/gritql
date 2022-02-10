@@ -414,16 +414,17 @@ function queryBuilder(table, tree, queries, idx, knex, metricResolvers) {
     return queries;
 }
 function parseMetric(tree, query, knex, metricResolvers) {
-    var _a, _b, _c, _d, _e, _f;
+    var _a, _b, _c, _d, _e, _f, _g;
     var args = arguments_1.argumentsToObject(tree.arguments);
-    var _g = query.metrics, metrics = _g === void 0 ? [] : _g;
+    var _h = query.metrics, metrics = _h === void 0 ? [] : _h;
     query.metrics = metrics;
     if (tree.alias && metricResolvers[(_a = tree.name) === null || _a === void 0 ? void 0 : _a.value])
         return metricResolvers[(_b = tree.name) === null || _b === void 0 ? void 0 : _b.value](tree, query, knex);
     // Getters are needed only for additionaly selected fields by some specific functions
     // example: price(groupByEach: 50) -> price: 0-50 -> groupByEach_min_price: 0 -> groupByEach_max_price: 50
     // would be useful for further grouping && filtering
-    if (!((_c = query.getters) === null || _c === void 0 ? void 0 : _c.find(function (name) { var _a, _b; return name === (((_a = tree.alias) === null || _a === void 0 ? void 0 : _a.value) || ((_b = tree.name) === null || _b === void 0 ? void 0 : _b.value)); }))) {
+    var isInGetters = (_c = query.getters) === null || _c === void 0 ? void 0 : _c.find(function (name) { var _a; return name === ((_a = tree.name) === null || _a === void 0 ? void 0 : _a.value); });
+    if (!isInGetters) {
         if (!((_d = tree.alias) === null || _d === void 0 ? void 0 : _d.value)) {
             query.promise = query.promise.select("" + filters_1.buildFullName(args, query, tree.name.value));
         }
@@ -435,7 +436,7 @@ function parseMetric(tree, query, knex, metricResolvers) {
         query.promise.orderBy(filters_1.buildFullName(args, query, tree.name.value), args === null || args === void 0 ? void 0 : args.sort);
     if (args === null || args === void 0 ? void 0 : args.limit)
         query.promise.limit(args === null || args === void 0 ? void 0 : args.limit);
-    query.metrics.push(((_e = tree.alias) === null || _e === void 0 ? void 0 : _e.value) || ((_f = tree.name) === null || _f === void 0 ? void 0 : _f.value));
+    query.metrics.push(isInGetters ? (_e = tree.name) === null || _e === void 0 ? void 0 : _e.value : ((_f = tree.alias) === null || _f === void 0 ? void 0 : _f.value) || ((_g = tree.name) === null || _g === void 0 ? void 0 : _g.value));
 }
 function transformLinkedArgs(args, query) {
     if (args.from === '@') {
@@ -455,7 +456,7 @@ function parseDimension(tree, query, knex) {
     var args = transformLinkedArgs(arguments_1.argumentsToObject(tree.arguments), query);
     if (args === null || args === void 0 ? void 0 : args.groupByEach) {
         var amount = parseFloat(args.groupByEach);
-        query.getters = [];
+        query.getters = query.getters || [];
         query.promise = query.promise
             .select(knex.raw("(CAST(FLOOR(CEIL(??)/??) AS INT)*?? || '-' || CAST(FLOOR(CEIL(??)/??) AS INT)*??+??) AS ??", [
             filters_1.buildFullName(args, query, tree.name.value, false),
@@ -1103,29 +1104,36 @@ function getMergeStrings(tree, queries, idx, metricResolversData) {
     return queries;
 }
 function mergeMetric(tree, query, metricResolversData) {
-    var _a, _b, _c;
+    var _a, _b, _c, _d;
     var name = ((_a = tree.alias) === null || _a === void 0 ? void 0 : _a.value) || tree.name.value;
+    var fieldName = tree.name.value;
+    var isInGetters = (_b = query.getters) === null || _b === void 0 ? void 0 : _b.find(function (name) { return name === fieldName; });
     var args = arguments_1.argumentsToObject(tree.arguments);
     if ((args === null || args === void 0 ? void 0 : args.type) === 'Array') {
         query.path += (!!query.path ? '.' : '') + "[@" + name + "=:" + name + "]";
-        query.metrics["" + name] = "" + query.path + (!!query.path ? '.' : '') + name;
+        query.metrics["" + (isInGetters ? fieldName : name)] = "" + query.path + (!!query.path ? '.' : '') + name;
         return directives_1.parseDirective(tree, query, 'metric', query.metrics["" + name]);
     }
     else {
         if (!!query.mutation)
             return metricResolversData[query.mutationFunction](tree, query);
-        if (tree.alias && metricResolversData[(_b = tree.name) === null || _b === void 0 ? void 0 : _b.value])
-            return metricResolversData[(_c = tree.name) === null || _c === void 0 ? void 0 : _c.value](tree, query);
-        query.metrics["" + name] = "" + query.path + (!!query.path ? '.' : '') + name;
+        if (tree.alias && metricResolversData[(_c = tree.name) === null || _c === void 0 ? void 0 : _c.value])
+            return metricResolversData[(_d = tree.name) === null || _d === void 0 ? void 0 : _d.value](tree, query);
+        query.metrics["" + (isInGetters ? fieldName : name)] = "" + query.path + (!!query.path ? '.' : '') + name;
         return directives_1.parseDirective(tree, query, 'metric', query.metrics["" + name]);
     }
 }
 function mergeDimension(tree, query) {
-    var _a;
+    var _a, _b, _c;
     var args = arguments_1.argumentsToObject(tree.arguments);
+    query.getters = query.getters || [];
+    if (args === null || args === void 0 ? void 0 : args.groupByEach) {
+        query.getters.push("groupByEach_max_" + (((_a = tree.alias) === null || _a === void 0 ? void 0 : _a.value) || tree.name.value));
+        query.getters.push("groupByEach_min_" + (((_b = tree.alias) === null || _b === void 0 ? void 0 : _b.value) || tree.name.value));
+    }
     var name = !!query.mutation
         ? tree.name.value
-        : ((_a = tree.alias) === null || _a === void 0 ? void 0 : _a.value) || tree.name.value;
+        : ((_c = tree.alias) === null || _c === void 0 ? void 0 : _c.value) || tree.name.value;
     if ((args === null || args === void 0 ? void 0 : args.type) === 'Array') {
         if (!!(args === null || args === void 0 ? void 0 : args.cutoff)) {
             query.cutoff = "" + query.path + (!!query.path ? '.' : '') + "[@" + name + "=:" + name + "]";
