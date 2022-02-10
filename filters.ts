@@ -152,31 +152,62 @@ export function buildFullName(
   }
 }
 
+function runDefaultRunner(
+  context,
+  operator: ((options) => string) | string,
+  field,
+  subQuery,
+) {
+  return runOrSkip(
+    context,
+    typeof operator === 'string'
+      ? ({ key, value, isField, context }) =>
+          context.knex.raw(`?? ${operator} ${isField ? '??' : '?'}`, [
+            key,
+            value,
+          ])
+      : operator,
+    ({ context }) =>
+      buildFullName(
+        { ...context, from: context.from || context.query.table },
+        context.query,
+        field,
+        false,
+      ),
+    '',
+    context.valueTransformer(context, field, subQuery),
+  )
+}
+
 function runOrSkip(context: BuilderContext, runner, key, accum, value) {
+  let ctx = context
+
+  if (typeof key === 'function') {
+    key = key({ context: ctx })
+  }
+
   if (key === 'from') {
-    if (!context.ignoreFrom) {
-      context.from = value
+    if (!ctx.ignoreFrom) {
+      ctx.from = value
     }
 
     return accum
   } else if (key === 'inherited') {
-    context.inherited = value
+    ctx.inherited = value
 
     return accum
   }
 
   if (
-    context.onlyInherited &&
-    context.inherited === false &&
-    ![context.query.table, ...context.query.joins].includes(
-      context.from || context.query.table,
-    )
+    ctx.onlyInherited &&
+    ctx.inherited === false &&
+    ![ctx.query.table, ...ctx.query.joins].includes(ctx.from || ctx.query.table)
   ) {
     return accum
   } else {
     const v = value?.isField ? value.value : value?.value || value
 
-    return runner(key, v, value?.isField)
+    return runner({ key, value: v, isField: value?.isField, context: ctx })
   }
 }
 
@@ -203,19 +234,19 @@ export function buildFilter(
   const isOp = (key) => _.includes(_.values(ops), key)
   const getOp = (key) => (isOp(key) ? key : null)
 
-  const sub = (subQuery, op, field) => {
+  const sub = (subQuery, op, field, context: BuilderContext) => {
     switch (op) {
       case ops.and:
         return runOrSkip(
           context,
-          () =>
+          ({ context }) =>
             '(' +
             _.reduce(
               subQuery,
               (accum, cur) => {
                 return runOrSkip(
                   context,
-                  () =>
+                  ({ context }) =>
                     getCombineRunner(accum, () =>
                       buildFilter(cur, context, prefix),
                     ),
@@ -235,14 +266,14 @@ export function buildFilter(
       case ops.or:
         return runOrSkip(
           context,
-          () =>
+          ({ context }) =>
             '(' +
             _.reduce(
               subQuery,
               (accum, cur) => {
                 return runOrSkip(
                   context,
-                  () =>
+                  ({ context }) =>
                     getCombineRunner(
                       accum,
                       () => buildFilter(cur, context, prefix),
@@ -264,14 +295,14 @@ export function buildFilter(
       case ops.nor:
         return runOrSkip(
           context,
-          () =>
+          ({ context }) =>
             'NOT (' +
             _.reduce(
               subQuery,
               (accum, cur) => {
                 return runOrSkip(
                   context,
-                  () =>
+                  ({ context }) =>
                     getCombineRunner(
                       accum,
                       () => buildFilter(cur, context, prefix),
@@ -295,20 +326,14 @@ export function buildFilter(
           throw 'IN requries array value'
         }
 
-        return runOrSkip(
+        return runDefaultRunner(
           context,
-          (k, v) =>
+          ({ key: k, value: v, context }) =>
             context.knex.raw(
               `?? IN (${_.map(subQuery, () => '?').join(',')})`,
               [k, ...v],
             ),
-          buildFullName(
-            { ...context, from: context.from || context.query.table },
-            context.query,
-            field,
-            false,
-          ),
-          '',
+          field,
           subQuery,
         )
 
@@ -317,112 +342,34 @@ export function buildFilter(
           throw 'NIN requries array value'
         }
 
-        return runOrSkip(
+        return runDefaultRunner(
           context,
-          (k, v) =>
+          ({ key: k, value: v, context }) =>
             context.knex.raw(
               `?? NOT IN(${_.map(subQuery, () => '?').join(',')})`,
               [k, ...v],
             ),
-          buildFullName(
-            { ...context, from: context.from || context.query.table },
-            context.query,
-            field,
-            false,
-          ),
-          '',
+          field,
           subQuery,
         )
 
       case ops.eq:
-        return runOrSkip(
-          context,
-          (k, v, isField) =>
-            context.knex.raw(`?? = ${isField ? '??' : '?'}`, [k, v]),
-          buildFullName(
-            { ...context, from: context.from || context.query.table },
-            context.query,
-            field,
-            false,
-          ),
-          '',
-          context.valueTransformer(context, field, subQuery),
-        )
+        return runDefaultRunner(context, '=', field, subQuery)
 
       case ops.gt:
-        return runOrSkip(
-          context,
-          (k, v, isField) =>
-            context.knex.raw(`?? > ${isField ? '??' : '?'}`, [k, v]),
-          buildFullName(
-            { ...context, from: context.from || context.query.table },
-            context.query,
-            field,
-            false,
-          ),
-          '',
-          context.valueTransformer(context, field, subQuery),
-        )
+        return runDefaultRunner(context, '>', field, subQuery)
 
       case ops.gte:
-        return runOrSkip(
-          context,
-          (k, v, isField) =>
-            context.knex.raw(`?? >= ${isField ? '??' : '?'}`, [k, v]),
-          buildFullName(
-            { ...context, from: context.from || context.query.table },
-            context.query,
-            field,
-            false,
-          ),
-          '',
-          context.valueTransformer(context, field, subQuery),
-        )
+        return runDefaultRunner(context, '>=', field, subQuery)
 
       case ops.lt:
-        return runOrSkip(
-          context,
-          (k, v, isField) =>
-            context.knex.raw(`?? < ${isField ? '??' : '?'}`, [k, v]),
-          buildFullName(
-            { ...context, from: context.from || context.query.table },
-            context.query,
-            field,
-            false,
-          ),
-          '',
-          context.valueTransformer(context, field, subQuery),
-        )
+        return runDefaultRunner(context, '<', field, subQuery)
 
       case ops.lte:
-        return runOrSkip(
-          context,
-          (k, v, isField) =>
-            context.knex.raw(`?? <= ${isField ? '??' : '?'}`, [k, v]),
-          buildFullName(
-            { ...context, from: context.from || context.query.table },
-            context.query,
-            field,
-            false,
-          ),
-          '',
-          context.valueTransformer(context, field, subQuery),
-        )
+        return runDefaultRunner(context, '<=', field, subQuery)
 
       case ops.ne:
-        return runOrSkip(
-          context,
-          (k, v, isField) =>
-            context.knex.raw(`?? <> ${isField ? '??' : '?'}`, [k, v]),
-          buildFullName(
-            { ...context, from: context.from || context.query.table },
-            context.query,
-            field,
-            false,
-          ),
-          '',
-          context.valueTransformer(context, field, subQuery),
-        )
+        return runDefaultRunner(context, '<>', field, subQuery)
 
       case ops.not:
         return runOrSkip(
@@ -434,19 +381,7 @@ export function buildFilter(
         )
 
       case ops.regex:
-        return runOrSkip(
-          context,
-          (k, v, isField) =>
-            context.knex.raw(`?? LIKE ${isField ? '??' : '?'}`, [k, v]),
-          buildFullName(
-            { ...context, from: context.from || context.query.table },
-            context.query,
-            field,
-            false,
-          ),
-          '',
-          context.valueTransformer(context, field, subQuery),
-        )
+        return runDefaultRunner(context, 'LIKE', field, subQuery)
 
       case ops.search:
         if (_.isObject(subQuery)) {
@@ -460,7 +395,10 @@ export function buildFilter(
               if (isOp(k)) {
                 return runOrSkip(
                   context,
-                  () => getCombineRunner(accum, () => sub(v, getOp(k), field)),
+                  ({ context }) =>
+                    getCombineRunner(accum, () =>
+                      sub(v, getOp(k), field, { ...context }),
+                    ),
                   k,
                   accum,
                   v,
@@ -515,7 +453,10 @@ export function buildFilter(
               (accum, v, k) => {
                 return runOrSkip(
                   context,
-                  () => getCombineRunner(accum, () => sub(v, getOp(k), field)),
+                  ({ context }) =>
+                    getCombineRunner(accum, () =>
+                      sub(v, getOp(k), field, { ...context }),
+                    ),
                   k,
                   accum,
                   v,
@@ -524,19 +465,7 @@ export function buildFilter(
               '',
             )
           : field
-          ? runOrSkip(
-              context,
-              (k, v, isField) =>
-                context.knex.raw(`?? = ${isField ? '??' : '?'}`, [k, v]),
-              buildFullName(
-                { ...context, from: context.from || context.query.table },
-                context.query,
-                field,
-                false,
-              ),
-              '',
-              context.valueTransformer(context, field, subQuery),
-            )
+          ? runDefaultRunner(context, '=', field, subQuery)
           : subQuery
     }
   }
@@ -549,7 +478,10 @@ export function buildFilter(
 
       return runOrSkip(
         context,
-        () => getCombineRunner(accum, () => sub(subQuery, op, field)),
+        ({ context }) =>
+          getCombineRunner(accum, () =>
+            sub(subQuery, op, field, { ...context }),
+          ),
         key,
         accum,
         subQuery,

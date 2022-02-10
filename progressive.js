@@ -256,7 +256,7 @@ function replVars(str, obj) {
 }
 exports.replVars = replVars;
 function getBatchContext(batches, by) {
-    var _a, _b, _c;
-    return ((_c = (_b = (_a = (batches[by] || batches['___query' + by])) === null || _a === void 0 ? void 0 : _a.find(function (q) { return q.name === by; })) === null || _b === void 0 ? void 0 : _b.hashContext) !== null && _c !== void 0 ? _c : {});
+    var _a, _b;
+    return (((_b = (_a = (batches[by] || batches['___query' + by])) === null || _a === void 0 ? void 0 : _a.find(function (q) { return q.name === by; })) === null || _b === void 0 ? void 0 : _b.hashContext) || {});
 }
 exports.getBatchContext = getBatchContext;

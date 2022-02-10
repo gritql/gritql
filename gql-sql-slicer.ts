@@ -538,7 +538,7 @@ function parseDimension(tree, query, knex) {
     query.promise = query.promise
       .select(
         knex.raw(
-          `(CAST(CEIL(??)/?? AS INT)*?? || '-' || CAST(CEIL(??)/?? AS INT)*??+??) AS ??`,
+          `(CAST(FLOOR(CEIL(??)/??) AS INT)*?? || '-' || CAST(FLOOR(CEIL(??)/??) AS INT)*??+??) AS ??`,
           [
             buildFullName(args, query, tree.name.value, false),
             amount,
@@ -550,13 +550,13 @@ function parseDimension(tree, query, knex) {
             tree.alias?.value || tree.name.value,
           ],
         ),
-        knex.raw(`(CAST(CEIL(??)/?? AS INT)*??) AS ??`, [
+        knex.raw(`(CAST(FLOOR(CEIL(??)/??) AS INT)*??) AS ??`, [
           buildFullName(args, query, tree.name.value, false),
           amount,
           amount,
           `groupByEach_min_${tree.alias?.value || tree.name.value}`,
         ]),
-        knex.raw(`(CAST(CEIL(??)/?? AS INT)*??+??) AS ??`, [
+        knex.raw(`(CAST(FLOOR(CEIL(??)/??) AS INT)*??+??) AS ??`, [
           buildFullName(args, query, tree.name.value, false),
           amount,
           amount,
@@ -565,7 +565,7 @@ function parseDimension(tree, query, knex) {
         ]),
       )
       .groupBy(
-        knex.raw('CAST(CEIL(??)/?? AS INT)', [
+        knex.raw('CAST(FLOOR(CEIL(??)/??) AS INT)', [
           buildFullName(args, query, tree.name.value, false),
           amount,
         ]),
@@ -612,7 +612,7 @@ function parseDimension(tree, query, knex) {
     query.promise = query.promise.select(
       knex.raw(`?? as ??`, [
         `${tree.name.value}_${args?.groupBy}`,
-        tree.name.value,
+        tree.alias?.value || tree.name.value,
       ]),
     )
     query.promise = query.promise.groupBy(
@@ -648,7 +648,7 @@ function parseDimension(tree, query, knex) {
     )
   }
 
-  dimensions.push(tree.name.value)
+  dimensions.push(tree.alias?.value || tree.name.value)
   query.dimensions = dimensions
 }
 
@@ -1387,10 +1387,9 @@ function getMergeStrings(
 }
 
 function mergeMetric(tree, query, metricResolversData) {
-  let name = tree.name.value
+  let name = tree.alias?.value || tree.name.value
   const args = argumentsToObject(tree.arguments)
   if (args?.type === 'Array') {
-    if (tree.alias?.value) name = tree.alias?.value
     query.path += `${!!query.path ? '.' : ''}[@${name}=:${name}]`
     query.metrics[`${name}`] = `${query.path}${!!query.path ? '.' : ''}${name}`
     return parseDirective(tree, query, 'metric', query.metrics[`${name}`])
@@ -1399,7 +1398,6 @@ function mergeMetric(tree, query, metricResolversData) {
       return metricResolversData[query.mutationFunction](tree, query)
     if (tree.alias && metricResolversData[tree.name?.value])
       return metricResolversData[tree.name?.value](tree, query)
-    if (tree.alias?.value) name = tree.alias?.value
     query.metrics[`${name}`] = `${query.path}${!!query.path ? '.' : ''}${name}`
     return parseDirective(tree, query, 'metric', query.metrics[`${name}`])
   }
@@ -1408,18 +1406,17 @@ function mergeMetric(tree, query, metricResolversData) {
 function mergeDimension(tree, query) {
   const args = argumentsToObject(tree.arguments)
 
+  let name = tree.alias?.value || tree.name.value
   if (args?.type === 'Array') {
     if (!!args?.cutoff) {
-      query.cutoff = `${query.path}${!!query.path ? '.' : ''}[@${
-        tree.name.value
-      }=:${tree.name.value}]`
+      query.cutoff = `${query.path}${
+        !!query.path ? '.' : ''
+      }[@${name}=:${name}]`
     }
-    query.path += `${!!query.path ? '.' : ''}[@${tree.name.value}=:${
-      tree.name.value
-    }]`
+    query.path += `${!!query.path ? '.' : ''}[@${name}=:${name}]`
     return parseDirective(tree, query, 'dimension')
   } else {
-    query.path += `${!!query.path ? '.' : ''}:${tree.name.value}`
+    query.path += `${!!query.path ? '.' : ''}:${name}`
     return parseDirective(tree, query, 'dimension')
   }
 }

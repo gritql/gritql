@@ -280,6 +280,6 @@ export function replVars(str, obj) {
 export function getBatchContext(batches, by) {
   return (
     (batches[by] || batches['___query' + by])?.find((q) => q.name === by)
-      ?.hashContext ?? {}
+      ?.hashContext || {}
   )
 }

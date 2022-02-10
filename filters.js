@@ -49,25 +49,43 @@ function buildFullName(args, query, field, evaluateOnlyWithLinkSymbol) {
     }
 }
 exports.buildFullName = buildFullName;
+function runDefaultRunner(context, operator, field, subQuery) {
+    return runOrSkip(context, typeof operator === 'string'
+        ? function (_a) {
+            var key = _a.key, value = _a.value, isField = _a.isField, context = _a.context;
+            return context.knex.raw("?? " + operator + " " + (isField ? '??' : '?'), [
+                key,
+                value,
+            ]);
+        }
+        : operator, function (_a) {
+        var context = _a.context;
+        return buildFullName(__assign(__assign({}, context), { from: context.from || context.query.table }), context.query, field, false);
+    }, '', context.valueTransformer(context, field, subQuery));
+}
 function runOrSkip(context, runner, key, accum, value) {
+    var ctx = context;
+    if (typeof key === 'function') {
+        key = key({ context: ctx });
+    }
     if (key === 'from') {
-        if (!context.ignoreFrom) {
-            context.from = value;
+        if (!ctx.ignoreFrom) {
+            ctx.from = value;
         }
         return accum;
     }
     else if (key === 'inherited') {
-        context.inherited = value;
+        ctx.inherited = value;
         return accum;
     }
-    if (context.onlyInherited &&
-        context.inherited === false &&
-        !__spreadArray([context.query.table], context.query.joins).includes(context.from || context.query.table)) {
+    if (ctx.onlyInherited &&
+        ctx.inherited === false &&
+        !__spreadArray([ctx.query.table], ctx.query.joins).includes(ctx.from || ctx.query.table)) {
         return accum;
     }
     else {
         var v = (value === null || value === void 0 ? void 0 : value.isField) ? value.value : (value === null || value === void 0 ? void 0 : value.value) || value;
-        return runner(key, v, value === null || value === void 0 ? void 0 : value.isField);
+        return runner({ key: key, value: v, isField: value === null || value === void 0 ? void 0 : value.isField, context: ctx });
     }
 }
 function getCombineRunner(accum, runner, combiner) {
@@ -90,13 +108,15 @@ function buildFilter(query, context, prefix) {
     var ops = _.mapValues(_.keyBy(filterOperators), function (op) { return "" + prefix + op; });
     var isOp = function (key) { return _.includes(_.values(ops), key); };
     var getOp = function (key) { return (isOp(key) ? key : null); };
-    var sub = function (subQuery, op, field) {
+    var sub = function (subQuery, op, field, context) {
         switch (op) {
             case ops.and:
-                return runOrSkip(context, function () {
+                return runOrSkip(context, function (_a) {
+                    var context = _a.context;
                     return '(' +
                         _.reduce(subQuery, function (accum, cur) {
-                            return runOrSkip(context, function () {
+                            return runOrSkip(context, function (_a) {
+                                var context = _a.context;
                                 return getCombineRunner(accum, function () {
                                     return buildFilter(cur, context, prefix);
                                 });
@@ -105,20 +125,24 @@ function buildFilter(query, context, prefix) {
                         ')';
                 }, '', '', subQuery);
             case ops.or:
-                return runOrSkip(context, function () {
+                return runOrSkip(context, function (_a) {
+                    var context = _a.context;
                     return '(' +
                         _.reduce(subQuery, function (accum, cur) {
-                            return runOrSkip(context, function () {
+                            return runOrSkip(context, function (_a) {
+                                var context = _a.context;
                                 return getCombineRunner(accum, function () { return buildFilter(cur, context, prefix); }, 'OR');
                             }, '', accum, '');
                         }, '') +
                         ')';
                 }, '', '', subQuery);
             case ops.nor:
-                return runOrSkip(context, function () {
+                return runOrSkip(context, function (_a) {
+                    var context = _a.context;
                     return 'NOT (' +
                         _.reduce(subQuery, function (accum, cur) {
-                            return runOrSkip(context, function () {
+                            return runOrSkip(context, function (_a) {
+                                var context = _a.context;
                                 return getCombineRunner(accum, function () { return buildFilter(cur, context, prefix); }, 'OR');
                             }, '', accum, cur);
                         }, '') +
@@ -128,46 +152,34 @@ function buildFilter(query, context, prefix) {
                 if (!_.isArray(subQuery)) {
                     throw 'IN requries array value';
                 }
-                return runOrSkip(context, function (k, v) {
+                return runDefaultRunner(context, function (_a) {
+                    var k = _a.key, v = _a.value, context = _a.context;
                     return context.knex.raw("?? IN (" + _.map(subQuery, function () { return '?'; }).join(',') + ")", __spreadArray([k], v));
-                }, buildFullName(__assign(__assign({}, context), { from: context.from || context.query.table }), context.query, field, false), '', subQuery);
+                }, field, subQuery);
             case ops.nin:
                 if (!_.isArray(subQuery)) {
                     throw 'NIN requries array value';
                 }
-                return runOrSkip(context, function (k, v) {
+                return runDefaultRunner(context, function (_a) {
+                    var k = _a.key, v = _a.value, context = _a.context;
                     return context.knex.raw("?? NOT IN(" + _.map(subQuery, function () { return '?'; }).join(',') + ")", __spreadArray([k], v));
-                }, buildFullName(__assign(__assign({}, context), { from: context.from || context.query.table }), context.query, field, false), '', subQuery);
+                }, field, subQuery);
             case ops.eq:
-                return runOrSkip(context, function (k, v, isField) {
-                    return context.knex.raw("?? = " + (isField ? '??' : '?'), [k, v]);
-                }, buildFullName(__assign(__assign({}, context), { from: context.from || context.query.table }), context.query, field, false), '', context.valueTransformer(context, field, subQuery));
+                return runDefaultRunner(context, '=', field, subQuery);
             case ops.gt:
-                return runOrSkip(context, function (k, v, isField) {
-                    return context.knex.raw("?? > " + (isField ? '??' : '?'), [k, v]);
-                }, buildFullName(__assign(__assign({}, context), { from: context.from || context.query.table }), context.query, field, false), '', context.valueTransformer(context, field, subQuery));
+                return runDefaultRunner(context, '>', field, subQuery);
             case ops.gte:
-                return runOrSkip(context, function (k, v, isField) {
-                    return context.knex.raw("?? >= " + (isField ? '??' : '?'), [k, v]);
-                }, buildFullName(__assign(__assign({}, context), { from: context.from || context.query.table }), context.query, field, false), '', context.valueTransformer(context, field, subQuery));
+                return runDefaultRunner(context, '>=', field, subQuery);
             case ops.lt:
-                return runOrSkip(context, function (k, v, isField) {
-                    return context.knex.raw("?? < " + (isField ? '??' : '?'), [k, v]);
-                }, buildFullName(__assign(__assign({}, context), { from: context.from || context.query.table }), context.query, field, false), '', context.valueTransformer(context, field, subQuery));
+                return runDefaultRunner(context, '<', field, subQuery);
             case ops.lte:
-                return runOrSkip(context, function (k, v, isField) {
-                    return context.knex.raw("?? <= " + (isField ? '??' : '?'), [k, v]);
-                }, buildFullName(__assign(__assign({}, context), { from: context.from || context.query.table }), context.query, field, false), '', context.valueTransformer(context, field, subQuery));
+                return runDefaultRunner(context, '<=', field, subQuery);
             case ops.ne:
-                return runOrSkip(context, function (k, v, isField) {
-                    return context.knex.raw("?? <> " + (isField ? '??' : '?'), [k, v]);
-                }, buildFullName(__assign(__assign({}, context), { from: context.from || context.query.table }), context.query, field, false), '', context.valueTransformer(context, field, subQuery));
+                return runDefaultRunner(context, '<>', field, subQuery);
             case ops.not:
                 return runOrSkip(context, function () { return "NOT (" + buildFilter(subQuery, context, prefix) + ")"; }, '', '', subQuery);
             case ops.regex:
-                return runOrSkip(context, function (k, v, isField) {
-                    return context.knex.raw("?? LIKE " + (isField ? '??' : '?'), [k, v]);
-                }, buildFullName(__assign(__assign({}, context), { from: context.from || context.query.table }), context.query, field, false), '', context.valueTransformer(context, field, subQuery));
+                return runDefaultRunner(context, 'LIKE', field, subQuery);
             case ops.search:
                 if (_.isObject(subQuery)) {
                     if (_.every(subQuery, isOp)) {
@@ -177,7 +189,12 @@ function buildFilter(query, context, prefix) {
                         var _a;
                         var _b, _c;
                         if (isOp(k)) {
-                            return runOrSkip(context, function () { return getCombineRunner(accum, function () { return sub(v, getOp(k), field); }); }, k, accum, v);
+                            return runOrSkip(context, function (_a) {
+                                var context = _a.context;
+                                return getCombineRunner(accum, function () {
+                                    return sub(v, getOp(k), field, __assign({}, context));
+                                });
+                            }, k, accum, v);
                         }
                         var key = buildFullName(__assign(__assign({}, context), { from: context.from || context.query.table }), context.query, k, false);
                         var value = context.valueTransformer(context, k, v);
@@ -198,19 +215,27 @@ function buildFilter(query, context, prefix) {
             default:
                 return _.isObject(subQuery)
                     ? _.reduce(subQuery, function (accum, v, k) {
-                        return runOrSkip(context, function () { return getCombineRunner(accum, function () { return sub(v, getOp(k), field); }); }, k, accum, v);
+                        return runOrSkip(context, function (_a) {
+                            var context = _a.context;
+                            return getCombineRunner(accum, function () {
+                                return sub(v, getOp(k), field, __assign({}, context));
+                            });
+                        }, k, accum, v);
                     }, '')
                     : field
-                        ? runOrSkip(context, function (k, v, isField) {
-                            return context.knex.raw("?? = " + (isField ? '??' : '?'), [k, v]);
-                        }, buildFullName(__assign(__assign({}, context), { from: context.from || context.query.table }), context.query, field, false), '', context.valueTransformer(context, field, subQuery))
+                        ? runDefaultRunner(context, '=', field, subQuery)
                         : subQuery;
         }
     };
     return _.reduce(query, function (accum, subQuery, key) {
         var field = isOp(key) ? null : key;
         var op = isOp(key) ? key : null;
-        return runOrSkip(context, function () { return getCombineRunner(accum, function () { return sub(subQuery, op, field); }); }, key, accum, subQuery);
+        return runOrSkip(context, function (_a) {
+            var context = _a.context;
+            return getCombineRunner(accum, function () {
+                return sub(subQuery, op, field, __assign({}, context));
+            });
+        }, key, accum, subQuery);
     }, '');
 }
 exports.buildFilter = buildFilter;
