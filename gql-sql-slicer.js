@@ -532,7 +532,12 @@ function parseDimension(tree, query, knex) {
             args === null || args === void 0 ? void 0 : args.cutoff,
         ]));
     }
-    dimensions.push(((_g = tree.alias) === null || _g === void 0 ? void 0 : _g.value) || tree.name.value);
+    if (!!query.mutation) {
+        dimensions.push(tree.name.value);
+    }
+    else {
+        dimensions.push(((_g = tree.alias) === null || _g === void 0 ? void 0 : _g.value) || tree.name.value);
+    }
     query.dimensions = dimensions;
 }
 // Need to thing about same structure of filters as in graphql
@@ -1118,7 +1123,9 @@ function mergeMetric(tree, query, metricResolversData) {
 function mergeDimension(tree, query) {
     var _a;
     var args = arguments_1.argumentsToObject(tree.arguments);
-    var name = ((_a = tree.alias) === null || _a === void 0 ? void 0 : _a.value) || tree.name.value;
+    var name = !!query.mutation
+        ? tree.name.value
+        : ((_a = tree.alias) === null || _a === void 0 ? void 0 : _a.value) || tree.name.value;
     if ((args === null || args === void 0 ? void 0 : args.type) === 'Array') {
         if (!!(args === null || args === void 0 ? void 0 : args.cutoff)) {
             query.cutoff = "" + query.path + (!!query.path ? '.' : '') + "[@" + name + "=:" + name + "]";

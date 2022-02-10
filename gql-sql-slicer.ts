@@ -648,7 +648,11 @@ function parseDimension(tree, query, knex) {
     )
   }
 
-  dimensions.push(tree.alias?.value || tree.name.value)
+  if (!!query.mutation) {
+    dimensions.push(tree.name.value)
+  } else {
+    dimensions.push(tree.alias?.value || tree.name.value)
+  }
   query.dimensions = dimensions
 }
 
@@ -1406,7 +1410,9 @@ function mergeMetric(tree, query, metricResolversData) {
 function mergeDimension(tree, query) {
   const args = argumentsToObject(tree.arguments)
 
-  let name = tree.alias?.value || tree.name.value
+  let name = !!query.mutation
+    ? tree.name.value
+    : tree.alias?.value || tree.name.value
   if (args?.type === 'Array') {
     if (!!args?.cutoff) {
       query.cutoff = `${query.path}${

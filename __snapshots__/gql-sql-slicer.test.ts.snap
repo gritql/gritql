@@ -394,7 +394,7 @@ Array [
 
 exports[`SQL gqlBuilder request tuning groupByEach 1`] = `
 Array [
-  "select (CAST(CEIL(\\"price\\")/50 AS INT)*50 || '-' || CAST(CEIL(\\"price\\")/50 AS INT)*50+49) AS \\"price\\", (CAST(CEIL(\\"price\\")/50 AS INT)*50) AS \\"groupByEach_min_price\\", (CAST(CEIL(\\"price\\")/50 AS INT)*50+49) AS \\"groupByEach_max_price\\", sum(\\"sessions\\")/NULLIF(sum(sum(\\"sessions\\")) over (), 0)::float4 as \\"share\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Travel_and_Tourism' and \\"ecom_benchmarking\\".\\"country\\" = 'US' and \\"ecom_benchmarking\\".\\"date\\" > '2020-10-13' and \\"ecom_benchmarking\\".\\"date\\" < '2021-04-13' group by CAST(CEIL(\\"price\\")/50 AS INT) order by \\"share\\" asc",
+  "select (CAST(FLOOR(CEIL(\\"price\\")/50) AS INT)*50 || '-' || CAST(FLOOR(CEIL(\\"price\\")/50) AS INT)*50+49) AS \\"price\\", (CAST(FLOOR(CEIL(\\"price\\")/50) AS INT)*50) AS \\"groupByEach_min_price\\", (CAST(FLOOR(CEIL(\\"price\\")/50) AS INT)*50+49) AS \\"groupByEach_max_price\\", sum(\\"sessions\\")/NULLIF(sum(sum(\\"sessions\\")) over (), 0)::float4 as \\"share\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Travel_and_Tourism' and \\"ecom_benchmarking\\".\\"country\\" = 'US' and \\"ecom_benchmarking\\".\\"date\\" > '2020-10-13' and \\"ecom_benchmarking\\".\\"date\\" < '2021-04-13' group by CAST(FLOOR(CEIL(\\"price\\")/50) AS INT) order by \\"share\\" asc",
 ]
 `;
 
