@@ -414,23 +414,29 @@ function queryBuilder(table, tree, queries, idx, knex, metricResolvers) {
     return queries;
 }
 function parseMetric(tree, query, knex, metricResolvers) {
-    var _a, _b, _c, _d;
+    var _a, _b, _c, _d, _e, _f, _g;
     var args = arguments_1.argumentsToObject(tree.arguments);
-    var _e = query.metrics, metrics = _e === void 0 ? [] : _e;
+    var _h = query.metrics, metrics = _h === void 0 ? [] : _h;
     query.metrics = metrics;
     if (tree.alias && metricResolvers[(_a = tree.name) === null || _a === void 0 ? void 0 : _a.value])
         return metricResolvers[(_b = tree.name) === null || _b === void 0 ? void 0 : _b.value](tree, query, knex);
-    if (!((_c = tree.alias) === null || _c === void 0 ? void 0 : _c.value)) {
-        query.promise = query.promise.select("" + filters_1.buildFullName(args, query, tree.name.value));
-    }
-    else {
-        query.promise = query.promise.select(filters_1.buildFullName(args, query, tree.name.value) + " as " + tree.alias.value);
+    // Getters are needed only for additionaly selected fields by some specific functions
+    // example: price(groupByEach: 50) -> price: 0-50 -> groupByEach_min_price: 0 -> groupByEach_max_price: 50
+    // would be useful for further grouping && filtering
+    var isInGetters = (_c = query.getters) === null || _c === void 0 ? void 0 : _c.find(function (name) { var _a; return name === ((_a = tree.name) === null || _a === void 0 ? void 0 : _a.value); });
+    if (!isInGetters) {
+        if (!((_d = tree.alias) === null || _d === void 0 ? void 0 : _d.value)) {
+            query.promise = query.promise.select("" + filters_1.buildFullName(args, query, tree.name.value));
+        }
+        else {
+            query.promise = query.promise.select(filters_1.buildFullName(args, query, tree.name.value) + " as " + tree.alias.value);
+        }
     }
     if ((args === null || args === void 0 ? void 0 : args.sort) == 'desc' || (args === null || args === void 0 ? void 0 : args.sort) == 'asc')
         query.promise.orderBy(filters_1.buildFullName(args, query, tree.name.value), args === null || args === void 0 ? void 0 : args.sort);
     if (args === null || args === void 0 ? void 0 : args.limit)
         query.promise.limit(args === null || args === void 0 ? void 0 : args.limit);
-    query.metrics.push((_d = tree.name) === null || _d === void 0 ? void 0 : _d.value);
+    query.metrics.push(isInGetters ? (_e = tree.name) === null || _e === void 0 ? void 0 : _e.value : ((_f = tree.alias) === null || _f === void 0 ? void 0 : _f.value) || ((_g = tree.name) === null || _g === void 0 ? void 0 : _g.value));
 }
 function transformLinkedArgs(args, query) {
     if (args.from === '@') {
@@ -439,18 +445,20 @@ function transformLinkedArgs(args, query) {
     return args;
 }
 function parseDimension(tree, query, knex) {
+    var _a, _b, _c, _d, _e, _f, _g;
     if (Object.values(JoinType).includes(tree.name.value)) {
         return join(tree.name.value)(tree, query, knex);
     }
-    var _a = query.dimensions, dimensions = _a === void 0 ? [] : _a;
+    var _h = query.dimensions, dimensions = _h === void 0 ? [] : _h;
     if (!query.groupIndex)
         query.groupIndex = 0;
     query.groupIndex++;
     var args = transformLinkedArgs(arguments_1.argumentsToObject(tree.arguments), query);
     if (args === null || args === void 0 ? void 0 : args.groupByEach) {
         var amount = parseFloat(args.groupByEach);
+        query.getters = query.getters || [];
         query.promise = query.promise
-            .select(knex.raw("(CAST(CEIL(??)/?? AS INT)*?? || '-' || CAST(CEIL(??)/?? AS INT)*??+??) as ??", [
+            .select(knex.raw("(CAST(FLOOR(CEIL(??)/??) AS INT)*?? || '-' || CAST(FLOOR(CEIL(??)/??) AS INT)*??+??) AS ??", [
             filters_1.buildFullName(args, query, tree.name.value, false),
             amount,
             amount,
@@ -458,12 +466,25 @@ function parseDimension(tree, query, knex) {
             amount,
             amount,
             amount - 1,
-            tree.name.value,
+            ((_a = tree.alias) === null || _a === void 0 ? void 0 : _a.value) || tree.name.value,
+        ]), knex.raw("(CAST(FLOOR(CEIL(??)/??) AS INT)*??) AS ??", [
+            filters_1.buildFullName(args, query, tree.name.value, false),
+            amount,
+            amount,
+            "groupByEach_min_" + (((_b = tree.alias) === null || _b === void 0 ? void 0 : _b.value) || tree.name.value),
+        ]), knex.raw("(CAST(FLOOR(CEIL(??)/??) AS INT)*??+??) AS ??", [
+            filters_1.buildFullName(args, query, tree.name.value, false),
+            amount,
+            amount,
+            amount - 1,
+            "groupByEach_max_" + (((_c = tree.alias) === null || _c === void 0 ? void 0 : _c.value) || tree.name.value),
         ]))
-            .groupBy(knex.raw('CAST(CEIL(??)/?? AS INT)', [
+            .groupBy(knex.raw('CAST(FLOOR(CEIL(??)/??) AS INT)', [
             filters_1.buildFullName(args, query, tree.name.value, false),
             amount,
         ]));
+        query.getters.push("groupByEach_max_" + (((_d = tree.alias) === null || _d === void 0 ? void 0 : _d.value) || tree.name.value));
+        query.getters.push("groupByEach_min_" + (((_e = tree.alias) === null || _e === void 0 ? void 0 : _e.value) || tree.name.value));
     }
     else if (args === null || args === void 0 ? void 0 : args.groupBy) {
         if (args.from !== query.table) {
@@ -484,7 +505,7 @@ function parseDimension(tree, query, knex) {
         query.promise = query.promise.from(pre_trunc.as(table));
         query.promise = query.promise.select(knex.raw("?? as ??", [
             tree.name.value + "_" + (args === null || args === void 0 ? void 0 : args.groupBy),
-            tree.name.value,
+            ((_f = tree.alias) === null || _f === void 0 ? void 0 : _f.value) || tree.name.value,
         ]));
         query.promise = query.promise.groupBy(knex.raw("??", [tree.name.value + "_" + (args === null || args === void 0 ? void 0 : args.groupBy)]));
         if (!query.replaceWith)
@@ -512,7 +533,12 @@ function parseDimension(tree, query, knex) {
             args === null || args === void 0 ? void 0 : args.cutoff,
         ]));
     }
-    dimensions.push(tree.name.value);
+    if (!!query.mutation) {
+        dimensions.push(tree.name.value);
+    }
+    else {
+        dimensions.push(((_g = tree.alias) === null || _g === void 0 ? void 0 : _g.value) || tree.name.value);
+    }
     query.dimensions = dimensions;
 }
 // Need to thing about same structure of filters as in graphql
@@ -1078,14 +1104,14 @@ function getMergeStrings(tree, queries, idx, metricResolversData) {
     return queries;
 }
 function mergeMetric(tree, query, metricResolversData) {
-    var _a, _b, _c, _d, _e, _f;
-    var name = tree.name.value;
+    var _a, _b, _c, _d;
+    var name = ((_a = tree.alias) === null || _a === void 0 ? void 0 : _a.value) || tree.name.value;
+    var fieldName = tree.name.value;
+    var isInGetters = (_b = query.getters) === null || _b === void 0 ? void 0 : _b.find(function (name) { return name === fieldName; });
     var args = arguments_1.argumentsToObject(tree.arguments);
     if ((args === null || args === void 0 ? void 0 : args.type) === 'Array') {
-        if ((_a = tree.alias) === null || _a === void 0 ? void 0 : _a.value)
-            name = (_b = tree.alias) === null || _b === void 0 ? void 0 : _b.value;
         query.path += (!!query.path ? '.' : '') + "[@" + name + "=:" + name + "]";
-        query.metrics["" + name] = "" + query.path + (!!query.path ? '.' : '') + name;
+        query.metrics["" + (isInGetters ? fieldName : name)] = "" + query.path + (!!query.path ? '.' : '') + name;
         return directives_1.parseDirective(tree, query, 'metric', query.metrics["" + name]);
     }
     else {
@@ -1093,23 +1119,30 @@ function mergeMetric(tree, query, metricResolversData) {
             return metricResolversData[query.mutationFunction](tree, query);
         if (tree.alias && metricResolversData[(_c = tree.name) === null || _c === void 0 ? void 0 : _c.value])
             return metricResolversData[(_d = tree.name) === null || _d === void 0 ? void 0 : _d.value](tree, query);
-        if ((_e = tree.alias) === null || _e === void 0 ? void 0 : _e.value)
-            name = (_f = tree.alias) === null || _f === void 0 ? void 0 : _f.value;
-        query.metrics["" + name] = "" + query.path + (!!query.path ? '.' : '') + name;
+        query.metrics["" + (isInGetters ? fieldName : name)] = "" + query.path + (!!query.path ? '.' : '') + name;
         return directives_1.parseDirective(tree, query, 'metric', query.metrics["" + name]);
     }
 }
 function mergeDimension(tree, query) {
+    var _a, _b, _c;
     var args = arguments_1.argumentsToObject(tree.arguments);
+    query.getters = query.getters || [];
+    if (args === null || args === void 0 ? void 0 : args.groupByEach) {
+        query.getters.push("groupByEach_max_" + (((_a = tree.alias) === null || _a === void 0 ? void 0 : _a.value) || tree.name.value));
+        query.getters.push("groupByEach_min_" + (((_b = tree.alias) === null || _b === void 0 ? void 0 : _b.value) || tree.name.value));
+    }
+    var name = !!query.mutation
+        ? tree.name.value
+        : ((_c = tree.alias) === null || _c === void 0 ? void 0 : _c.value) || tree.name.value;
     if ((args === null || args === void 0 ? void 0 : args.type) === 'Array') {
         if (!!(args === null || args === void 0 ? void 0 : args.cutoff)) {
-            query.cutoff = "" + query.path + (!!query.path ? '.' : '') + "[@" + tree.name.value + "=:" + tree.name.value + "]";
+            query.cutoff = "" + query.path + (!!query.path ? '.' : '') + "[@" + name + "=:" + name + "]";
         }
-        query.path += (!!query.path ? '.' : '') + "[@" + tree.name.value + "=:" + tree.name.value + "]";
+        query.path += (!!query.path ? '.' : '') + "[@" + name + "=:" + name + "]";
         return directives_1.parseDirective(tree, query, 'dimension');
     }
     else {
-        query.path += (!!query.path ? '.' : '') + ":" + tree.name.value;
+        query.path += (!!query.path ? '.' : '') + ":" + name;
         return directives_1.parseDirective(tree, query, 'dimension');
     }
 }

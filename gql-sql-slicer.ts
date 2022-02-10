@@ -484,15 +484,22 @@ function parseMetric(tree, query, knex, metricResolvers) {
   query.metrics = metrics
   if (tree.alias && metricResolvers[tree.name?.value])
     return metricResolvers[tree.name?.value](tree, query, knex)
-  if (!tree.alias?.value) {
-    query.promise = query.promise.select(
-      `${buildFullName(args, query, tree.name.value)}`,
-    )
-  } else {
-    query.promise = query.promise.select(
-      `${buildFullName(args, query, tree.name.value)} as ${tree.alias.value}`,
-    )
+  // Getters are needed only for additionaly selected fields by some specific functions
+  // example: price(groupByEach: 50) -> price: 0-50 -> groupByEach_min_price: 0 -> groupByEach_max_price: 50
+  // would be useful for further grouping && filtering
+  const isInGetters = query.getters?.find((name) => name === tree.name?.value)
+  if (!isInGetters) {
+    if (!tree.alias?.value) {
+      query.promise = query.promise.select(
+        `${buildFullName(args, query, tree.name.value)}`,
+      )
+    } else {
+      query.promise = query.promise.select(
+        `${buildFullName(args, query, tree.name.value)} as ${tree.alias.value}`,
+      )
+    }
   }
+
   if (args?.sort == 'desc' || args?.sort == 'asc')
     query.promise.orderBy(
       buildFullName(args, query, tree.name.value),
@@ -500,7 +507,9 @@ function parseMetric(tree, query, knex, metricResolvers) {
     )
   if (args?.limit) query.promise.limit(args?.limit)
 
-  query.metrics.push(tree.name?.value)
+  query.metrics.push(
+    isInGetters ? tree.name?.value : tree.alias?.value || tree.name?.value,
+  )
 }
 
 function transformLinkedArgs(args, query) {
@@ -523,11 +532,12 @@ function parseDimension(tree, query, knex) {
 
   if (args?.groupByEach) {
     const amount = parseFloat(args.groupByEach)
+    query.getters = query.getters || []
 
     query.promise = query.promise
       .select(
         knex.raw(
-          `(CAST(CEIL(??)/?? AS INT)*?? || '-' || CAST(CEIL(??)/?? AS INT)*??+??) as ??`,
+          `(CAST(FLOOR(CEIL(??)/??) AS INT)*?? || '-' || CAST(FLOOR(CEIL(??)/??) AS INT)*??+??) AS ??`,
           [
             buildFullName(args, query, tree.name.value, false),
             amount,
@@ -536,16 +546,36 @@ function parseDimension(tree, query, knex) {
             amount,
             amount,
             amount - 1,
-            tree.name.value,
+            tree.alias?.value || tree.name.value,
           ],
         ),
+        knex.raw(`(CAST(FLOOR(CEIL(??)/??) AS INT)*??) AS ??`, [
+          buildFullName(args, query, tree.name.value, false),
+          amount,
+          amount,
+          `groupByEach_min_${tree.alias?.value || tree.name.value}`,
+        ]),
+        knex.raw(`(CAST(FLOOR(CEIL(??)/??) AS INT)*??+??) AS ??`, [
+          buildFullName(args, query, tree.name.value, false),
+          amount,
+          amount,
+          amount - 1,
+          `groupByEach_max_${tree.alias?.value || tree.name.value}`,
+        ]),
       )
       .groupBy(
-        knex.raw('CAST(CEIL(??)/?? AS INT)', [
+        knex.raw('CAST(FLOOR(CEIL(??)/??) AS INT)', [
           buildFullName(args, query, tree.name.value, false),
           amount,
         ]),
       )
+
+    query.getters.push(
+      `groupByEach_max_${tree.alias?.value || tree.name.value}`,
+    )
+    query.getters.push(
+      `groupByEach_min_${tree.alias?.value || tree.name.value}`,
+    )
   } else if (args?.groupBy) {
     if (args.from !== query.table) {
       query.preparedAdvancedFilters = parseAdvancedFilters(
@@ -581,7 +611,7 @@ function parseDimension(tree, query, knex) {
     query.promise = query.promise.select(
       knex.raw(`?? as ??`, [
         `${tree.name.value}_${args?.groupBy}`,
-        tree.name.value,
+        tree.alias?.value || tree.name.value,
       ]),
     )
     query.promise = query.promise.groupBy(
@@ -617,7 +647,11 @@ function parseDimension(tree, query, knex) {
     )
   }
 
-  dimensions.push(tree.name.value)
+  if (!!query.mutation) {
+    dimensions.push(tree.name.value)
+  } else {
+    dimensions.push(tree.alias?.value || tree.name.value)
+  }
   query.dimensions = dimensions
 }
 
@@ -1356,39 +1390,54 @@ function getMergeStrings(
 }
 
 function mergeMetric(tree, query, metricResolversData) {
-  let name = tree.name.value
+  let name = tree.alias?.value || tree.name.value
+  const fieldName = tree.name.value
+  const isInGetters = query.getters?.find((name) => name === fieldName)
   const args = argumentsToObject(tree.arguments)
   if (args?.type === 'Array') {
-    if (tree.alias?.value) name = tree.alias?.value
     query.path += `${!!query.path ? '.' : ''}[@${name}=:${name}]`
-    query.metrics[`${name}`] = `${query.path}${!!query.path ? '.' : ''}${name}`
+    query.metrics[`${isInGetters ? fieldName : name}`] = `${query.path}${
+      !!query.path ? '.' : ''
+    }${name}`
     return parseDirective(tree, query, 'metric', query.metrics[`${name}`])
   } else {
     if (!!query.mutation)
       return metricResolversData[query.mutationFunction](tree, query)
     if (tree.alias && metricResolversData[tree.name?.value])
       return metricResolversData[tree.name?.value](tree, query)
-    if (tree.alias?.value) name = tree.alias?.value
-    query.metrics[`${name}`] = `${query.path}${!!query.path ? '.' : ''}${name}`
+    query.metrics[`${isInGetters ? fieldName : name}`] = `${query.path}${
+      !!query.path ? '.' : ''
+    }${name}`
     return parseDirective(tree, query, 'metric', query.metrics[`${name}`])
   }
 }
 
 function mergeDimension(tree, query) {
   const args = argumentsToObject(tree.arguments)
+  query.getters = query.getters || []
 
+  if (args?.groupByEach) {
+    query.getters.push(
+      `groupByEach_max_${tree.alias?.value || tree.name.value}`,
+    )
+    query.getters.push(
+      `groupByEach_min_${tree.alias?.value || tree.name.value}`,
+    )
+  }
+
+  let name = !!query.mutation
+    ? tree.name.value
+    : tree.alias?.value || tree.name.value
   if (args?.type === 'Array') {
     if (!!args?.cutoff) {
-      query.cutoff = `${query.path}${!!query.path ? '.' : ''}[@${
-        tree.name.value
-      }=:${tree.name.value}]`
+      query.cutoff = `${query.path}${
+        !!query.path ? '.' : ''
+      }[@${name}=:${name}]`
     }
-    query.path += `${!!query.path ? '.' : ''}[@${tree.name.value}=:${
-      tree.name.value
-    }]`
+    query.path += `${!!query.path ? '.' : ''}[@${name}=:${name}]`
     return parseDirective(tree, query, 'dimension')
   } else {
-    query.path += `${!!query.path ? '.' : ''}:${tree.name.value}`
+    query.path += `${!!query.path ? '.' : ''}:${name}`
     return parseDirective(tree, query, 'dimension')
   }
 }

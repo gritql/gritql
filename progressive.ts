@@ -26,18 +26,28 @@ export function progressiveGet(object, queryPath, hashContext = {}) {
         path.slice(separatorIndex + 1),
       ]
 
+      const indexStep = `$${step}`
+
       if (Array.isArray(r)) {
         // Fast indexing
-        let index = hashContext?.[step]?.[value]
+        let index = hashContext?.[`$${step}`]?.[value]?.index
         if (index != null) {
+          hashContext = hashContext[indexStep][value]
           return r[index]
         }
 
         index = r.findIndex((o) => o[step] == value)
 
         if (index !== -1) {
-          hashContext[step] = hashContext[step] || {}
-          hashContext[step][value] = index
+          hashContext[indexStep] = hashContext[indexStep] || {
+            $prevHashContext: hashContext,
+          }
+          hashContext[indexStep][value] = {
+            $prevHashContext: hashContext[indexStep],
+            ...hashContext[indexStep][value],
+            index,
+          }
+          hashContext = hashContext[indexStep][value]
 
           return r[index]
         } else {
@@ -45,22 +55,35 @@ export function progressiveGet(object, queryPath, hashContext = {}) {
         }
       } else if (Array.isArray(r[step])) {
         // Fast indexing
-        let index = hashContext?.[step]?.[value]
+        let index = hashContext?.[indexStep]?.[value]?.index
         if (index != null) {
+          hashContext = hashContext[indexStep]
           return r[step][index]
         }
 
         index = r[step].findIndex((o) => o[step] == value)
 
         if (index !== -1) {
-          hashContext[step] = hashContext[step] || {}
-          hashContext[step][value] = index
+          hashContext[indexStep] = hashContext[indexStep] || {
+            $prevHashContext: hashContext,
+          }
+          hashContext[indexStep][value] = {
+            $prevHashContext: hashContext[indexStep],
+            ...hashContext[indexStep][value],
+            index,
+          }
+
+          hashContext = hashContext[indexStep][value]
 
           return r[step][index]
         } else {
           return NaN
         }
       } else if (r[pathStep]) {
+        hashContext[`$${pathStep}`] = hashContext[`$${pathStep}`] || {
+          $prevHashContext: hashContext,
+        }
+        hashContext = hashContext[`$${pathStep}`]
         return r[pathStep]
       } else {
         return NaN
@@ -70,7 +93,11 @@ export function progressiveGet(object, queryPath, hashContext = {}) {
     if (Array.isArray(r)) {
       return r.find((o) => Object.values(o).includes(pathStep))
     }
-    if (!r) return NaN
+    if (r == undefined) return NaN
+    hashContext[`$${pathStep}`] = hashContext[`$${pathStep}`] || {
+      $prevHashContext: hashContext,
+    }
+    hashContext = hashContext[`$${pathStep}`]
     return r[pathStep]
   }, object)
 }
@@ -80,7 +107,7 @@ export function progressiveSet(
   queryPath,
   value,
   summItUp,
-  hashContext = {},
+  hashContext: Record<string, any> = {},
 ) {
   const pathArray = queryPath.split(/\./).map((p) => unshieldSeparator(p))
   const property = pathArray.splice(-1)
@@ -120,11 +147,14 @@ export function progressiveSet(
 
         const filterBy = key.split('=')
         namedArrayIndex = filterBy
+        const indexStep = `$${filterBy[0]}`
         // Fast indexing
-        const firstIndexInput = !hashContext[filterBy[0]]
-        hashContext[filterBy[0]] = hashContext[filterBy[0]] || {}
+        const firstIndexInput = !hashContext[indexStep]
+        hashContext[indexStep] = hashContext[indexStep] || {
+          $prevHashContext: hashContext,
+        }
         let found
-        const index = hashContext[filterBy[0]]?.[filterBy[1]]
+        const index = hashContext[indexStep]?.[filterBy[1]]?.index
 
         if (index != null) {
           found = leaf[index] ?? null
@@ -136,16 +166,26 @@ export function progressiveSet(
           )
 
           if (foundIndex !== -1) {
-            hashContext[filterBy[0]][filterBy[1]] = foundIndex
+            hashContext[indexStep][filterBy[1]] = {
+              $prevHashContext: hashContext[indexStep],
+              ...hashContext[indexStep][filterBy[1]],
+              index: foundIndex,
+            }
             found = leaf[foundIndex]
           }
         }
 
         if (!!found) {
           leaf = found
+          hashContext = hashContext[indexStep][filterBy[1]]
         } else {
           leaf.push({ [filterBy[0]]: filterBy[1] })
-          hashContext[filterBy[0]][filterBy[1]] = leaf.length - 1
+          hashContext[indexStep][filterBy[1]] = {
+            $prevHashContext: hashContext[indexStep],
+            ...hashContext[indexStep][filterBy[1]],
+            index: leaf.length - 1,
+          }
+          hashContext = hashContext[indexStep][filterBy[1]]
           leaf = leaf[leaf.length - 1]
         }
       }
@@ -160,6 +200,12 @@ export function progressiveSet(
         leaf[pathStep] = []
       }
       if (!leaf[pathStep]) leaf[pathStep] = {} //todo guess if there should be an array
+
+      hashContext[`${pathStep}`] = hashContext[`${pathStep}`] || {
+        $prevHashContext: hashContext,
+      }
+      hashContext = hashContext[`${pathStep}`]
+
       leaf = leaf[pathStep]
     }
     pathHistory = pathHistory.concat([{ leaf, namedArrayIndex }])
@@ -200,7 +246,7 @@ export function progressiveSet(
             return true
         })
         if (!!~spliceIndex) {
-          delete hashContext[namedArrayIndex[0]][step[spliceIndex]]
+          delete hashContext[`$${namedArrayIndex[0]}`][step[spliceIndex]]
           step.splice(spliceIndex, 1)
         }
       } else {
@@ -225,7 +271,17 @@ export function progressiveSet(
           )
             return true
         })
-        if (!!spliceKey) delete step[spliceKey]
+
+        if (!!spliceKey) {
+          if (hashContext.$prevHashContext[spliceKey] === hashContext) {
+            delete hashContext.$prevHashContext[spliceKey]
+          }
+          delete step[spliceKey]
+        }
+      }
+
+      if (hashContext.$prevHashContext) {
+        hashContext = hashContext.$prevHashContext
       }
     })
   }
@@ -280,6 +336,6 @@ export function replVars(str, obj) {
 export function getBatchContext(batches, by) {
   return (
     (batches[by] || batches['___query' + by])?.find((q) => q.name === by)
-      ?.hashContext ?? {}
+      ?.hashContext || {}
   )
 }
