@@ -52,7 +52,6 @@ function progressiveGet(object, queryPath, hashContext) {
     var pathArray = queryPath.split(/\./).map(function (p) { return unshieldSeparator(p); });
     return pathArray.reduce(function (r, pathStep, i) {
         var _a, _b, _c, _d, _e, _f;
-        console.log(r)
         if (pathStep.startsWith('[') && pathStep.endsWith(']')) {
             var path = pathStep.slice(0, -1).slice(2);
             if (path.includes(';')) {
@@ -65,7 +64,6 @@ function progressiveGet(object, queryPath, hashContext) {
                     return [step, value];
                 });
                 var _g = getIndex(steps_1), indexStep_1 = _g.indexStep, indexValue = _g.indexValue;
-                console.log(r)
                 if (Array.isArray(r)) {
                     // Fast indexing
                     var index = (_b = (_a = hashContext === null || hashContext === void 0 ? void 0 : hashContext[indexStep_1]) === null || _a === void 0 ? void 0 : _a[indexValue]) === null || _b === void 0 ? void 0 : _b.index;
