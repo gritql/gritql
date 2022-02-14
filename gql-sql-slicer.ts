@@ -531,6 +531,9 @@ function parseDimension(tree, query, knex) {
   const args = transformLinkedArgs(argumentsToObject(tree.arguments), query)
 
   if (tree.name.value === 'combine') {
+    if (!args.by || !Array.isArray(args.by))
+      throw "Combine function requires 'by' argument with a list of fields"
+
     args.by.forEach((by) => {
       if (typeof by === 'string') {
         parseDimension(

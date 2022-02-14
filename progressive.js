@@ -51,84 +51,47 @@ function progressiveGet(object, queryPath, hashContext) {
     if (hashContext === void 0) { hashContext = {}; }
     var pathArray = queryPath.split(/\./).map(function (p) { return unshieldSeparator(p); });
     return pathArray.reduce(function (r, pathStep, i) {
-        var _a, _b, _c, _d, _e, _f;
+        var _a, _b, _c, _d;
         if (pathStep.startsWith('[') && pathStep.endsWith(']')) {
             var path = pathStep.slice(0, -1).slice(2);
-            if (path.includes(';')) {
-                var steps_1 = path.split(';').map(function (path) {
-                    var separatorIndex = path.indexOf('=');
-                    var _a = [
-                        path.slice(0, separatorIndex),
-                        path.slice(separatorIndex + 1),
-                    ], step = _a[0], value = _a[1];
-                    return [step, value];
-                });
-                var _g = getIndex(steps_1), indexStep_1 = _g.indexStep, indexValue = _g.indexValue;
-                if (Array.isArray(r)) {
-                    // Fast indexing
-                    var index = (_b = (_a = hashContext === null || hashContext === void 0 ? void 0 : hashContext[indexStep_1]) === null || _a === void 0 ? void 0 : _a[indexValue]) === null || _b === void 0 ? void 0 : _b.index;
-                    if (index != null) {
-                        hashContext = hashContext[indexStep_1][indexValue];
-                        return r[index];
-                    }
-                    index = r.findIndex(function (o) {
-                        return steps_1.every(function (_a) {
-                            var step = _a[0], value = _a[1];
-                            return o[step] == value;
-                        });
-                    });
-                    if (index !== -1) {
-                        hashContext[indexStep_1] = hashContext[indexStep_1] || {
-                            $prevHashContext: hashContext
-                        };
-                        hashContext[indexStep_1][indexValue] = __assign(__assign({ $prevHashContext: hashContext[indexStep_1] }, hashContext[indexStep_1][indexValue]), { index: index });
-                        hashContext = hashContext[indexStep_1][indexValue];
-                        return r[index];
-                    }
-                    else {
-                        return NaN;
-                    }
-                }
-                else if (r[pathStep]) {
-                    hashContext["$" + pathStep] = hashContext["$" + pathStep] || {
-                        $prevHashContext: hashContext
-                    };
-                    hashContext = hashContext["$" + pathStep];
-                    return r[pathStep];
-                }
-                else {
-                    return NaN;
-                }
-            }
-            var separatorIndex = path.indexOf('=');
-            var _h = [
-                path.slice(0, separatorIndex),
-                path.slice(separatorIndex + 1),
-            ], step_1 = _h[0], value_1 = _h[1];
-            var indexStep = "$" + step_1;
+            var steps_1 = path.split(';').map(function (path) {
+                var separatorIndex = path.indexOf('=');
+                var _a = [
+                    path.slice(0, separatorIndex),
+                    path.slice(separatorIndex + 1),
+                ], step = _a[0], value = _a[1];
+                return [step, value];
+            });
+            var _e = getIndex(steps_1), indexStep = _e.indexStep, indexValue = _e.indexValue;
             if (Array.isArray(r)) {
                 // Fast indexing
-                var index = (_d = (_c = hashContext === null || hashContext === void 0 ? void 0 : hashContext[indexStep]) === null || _c === void 0 ? void 0 : _c[value_1]) === null || _d === void 0 ? void 0 : _d.index;
+                var index = (_b = (_a = hashContext === null || hashContext === void 0 ? void 0 : hashContext[indexStep]) === null || _a === void 0 ? void 0 : _a[indexValue]) === null || _b === void 0 ? void 0 : _b.index;
                 if (index != null) {
-                    hashContext = hashContext[indexStep][value_1];
+                    hashContext = hashContext[indexStep][indexValue];
                     return r[index];
                 }
-                index = r.findIndex(function (o) { return o[step_1] == value_1; });
+                index = r.findIndex(function (o) {
+                    return steps_1.every(function (_a) {
+                        var step = _a[0], value = _a[1];
+                        return o[step] == value;
+                    });
+                });
                 if (index !== -1) {
                     hashContext[indexStep] = hashContext[indexStep] || {
                         $prevHashContext: hashContext
                     };
-                    hashContext[indexStep][value_1] = __assign(__assign({ $prevHashContext: hashContext[indexStep] }, hashContext[indexStep][value_1]), { index: index });
-                    hashContext = hashContext[indexStep][value_1];
+                    hashContext[indexStep][indexValue] = __assign(__assign({ $prevHashContext: hashContext[indexStep] }, hashContext[indexStep][indexValue]), { index: index });
+                    hashContext = hashContext[indexStep][indexValue];
                     return r[index];
                 }
                 else {
                     return NaN;
                 }
             }
-            else if (Array.isArray(r[step_1])) {
+            else if (steps_1.length === 1 && Array.isArray(r[steps_1[0][0]])) {
+                var _f = steps_1[0], step_1 = _f[0], value_1 = _f[1];
                 // Fast indexing
-                var index = (_f = (_e = hashContext === null || hashContext === void 0 ? void 0 : hashContext[indexStep]) === null || _e === void 0 ? void 0 : _e[value_1]) === null || _f === void 0 ? void 0 : _f.index;
+                var index = (_d = (_c = hashContext === null || hashContext === void 0 ? void 0 : hashContext[indexStep]) === null || _c === void 0 ? void 0 : _c[indexValue]) === null || _d === void 0 ? void 0 : _d.index;
                 if (index != null) {
                     hashContext = hashContext[indexStep];
                     return r[step_1][index];
@@ -138,8 +101,8 @@ function progressiveGet(object, queryPath, hashContext) {
                     hashContext[indexStep] = hashContext[indexStep] || {
                         $prevHashContext: hashContext
                     };
-                    hashContext[indexStep][value_1] = __assign(__assign({ $prevHashContext: hashContext[indexStep] }, hashContext[indexStep][value_1]), { index: index });
-                    hashContext = hashContext[indexStep][value_1];
+                    hashContext[indexStep][indexValue] = __assign(__assign({ $prevHashContext: hashContext[indexStep] }, hashContext[indexStep][indexValue]), { index: index });
+                    hashContext = hashContext[indexStep][indexValue];
                     return r[step_1][index];
                 }
                 else {

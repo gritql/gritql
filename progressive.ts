@@ -28,95 +28,52 @@ export function progressiveGet(object, queryPath, hashContext = {}) {
   return pathArray.reduce((r, pathStep, i) => {
     if (pathStep.startsWith('[') && pathStep.endsWith(']')) {
       const path = pathStep.slice(0, -1).slice(2)
-      if (path.includes(';')) {
-        const steps = path.split(';').map((path) => {
-          const separatorIndex = path.indexOf('=')
 
-          const [step, value] = [
-            path.slice(0, separatorIndex),
-            path.slice(separatorIndex + 1),
-          ]
+      const steps = path.split(';').map((path) => {
+        const separatorIndex = path.indexOf('=')
 
-          return [step, value]
-        })
+        const [step, value] = [
+          path.slice(0, separatorIndex),
+          path.slice(separatorIndex + 1),
+        ]
 
-        const { indexStep, indexValue } = getIndex(steps)
+        return [step, value]
+      })
 
-        if (Array.isArray(r)) {
-          // Fast indexing
-          let index = hashContext?.[indexStep]?.[indexValue]?.index
-          if (index != null) {
-            hashContext = hashContext[indexStep][indexValue]
-            return r[index]
-          }
-
-          index = r.findIndex((o) =>
-            steps.every(([step, value]) => o[step] == value),
-          )
-
-          if (index !== -1) {
-            hashContext[indexStep] = hashContext[indexStep] || {
-              $prevHashContext: hashContext,
-            }
-            hashContext[indexStep][indexValue] = {
-              $prevHashContext: hashContext[indexStep],
-              ...hashContext[indexStep][indexValue],
-              index,
-            }
-            hashContext = hashContext[indexStep][indexValue]
-
-            return r[index]
-          } else {
-            return NaN
-          }
-        } else if (r[pathStep]) {
-          hashContext[`$${pathStep}`] = hashContext[`$${pathStep}`] || {
-            $prevHashContext: hashContext,
-          }
-          hashContext = hashContext[`$${pathStep}`]
-          return r[pathStep]
-        } else {
-          return NaN
-        }
-      }
-
-      const separatorIndex = path.indexOf('=')
-
-      const [step, value] = [
-        path.slice(0, separatorIndex),
-        path.slice(separatorIndex + 1),
-      ]
-
-      const indexStep = `$${step}`
+      const { indexStep, indexValue } = getIndex(steps)
 
       if (Array.isArray(r)) {
         // Fast indexing
-        let index = hashContext?.[indexStep]?.[value]?.index
+        let index = hashContext?.[indexStep]?.[indexValue]?.index
         if (index != null) {
-          hashContext = hashContext[indexStep][value]
+          hashContext = hashContext[indexStep][indexValue]
           return r[index]
         }
 
-        index = r.findIndex((o) => o[step] == value)
+        index = r.findIndex((o) =>
+          steps.every(([step, value]) => o[step] == value),
+        )
 
         if (index !== -1) {
           hashContext[indexStep] = hashContext[indexStep] || {
             $prevHashContext: hashContext,
           }
-          hashContext[indexStep][value] = {
+          hashContext[indexStep][indexValue] = {
             $prevHashContext: hashContext[indexStep],
-            ...hashContext[indexStep][value],
+            ...hashContext[indexStep][indexValue],
             index,
           }
-          hashContext = hashContext[indexStep][value]
+          hashContext = hashContext[indexStep][indexValue]
 
           return r[index]
         } else {
           return NaN
         }
-      } else if (Array.isArray(r[step])) {
+      } else if (steps.length === 1 && Array.isArray(r[steps[0][0]])) {
+        const [step, value] = steps[0]
+
         // Fast indexing
-        let index = hashContext?.[indexStep]?.[value]?.index
+        let index = hashContext?.[indexStep]?.[indexValue]?.index
         if (index != null) {
           hashContext = hashContext[indexStep]
           return r[step][index]
@@ -128,13 +85,13 @@ export function progressiveGet(object, queryPath, hashContext = {}) {
           hashContext[indexStep] = hashContext[indexStep] || {
             $prevHashContext: hashContext,
           }
-          hashContext[indexStep][value] = {
+          hashContext[indexStep][indexValue] = {
             $prevHashContext: hashContext[indexStep],
-            ...hashContext[indexStep][value],
+            ...hashContext[indexStep][indexValue],
             index,
           }
 
-          hashContext = hashContext[indexStep][value]
+          hashContext = hashContext[indexStep][indexValue]
 
           return r[step][index]
         } else {
