@@ -99,6 +99,7 @@ exports.postExecutedDirectives = {
     // or
     // group: group name
     indexed: function (context) {
+        var _a;
         if (!context.tree.arguments) {
             throw 'Indexed directive requires arguments';
         }
@@ -111,8 +112,11 @@ exports.postExecutedDirectives = {
         }
         context.data.members = new Set();
         context.data.members.add(context.query.name);
+        // Paths within one group could be different, we need to handle it
+        context.data.pathMap = (_a = {}, _a[context.query.name] = [context.path], _a);
         if (!args.group) {
             context.data.members.add(args.to);
+            context.data.pathMap[args.to] = [context.path];
         }
         else {
             context.data.group = args.group;
@@ -132,6 +136,11 @@ exports.postExecutedDirectives = {
                             });
                             if (directives.length > 0) {
                                 context.data.members.add(q.name);
+                                context.data.pathMap[q.name] =
+                                    context.data.pathMap[q.name] || [];
+                                directives.forEach(function (d) {
+                                    context.data.pathMap[q.name].push(d.context.path);
+                                });
                             }
                         });
                     });
@@ -140,7 +149,10 @@ exports.postExecutedDirectives = {
             }
             if (context.data.max == null && originFullObject) {
                 Array.from(context.data.members).forEach(function (member) {
-                    progressive_1.iterateProgressive(originFullObject[member], context.path, calculateMax);
+                    var paths = context.data.pathMap[member];
+                    paths.forEach(function (path) {
+                        return progressive_1.iterateProgressive(originFullObject[member], path, calculateMax);
+                    });
                 });
             }
             if (context.data.max != null) {

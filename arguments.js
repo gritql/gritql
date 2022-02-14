@@ -15,10 +15,16 @@ exports.argumentsToObject = void 0;
 function argumentsToObject(args) {
     if (!args)
         return null;
-    return args.reduce(function (r, a) {
-        var _a;
-        return (__assign(__assign({}, r), (_a = {}, _a[a.name.value] = parseValue(a.value), _a)));
-    }, {});
+    if (Array.isArray(args)) {
+        return args.reduce(function (r, a) {
+            var _a;
+            return (__assign(__assign({}, r), (_a = {}, _a[a.name.value] = parseValue(a.value), _a)));
+        }, {});
+    }
+    else {
+        // In that case args already parsed
+        return args;
+    }
 }
 exports.argumentsToObject = argumentsToObject;
 function parseValue(value) {
