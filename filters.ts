@@ -143,9 +143,9 @@ export function buildFullName(
   evaluateOnlyWithLinkSymbol = true,
 ) {
   args = Array.isArray(args) ? argumentsToObject(args) : args
-  const table = args.from || query.table
+  const table = args?.from || query.table
 
-  if (!field?.startsWith('@') && (evaluateOnlyWithLinkSymbol || !args.from)) {
+  if (!field?.startsWith('@') && (evaluateOnlyWithLinkSymbol || !args?.from)) {
     return field
   } else {
     return `${table}.${field.replace(/^@/, '')}`

@@ -172,6 +172,7 @@ export function progressiveSet(
 
         namedArrayIndex = steps
         const { indexValue, indexStep } = getIndex(steps)
+
         // Fast indexing
         const firstIndexInput = !hashContext[indexStep]
         hashContext[indexStep] = hashContext[indexStep] || {

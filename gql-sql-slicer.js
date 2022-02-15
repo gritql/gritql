@@ -450,7 +450,7 @@ function parseMetric(tree, query, knex, metricResolvers) {
     query.metrics.push(isInGetters ? (_e = tree.name) === null || _e === void 0 ? void 0 : _e.value : ((_f = tree.alias) === null || _f === void 0 ? void 0 : _f.value) || ((_g = tree.name) === null || _g === void 0 ? void 0 : _g.value));
 }
 function transformLinkedArgs(args, query) {
-    if (args.from === '@') {
+    if ((args === null || args === void 0 ? void 0 : args.from) === '@') {
         args.from = query.table;
     }
     return args;
@@ -466,20 +466,21 @@ function parseDimension(tree, query, knex) {
     query.groupIndex++;
     var args = transformLinkedArgs(arguments_1.argumentsToObject(tree.arguments), query);
     if (tree.name.value === 'combine') {
-        if (!args.by || !Array.isArray(args.by))
-            throw "Combine function requires 'by' argument with a list of fields";
-        args.by.forEach(function (by) {
-            if (typeof by === 'string') {
+        if (!args.fields || !Array.isArray(args.fields))
+            throw "Combine function requires 'fields' argument with a list of fields";
+        args.fields.forEach(function (field) {
+            console.log(field);
+            if (typeof field === 'string') {
                 parseDimension({
                     name: {
-                        value: by
+                        value: field
                     }
                 }, query, knex);
             }
             else {
-                if (!by.name)
+                if (!field.name)
                     throw 'Combine by elements must have name';
-                var name_1 = by.name, alias = by.alias, rest = __rest(by, ["name", "alias"]);
+                var name_1 = field.name, alias = field.alias, rest = __rest(field, ["name", "alias"]);
                 var tree_1 = {
                     name: {
                         value: name_1
@@ -1167,7 +1168,7 @@ function mergeMetric(tree, query, metricResolversData) {
     }
 }
 function mergeDimension(tree, query) {
-    var _a, _b, _c;
+    var _a, _b, _c, _d, _e;
     var args = arguments_1.argumentsToObject(tree.arguments);
     query.getters = query.getters || [];
     if (args === null || args === void 0 ? void 0 : args.groupByEach) {
@@ -1184,13 +1185,15 @@ function mergeDimension(tree, query) {
         var names_1 = [];
         var pathPrefix = '';
         if (tree.name.value === 'combine') {
-            pathPrefix = tree.alias.value + ".";
-            args.by.forEach(function (by) {
-                if (by === 'string') {
-                    names_1.push(by);
+            if ((_d = tree.alias) === null || _d === void 0 ? void 0 : _d.value) {
+                pathPrefix = tree.alias.value + ".";
+            }
+            args.fields.forEach(function (field) {
+                if (field === 'string') {
+                    names_1.push(field);
                 }
                 else {
-                    names_1.push(by.alias || by.name);
+                    names_1.push(field.alias || field.name);
                 }
             });
         }
@@ -1206,13 +1209,15 @@ function mergeDimension(tree, query) {
         var names_2 = [];
         var pathPrefix = '';
         if (tree.name.value === 'combine') {
-            pathPrefix = tree.alias.value + ".";
-            args.by.forEach(function (by) {
-                if (by === 'string') {
-                    names_2.push(by);
+            if ((_e = tree.alias) === null || _e === void 0 ? void 0 : _e.value) {
+                pathPrefix = tree.alias.value + ".";
+            }
+            args.fields.forEach(function (field) {
+                if (field === 'string') {
+                    names_2.push(field);
                 }
                 else {
-                    names_2.push(by.alias || by.name);
+                    names_2.push(field.alias || field.name);
                 }
             });
         }

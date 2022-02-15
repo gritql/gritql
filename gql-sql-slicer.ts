@@ -513,7 +513,7 @@ function parseMetric(tree, query, knex, metricResolvers) {
 }
 
 function transformLinkedArgs(args, query) {
-  if (args.from === '@') {
+  if (args?.from === '@') {
     args.from = query.table
   }
 
@@ -531,24 +531,26 @@ function parseDimension(tree, query, knex) {
   const args = transformLinkedArgs(argumentsToObject(tree.arguments), query)
 
   if (tree.name.value === 'combine') {
-    if (!args.by || !Array.isArray(args.by))
-      throw "Combine function requires 'by' argument with a list of fields"
+    if (!args.fields || !Array.isArray(args.fields))
+      throw "Combine function requires 'fields' argument with a list of fields"
 
-    args.by.forEach((by) => {
-      if (typeof by === 'string') {
+    args.fields.forEach((field) => {
+      console.log(field)
+
+      if (typeof field === 'string') {
         parseDimension(
           {
             name: {
-              value: by,
+              value: field,
             },
           },
           query,
           knex,
         )
       } else {
-        if (!by.name) throw 'Combine by elements must have name'
+        if (!field.name) throw 'Combine by elements must have name'
 
-        const { name, alias, ...rest } = by
+        const { name, alias, ...rest } = field
 
         const tree: any = {
           name: {
@@ -1479,12 +1481,14 @@ function mergeDimension(tree, query) {
     let pathPrefix = ''
 
     if (tree.name.value === 'combine') {
-      pathPrefix = `${tree.alias.value}.`
-      args.by.forEach((by) => {
-        if (by === 'string') {
-          names.push(by)
+      if (tree.alias?.value) {
+        pathPrefix = `${tree.alias.value}.`
+      }
+      args.fields.forEach((field) => {
+        if (field === 'string') {
+          names.push(field)
         } else {
-          names.push(by.alias || by.name)
+          names.push(field.alias || field.name)
         }
       })
     } else {
@@ -1500,12 +1504,14 @@ function mergeDimension(tree, query) {
     let pathPrefix = ''
 
     if (tree.name.value === 'combine') {
-      pathPrefix = `${tree.alias.value}.`
-      args.by.forEach((by) => {
-        if (by === 'string') {
-          names.push(by)
+      if (tree.alias?.value) {
+        pathPrefix = `${tree.alias.value}.`
+      }
+      args.fields.forEach((field) => {
+        if (field === 'string') {
+          names.push(field)
         } else {
-          names.push(by.alias || by.name)
+          names.push(field.alias || field.name)
         }
       })
     } else {
