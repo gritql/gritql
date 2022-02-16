@@ -469,7 +469,6 @@ function parseDimension(tree, query, knex) {
         if (!args.fields || !Array.isArray(args.fields))
             throw "Combine function requires 'fields' argument with a list of fields";
         args.fields.forEach(function (field) {
-            console.log(field);
             if (typeof field === 'string') {
                 parseDimension({
                     name: {
