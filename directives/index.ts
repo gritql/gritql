@@ -197,9 +197,9 @@ export const postExecutedDirectives = {
         Array.from<string>(context.data.members).forEach((member) => {
           const paths = context.data.pathMap[member]
 
-          paths.forEach((path) =>
-            iterateProgressive(originFullObject[member], path, calculateMax),
-          )
+          paths.forEach((path) => {
+            iterateProgressive(originFullObject[member], path, calculateMax)
+          })
         })
       }
 

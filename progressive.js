@@ -304,6 +304,7 @@ function progressiveSet(object, queryPath, value, summItUp, hashContext) {
 exports.progressiveSet = progressiveSet;
 function iterateProgressive(obj, key, callback) {
     function iterateKeys(obj, keys, index, currentKeys) {
+        var _a;
         if (index === void 0) { index = 0; }
         if (currentKeys === void 0) { currentKeys = []; }
         if (index === keys.length || obj == null) {
@@ -317,7 +318,7 @@ function iterateProgressive(obj, key, callback) {
             });
         }
         else if (keys[index].startsWith('[') && keys[index].endsWith(']')) {
-            obj.forEach(function (el, i) {
+            (_a = obj.forEach) === null || _a === void 0 ? void 0 : _a.call(obj, function (el, i) {
                 iterateKeys(el, keys, index + 1, __spreadArray(__spreadArray([], currentKeys), [i]));
             });
         }

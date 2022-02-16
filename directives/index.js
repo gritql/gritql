@@ -151,7 +151,7 @@ exports.postExecutedDirectives = {
                 Array.from(context.data.members).forEach(function (member) {
                     var paths = context.data.pathMap[member];
                     paths.forEach(function (path) {
-                        return progressive_1.iterateProgressive(originFullObject[member], path, calculateMax);
+                        progressive_1.iterateProgressive(originFullObject[member], path, calculateMax);
                     });
                 });
             }
