@@ -3,6 +3,15 @@ function unshieldSeparator(str) {
   return str.replace(/\$#@#/, '.')
 }
 
+function getIndex(steps: [string, string][], values?: any) {
+  const indexStep = steps.map(([step]) => `$${step}`).join(';')
+  const indexValue = steps
+    .map(([step, value]) => (values ? values[step] ?? value : value))
+    .join(';')
+
+  return { indexStep, indexValue }
+}
+
 /*
 var k = {};
 progressiveSet(k, 'book.test.one', 1)
@@ -19,43 +28,52 @@ export function progressiveGet(object, queryPath, hashContext = {}) {
   return pathArray.reduce((r, pathStep, i) => {
     if (pathStep.startsWith('[') && pathStep.endsWith(']')) {
       const path = pathStep.slice(0, -1).slice(2)
-      const separatorIndex = path.indexOf('=')
 
-      const [step, value] = [
-        path.slice(0, separatorIndex),
-        path.slice(separatorIndex + 1),
-      ]
+      const steps = path.split(';').map((path) => {
+        const separatorIndex = path.indexOf('=')
 
-      const indexStep = `$${step}`
+        const [step, value] = [
+          path.slice(0, separatorIndex),
+          path.slice(separatorIndex + 1),
+        ]
+
+        return [step, value]
+      })
+
+      const { indexStep, indexValue } = getIndex(steps)
 
       if (Array.isArray(r)) {
         // Fast indexing
-        let index = hashContext?.[`$${step}`]?.[value]?.index
+        let index = hashContext?.[indexStep]?.[indexValue]?.index
         if (index != null) {
-          hashContext = hashContext[indexStep][value]
+          hashContext = hashContext[indexStep][indexValue]
           return r[index]
         }
 
-        index = r.findIndex((o) => o[step] == value)
+        index = r.findIndex((o) =>
+          steps.every(([step, value]) => o[step] == value),
+        )
 
         if (index !== -1) {
           hashContext[indexStep] = hashContext[indexStep] || {
             $prevHashContext: hashContext,
           }
-          hashContext[indexStep][value] = {
+          hashContext[indexStep][indexValue] = {
             $prevHashContext: hashContext[indexStep],
-            ...hashContext[indexStep][value],
+            ...hashContext[indexStep][indexValue],
             index,
           }
-          hashContext = hashContext[indexStep][value]
+          hashContext = hashContext[indexStep][indexValue]
 
           return r[index]
         } else {
           return NaN
         }
-      } else if (Array.isArray(r[step])) {
+      } else if (steps.length === 1 && Array.isArray(r[steps[0][0]])) {
+        const [step, value] = steps[0]
+
         // Fast indexing
-        let index = hashContext?.[indexStep]?.[value]?.index
+        let index = hashContext?.[indexStep]?.[indexValue]?.index
         if (index != null) {
           hashContext = hashContext[indexStep]
           return r[step][index]
@@ -67,13 +85,13 @@ export function progressiveGet(object, queryPath, hashContext = {}) {
           hashContext[indexStep] = hashContext[indexStep] || {
             $prevHashContext: hashContext,
           }
-          hashContext[indexStep][value] = {
+          hashContext[indexStep][indexValue] = {
             $prevHashContext: hashContext[indexStep],
-            ...hashContext[indexStep][value],
+            ...hashContext[indexStep][indexValue],
             index,
           }
 
-          hashContext = hashContext[indexStep][value]
+          hashContext = hashContext[indexStep][indexValue]
 
           return r[step][index]
         } else {
@@ -124,17 +142,22 @@ export function progressiveSet(
     if (pathStep.startsWith('[') && !Array.isArray(leaf)) {
       let key = pathStep.slice(1, pathStep.length - 1)
 
-      if ((key !== 0 && !key) || Number.isInteger(+key)) {
-        leaf['arr'] = []
-        leaf = leaf['arr']
-      } else if (key.startsWith('@')) {
-        key = key.slice(1)
-        const filterBy = key.split('=')
+      if (key.includes(';')) {
+        leaf = []
+      } else {
+        if ((key !== 0 && !key) || Number.isInteger(+key)) {
+          leaf['arr'] = []
+          leaf = leaf['arr']
+        } else if (key.startsWith('@')) {
+          key = key.slice(1)
+          const filterBy = key.split('=')
 
-        if (!leaf[filterBy[0]]) leaf[filterBy[0]] = []
-        leaf = leaf[filterBy[0]]
+          if (!leaf[filterBy[0]]) leaf[filterBy[0]] = []
+          leaf = leaf[filterBy[0]]
+        }
       }
     }
+
     if (Array.isArray(leaf)) {
       let key = pathStep.slice(1, pathStep.length - 1)
       if (key !== 0 && !key) {
@@ -145,30 +168,32 @@ export function progressiveSet(
       } else if (key.startsWith('@')) {
         key = key.slice(1)
 
-        const filterBy = key.split('=')
-        namedArrayIndex = filterBy
-        const indexStep = `$${filterBy[0]}`
+        const steps = key.split(';').map((key) => key.split('='))
+
+        namedArrayIndex = steps
+        const { indexValue, indexStep } = getIndex(steps)
+
         // Fast indexing
         const firstIndexInput = !hashContext[indexStep]
         hashContext[indexStep] = hashContext[indexStep] || {
           $prevHashContext: hashContext,
         }
         let found
-        const index = hashContext[indexStep]?.[filterBy[1]]?.index
+        const index = hashContext[indexStep]?.[indexValue]?.index
 
         if (index != null) {
           found = leaf[index] ?? null
         }
 
         if (found == null && firstIndexInput) {
-          const foundIndex = leaf.findIndex(
-            (a) => a[filterBy[0]] == '' + filterBy[1],
+          const foundIndex = leaf.findIndex((a) =>
+            steps.every(([step, value]) => a[step] == '' + value),
           )
 
           if (foundIndex !== -1) {
-            hashContext[indexStep][filterBy[1]] = {
+            hashContext[indexStep][indexValue] = {
               $prevHashContext: hashContext[indexStep],
-              ...hashContext[indexStep][filterBy[1]],
+              ...hashContext[indexStep][indexValue],
               index: foundIndex,
             }
             found = leaf[foundIndex]
@@ -177,15 +202,21 @@ export function progressiveSet(
 
         if (!!found) {
           leaf = found
-          hashContext = hashContext[indexStep][filterBy[1]]
+          hashContext = hashContext[indexStep][indexValue]
         } else {
-          leaf.push({ [filterBy[0]]: filterBy[1] })
-          hashContext[indexStep][filterBy[1]] = {
+          let obj = {}
+
+          steps.forEach(([step, value]) => {
+            obj[step] = value
+          })
+
+          leaf.push(obj)
+          hashContext[indexStep][indexValue] = {
             $prevHashContext: hashContext[indexStep],
-            ...hashContext[indexStep][filterBy[1]],
+            ...hashContext[indexStep][indexValue],
             index: leaf.length - 1,
           }
-          hashContext = hashContext[indexStep][filterBy[1]]
+          hashContext = hashContext[indexStep][indexValue]
           leaf = leaf[leaf.length - 1]
         }
       }
@@ -199,6 +230,7 @@ export function progressiveSet(
       ) {
         leaf[pathStep] = []
       }
+
       if (!leaf[pathStep]) leaf[pathStep] = {} //todo guess if there should be an array
 
       hashContext[`${pathStep}`] = hashContext[`${pathStep}`] || {
@@ -236,17 +268,21 @@ export function progressiveSet(
                 r ||
                 (val[vk] !== undefined &&
                   (!previousStepNameddArrayIndex ||
-                    !(
-                      previousStepNameddArrayIndex[0] === vk &&
-                      previousStepNameddArrayIndex[1] == val[vk]
-                    )))
+                    !previousStepNameddArrayIndex.find(
+                      ([step]) => step === vk,
+                    )?.[1] == val[vk]))
               )
             }, false)
           )
             return true
         })
         if (!!~spliceIndex) {
-          delete hashContext[`$${namedArrayIndex[0]}`][step[spliceIndex]]
+          const { indexStep, indexValue } = getIndex(
+            namedArrayIndex,
+            step[spliceIndex],
+          )
+
+          delete hashContext[indexStep][indexValue]
           step.splice(spliceIndex, 1)
         }
       } else {
@@ -254,8 +290,7 @@ export function progressiveSet(
           if (!step[val]) return false
           if (
             namedArrayIndex &&
-            val == namedArrayIndex[0] &&
-            step[val] == namedArrayIndex[1]
+            namedArrayIndex.find(([step]) => step == val)?.[1] === step[val]
           )
             return true
           if (
@@ -306,7 +341,7 @@ export function iterateProgressive(
         iterateKeys(obj[key], keys, index + 1, [...currentKeys, key])
       })
     } else if (keys[index].startsWith('[') && keys[index].endsWith(']')) {
-      obj.forEach((el, i) => {
+      obj.forEach?.((el, i) => {
         iterateKeys(el, keys, index + 1, [...currentKeys, i])
       })
     } else {

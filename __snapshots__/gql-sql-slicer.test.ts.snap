@@ -20,6 +20,12 @@ Array [
 ]
 `;
 
+exports[`SQL builder for mulyquery requests combine example 1`] = `
+Array [
+  "select \\"device\\", \\"channel\\", cast(\\"sum\\"(\\"no_of_baskets\\") as float)/NULLIF(cast(\\"sum\\"(\\"no_all_baskets\\") as float), 0)::float4 as \\"avg\\" from \\"table\\" where \\"table\\".\\"brand\\" = 'Adidas' and \\"table\\".\\"country\\" = 'US' and \\"table\\".\\"date\\" > '2020-1-1' and \\"table\\".\\"date\\" < '2021-7-12' group by \\"device\\", \\"channel\\"",
+]
+`;
+
 exports[`SQL builder for mulyquery requests complex queries using with example works 1`] = `
 Array [
   "with \\"productQuery\\" as (select \\"table\\".\\"product\\", sum(\\"value\\") as \\"value\\", \\"table_catalog\\".\\"price\\" as \\"price\\", \\"table_catalog\\".\\"brand\\" as \\"brand\\" from \\"table\\" JOIN \\"table_catalog\\" ON (\\"table_catalog\\".\\"product\\" = \\"table\\".\\"product\\") AND (\\"table_catalog\\".\\"country\\" = \\"table\\".\\"country\\") where ((\\"table\\".\\"date\\" >= '2021-12-13') AND (\\"table\\".\\"date\\" <= '2022-01-09')) AND ((\\"table\\".\\"price\\" >= 10)) AND (\\"table\\".\\"country\\" = 'DE') AND ((\\"table\\".\\"category\\" IN ('Clothes','Fashion')) AND (\\"table\\".\\"category\\" NOT IN('Bags'))) group by \\"table\\".\\"product\\", \\"table_catalog\\".\\"price\\", \\"table_catalog\\".\\"brand\\" order by \\"value\\" desc) select count(distinct \\"brand\\") as \\"count\\" from \\"productQuery\\"",

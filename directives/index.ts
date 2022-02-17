@@ -152,9 +152,12 @@ export const postExecutedDirectives = {
     context.data.members = new Set()
 
     context.data.members.add(context.query.name)
+    // Paths within one group could be different, we need to handle it
+    context.data.pathMap = { [context.query.name]: [context.path] }
 
     if (!args.group) {
       context.data.members.add(args.to)
+      context.data.pathMap[args.to] = [context.path]
     } else {
       context.data.group = args.group
     }
@@ -176,6 +179,12 @@ export const postExecutedDirectives = {
 
               if (directives.length > 0) {
                 context.data.members.add(q.name)
+
+                context.data.pathMap[q.name] =
+                  context.data.pathMap[q.name] || []
+                directives.forEach((d) => {
+                  context.data.pathMap[q.name].push(d.context.path)
+                })
               }
             })
           })
@@ -186,11 +195,11 @@ export const postExecutedDirectives = {
 
       if (context.data.max == null && originFullObject) {
         Array.from<string>(context.data.members).forEach((member) => {
-          iterateProgressive(
-            originFullObject[member],
-            context.path,
-            calculateMax,
-          )
+          const paths = context.data.pathMap[member]
+
+          paths.forEach((path) => {
+            iterateProgressive(originFullObject[member], path, calculateMax)
+          })
         })
       }
 

@@ -40,8 +40,8 @@ var filterOperators = [
 function buildFullName(args, query, field, evaluateOnlyWithLinkSymbol) {
     if (evaluateOnlyWithLinkSymbol === void 0) { evaluateOnlyWithLinkSymbol = true; }
     args = Array.isArray(args) ? arguments_1.argumentsToObject(args) : args;
-    var table = args.from || query.table;
-    if (!(field === null || field === void 0 ? void 0 : field.startsWith('@')) && (evaluateOnlyWithLinkSymbol || !args.from)) {
+    var table = (args === null || args === void 0 ? void 0 : args.from) || query.table;
+    if (!(field === null || field === void 0 ? void 0 : field.startsWith('@')) && (evaluateOnlyWithLinkSymbol || !(args === null || args === void 0 ? void 0 : args.from))) {
         return field;
     }
     else {

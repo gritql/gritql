@@ -1,10 +1,15 @@
 export function argumentsToObject(args) {
   if (!args) return null
 
-  return args.reduce(
-    (r, a) => ({ ...r, [a.name.value]: parseValue(a.value) }),
-    {},
-  )
+  if (Array.isArray(args)) {
+    return args.reduce(
+      (r, a) => ({ ...r, [a.name.value]: parseValue(a.value) }),
+      {},
+    )
+  } else {
+    // In that case args already parsed
+    return args
+  }
 }
 
 function parseValue(value) {

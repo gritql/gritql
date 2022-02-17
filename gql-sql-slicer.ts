@@ -513,7 +513,7 @@ function parseMetric(tree, query, knex, metricResolvers) {
 }
 
 function transformLinkedArgs(args, query) {
-  if (args.from === '@') {
+  if (args?.from === '@') {
     args.from = query.table
   }
 
@@ -530,107 +530,147 @@ function parseDimension(tree, query, knex) {
   query.groupIndex++
   const args = transformLinkedArgs(argumentsToObject(tree.arguments), query)
 
-  if (args?.groupByEach) {
-    const amount = parseFloat(args.groupByEach)
-    query.getters = query.getters || []
+  if (tree.name.value === 'combine') {
+    if (!args.fields || !Array.isArray(args.fields))
+      throw "Combine function requires 'fields' argument with a list of fields"
 
-    query.promise = query.promise
-      .select(
-        knex.raw(
-          `(CAST(FLOOR(CEIL(??)/??) AS INT)*?? || '-' || CAST(FLOOR(CEIL(??)/??) AS INT)*??+??) AS ??`,
-          [
+    args.fields.forEach((field) => {
+      if (typeof field === 'string') {
+        parseDimension(
+          {
+            name: {
+              value: field,
+            },
+          },
+          query,
+          knex,
+        )
+      } else {
+        if (!field.name) throw 'Combine by elements must have name'
+
+        const { name, alias, ...rest } = field
+
+        const tree: any = {
+          name: {
+            value: name,
+          },
+        }
+
+        if (alias) {
+          tree.alias = {
+            value: alias,
+          }
+        }
+
+        tree.arguments = rest
+
+        parseDimension(tree, query, knex)
+      }
+    })
+  } else {
+    if (args?.groupByEach) {
+      const amount = parseFloat(args.groupByEach)
+      query.getters = query.getters || []
+
+      query.promise = query.promise
+        .select(
+          knex.raw(
+            `(CAST(FLOOR(CEIL(??)/??) AS INT)*?? || '-' || CAST(FLOOR(CEIL(??)/??) AS INT)*??+??) AS ??`,
+            [
+              buildFullName(args, query, tree.name.value, false),
+              amount,
+              amount,
+              buildFullName(args, query, tree.name.value, false),
+              amount,
+              amount,
+              amount - 1,
+              tree.alias?.value || tree.name.value,
+            ],
+          ),
+          knex.raw(`(CAST(FLOOR(CEIL(??)/??) AS INT)*??) AS ??`, [
             buildFullName(args, query, tree.name.value, false),
             amount,
             amount,
+            `groupByEach_min_${tree.alias?.value || tree.name.value}`,
+          ]),
+          knex.raw(`(CAST(FLOOR(CEIL(??)/??) AS INT)*??+??) AS ??`, [
             buildFullName(args, query, tree.name.value, false),
             amount,
             amount,
             amount - 1,
-            tree.alias?.value || tree.name.value,
-          ],
-        ),
-        knex.raw(`(CAST(FLOOR(CEIL(??)/??) AS INT)*??) AS ??`, [
-          buildFullName(args, query, tree.name.value, false),
-          amount,
-          amount,
-          `groupByEach_min_${tree.alias?.value || tree.name.value}`,
-        ]),
-        knex.raw(`(CAST(FLOOR(CEIL(??)/??) AS INT)*??+??) AS ??`, [
-          buildFullName(args, query, tree.name.value, false),
-          amount,
-          amount,
-          amount - 1,
-          `groupByEach_max_${tree.alias?.value || tree.name.value}`,
-        ]),
-      )
-      .groupBy(
-        knex.raw('CAST(FLOOR(CEIL(??)/??) AS INT)', [
-          buildFullName(args, query, tree.name.value, false),
-          amount,
-        ]),
-      )
+            `groupByEach_max_${tree.alias?.value || tree.name.value}`,
+          ]),
+        )
+        .groupBy(
+          knex.raw('CAST(FLOOR(CEIL(??)/??) AS INT)', [
+            buildFullName(args, query, tree.name.value, false),
+            amount,
+          ]),
+        )
 
-    query.getters.push(
-      `groupByEach_max_${tree.alias?.value || tree.name.value}`,
-    )
-    query.getters.push(
-      `groupByEach_min_${tree.alias?.value || tree.name.value}`,
-    )
-  } else if (args?.groupBy) {
-    if (args.from !== query.table) {
-      query.preparedAdvancedFilters = parseAdvancedFilters(
+      query.getters.push(
+        `groupByEach_max_${tree.alias?.value || tree.name.value}`,
+      )
+      query.getters.push(
+        `groupByEach_min_${tree.alias?.value || tree.name.value}`,
+      )
+    } else if (args?.groupBy) {
+      if (args.from !== query.table) {
+        query.preparedAdvancedFilters = parseAdvancedFilters(
+          query,
+          knex,
+          query.advancedFilters,
+          true,
+        )
+      }
+
+      const pre_trunc = applyFilters(
         query,
+        withFilters(query.filters)(
+          knex
+            .select([
+              '*',
+              knex.raw(`date_trunc(?, ??) as ??`, [
+                args?.groupBy,
+                tree.name.value,
+                `${tree.name.value}_${args?.groupBy}`,
+              ]),
+            ])
+            .from(args.from || query.table),
+        ),
         knex,
-        query.advancedFilters,
-        true,
+      )
+
+      const table = args.groupByAlias || args.from || query.table
+      changeQueryTable(query, knex, table, true)
+
+      query.promise = query.promise.from(pre_trunc.as(table))
+
+      query.promise = query.promise.select(
+        knex.raw(`?? as ??`, [
+          `${tree.name.value}_${args?.groupBy}`,
+          tree.alias?.value || tree.name.value,
+        ]),
+      )
+      query.promise = query.promise.groupBy(
+        knex.raw(`??`, [`${tree.name.value}_${args?.groupBy}`]),
+      )
+
+      if (!query.replaceWith) query.replaceWith = {}
+      query.replaceWith[tree.name.value] = {
+        value: `${tree.name.value}_${args?.groupBy}`,
+        index: query.groupIndex,
+      }
+    } else {
+      query.promise = query.promise.select(
+        buildFullName(args, query, tree.name.value, false),
+      )
+      query.promise = query.promise.groupBy(
+        buildFullName(args, query, tree.name.value, false),
       )
     }
-
-    const pre_trunc = applyFilters(
-      query,
-      withFilters(query.filters)(
-        knex
-          .select([
-            '*',
-            knex.raw(`date_trunc(?, ??) as ??`, [
-              args?.groupBy,
-              tree.name.value,
-              `${tree.name.value}_${args?.groupBy}`,
-            ]),
-          ])
-          .from(args.from || query.table),
-      ),
-      knex,
-    )
-
-    const table = args.groupByAlias || args.from || query.table
-    changeQueryTable(query, knex, table, true)
-
-    query.promise = query.promise.from(pre_trunc.as(table))
-
-    query.promise = query.promise.select(
-      knex.raw(`?? as ??`, [
-        `${tree.name.value}_${args?.groupBy}`,
-        tree.alias?.value || tree.name.value,
-      ]),
-    )
-    query.promise = query.promise.groupBy(
-      knex.raw(`??`, [`${tree.name.value}_${args?.groupBy}`]),
-    )
-
-    if (!query.replaceWith) query.replaceWith = {}
-    query.replaceWith[tree.name.value] = {
-      value: `${tree.name.value}_${args?.groupBy}`,
-      index: query.groupIndex,
-    }
-  } else {
-    query.promise = query.promise.select(
-      buildFullName(args, query, tree.name.value, false),
-    )
-    query.promise = query.promise.groupBy(
-      buildFullName(args, query, tree.name.value, false),
-    )
   }
+
   if (!!args?.sort_desc)
     query.promise.orderBy(buildFullName(args, query, args?.sort_desc), 'desc')
   if (!!args?.sort_asc)
@@ -1434,10 +1474,51 @@ function mergeDimension(tree, query) {
         !!query.path ? '.' : ''
       }[@${name}=:${name}]`
     }
-    query.path += `${!!query.path ? '.' : ''}[@${name}=:${name}]`
+
+    const names: string[] = []
+    let pathPrefix = ''
+
+    if (tree.name.value === 'combine') {
+      if (tree.alias?.value) {
+        pathPrefix = `${tree.alias.value}.`
+      }
+      args.fields.forEach((field) => {
+        if (field === 'string') {
+          names.push(field)
+        } else {
+          names.push(field.alias || field.name)
+        }
+      })
+    } else {
+      names.push(name)
+    }
+
+    query.path += `${!!query.path ? '.' : ''}${pathPrefix}[@${names
+      .map((name) => `${name}=:${name}`)
+      .join(';')}]`
     return parseDirective(tree, query, 'dimension')
   } else {
-    query.path += `${!!query.path ? '.' : ''}:${name}`
+    const names: string[] = []
+    let pathPrefix = ''
+
+    if (tree.name.value === 'combine') {
+      if (tree.alias?.value) {
+        pathPrefix = `${tree.alias.value}.`
+      }
+      args.fields.forEach((field) => {
+        if (field === 'string') {
+          names.push(field)
+        } else {
+          names.push(field.alias || field.name)
+        }
+      })
+    } else {
+      names.push(name)
+    }
+
+    query.path += `${!!query.path ? '.' : ''}${pathPrefix}${names
+      .map((name) => `:${name}`)
+      .join(';')}`
     return parseDirective(tree, query, 'dimension')
   }
 }

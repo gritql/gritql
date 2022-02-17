@@ -216,6 +216,41 @@ describe('SQL', () => {
     `)
     })
 
+    test('combine example', () => {
+      const querier = gqlToDb()
+        .beforeDbFetch(({ sql }) => {
+          expect(sql).toMatchSnapshot()
+        })
+        .dbFetch(() => {
+          return [
+            {
+              device: 'mobile',
+              channel: 'Social',
+              avg: 2,
+            },
+            {
+              device: 'desktop',
+              channel: 'Social',
+              avg: 1.5,
+            },
+            {
+              device: 'mobile',
+              channel: 'Organic',
+              avg: 1,
+            },
+          ]
+        })
+      return querier(`query table{
+      fetch(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
+        combine(fields: [{ name: "device" }, { name: "channel" }]) {
+          avg: divide(a:no_of_baskets, by:no_all_baskets) 
+        }
+      }
+    }
+ 
+    `)
+    })
+
     test('basic example works', () => {
       const querier = gqlToDb().beforeDbFetch(({ sql }) => {
         expect(sql).toMatchSnapshot()
