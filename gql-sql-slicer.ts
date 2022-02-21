@@ -1204,8 +1204,8 @@ export const merge = (
                     result = progressiveSet(
                       result,
                       replacedPath.slice(0, replacedPath.lastIndexOf('.')) +
-                        '.' +
-                        k,
+                      '.' +
+                      k,
                       directiveResult.replacers[k],
                       false,
                       q.hashContext,
@@ -1336,18 +1336,19 @@ function getMergeStrings(
   queries = [],
   idx = undefined,
   metricResolversData,
+  hashContext = {}
 ) {
   if (!!~idx && idx !== undefined && !queries[idx])
     queries[idx] = { idx, name: undefined }
   const query = queries[idx]
   if (query) {
-    query.hashContext = {}
+    query.hashContext = hashContext
   }
 
   if (Array.isArray(tree)) {
     return tree.reduce(
       (queries, t, i) =>
-        getMergeStrings(t, queries, queries.length - 1, metricResolversData),
+        getMergeStrings(t, queries, queries.length - 1, metricResolversData, hashContext),
       queries,
     )
   }
@@ -1369,6 +1370,7 @@ function getMergeStrings(
         queries,
         queries.length - 1,
         metricResolversData,
+        hashContext
       )
     }, queries)
   }
@@ -1419,10 +1421,10 @@ function getMergeStrings(
         queries[newIdx] = { ...queries[idx], metrics: {} }
         queries[newIdx].path = query.path + ''
         queries[newIdx].idx = newIdx
-        return getMergeStrings(t, queries, newIdx, metricResolversData)
+        return getMergeStrings(t, queries, newIdx, metricResolversData, hashContext)
       }
 
-      return getMergeStrings(t, queries, idx, metricResolversData)
+      return getMergeStrings(t, queries, idx, metricResolversData, hashContext)
     }, queries)
   }
   mergeMetric(tree, query, metricResolversData)
@@ -1436,18 +1438,16 @@ function mergeMetric(tree, query, metricResolversData) {
   const args = argumentsToObject(tree.arguments)
   if (args?.type === 'Array') {
     query.path += `${!!query.path ? '.' : ''}[@${name}=:${name}]`
-    query.metrics[`${isInGetters ? fieldName : name}`] = `${query.path}${
-      !!query.path ? '.' : ''
-    }${name}`
+    query.metrics[`${isInGetters ? fieldName : name}`] = `${query.path}${!!query.path ? '.' : ''
+      }${name}`
     return parseDirective(tree, query, 'metric', query.metrics[`${name}`])
   } else {
     if (!!query.mutation)
       return metricResolversData[query.mutationFunction](tree, query)
     if (tree.alias && metricResolversData[tree.name?.value])
       return metricResolversData[tree.name?.value](tree, query)
-    query.metrics[`${isInGetters ? fieldName : name}`] = `${query.path}${
-      !!query.path ? '.' : ''
-    }${name}`
+    query.metrics[`${isInGetters ? fieldName : name}`] = `${query.path}${!!query.path ? '.' : ''
+      }${name}`
     return parseDirective(tree, query, 'metric', query.metrics[`${name}`])
   }
 }
@@ -1470,9 +1470,8 @@ function mergeDimension(tree, query) {
     : tree.alias?.value || tree.name.value
   if (args?.type === 'Array') {
     if (!!args?.cutoff) {
-      query.cutoff = `${query.path}${
-        !!query.path ? '.' : ''
-      }[@${name}=:${name}]`
+      query.cutoff = `${query.path}${!!query.path ? '.' : ''
+        }[@${name}=:${name}]`
     }
 
     const names: string[] = []
@@ -1603,13 +1602,13 @@ function withFilters(filters) {
         filter[1] === 'in'
           ? filter.filter((a) => a !== 'in')
           : filter[1] === 'search'
-          ? [
+            ? [
               knexNext.raw(
                 `to_tsvector('simple', ??) @@ (plainto_tsquery('simple', ?)::text || ':*')::tsquery)`,
                 [filter[0], filter[2]],
               ),
             ]
-          : filter,
+            : filter,
       )
     }, knexPipe)
   }

@@ -1069,19 +1069,20 @@ var merge = function (tree, data, metricResolversData) {
     }
 };
 exports.merge = merge;
-function getMergeStrings(tree, queries, idx, metricResolversData) {
+function getMergeStrings(tree, queries, idx, metricResolversData, hashContext) {
     var _a, _b, _c, _d, _e, _f;
     if (queries === void 0) { queries = []; }
     if (idx === void 0) { idx = undefined; }
+    if (hashContext === void 0) { hashContext = {}; }
     if (!!~idx && idx !== undefined && !queries[idx])
         queries[idx] = { idx: idx, name: undefined };
     var query = queries[idx];
     if (query) {
-        query.hashContext = {};
+        query.hashContext = hashContext;
     }
     if (Array.isArray(tree)) {
         return tree.reduce(function (queries, t, i) {
-            return getMergeStrings(t, queries, queries.length - 1, metricResolversData);
+            return getMergeStrings(t, queries, queries.length - 1, metricResolversData, hashContext);
         }, queries);
     }
     if (tree.kind === 'OperationDefinition' && !!tree.selectionSet) {
@@ -1098,7 +1099,7 @@ function getMergeStrings(tree, queries, idx, metricResolversData) {
             else {
                 queries.push({ idx: queries.length, name: undefined });
             }
-            return getMergeStrings(t, queries, queries.length - 1, metricResolversData);
+            return getMergeStrings(t, queries, queries.length - 1, metricResolversData, hashContext);
         }, queries);
     }
     if (tree.name.value === 'with') {
@@ -1138,9 +1139,9 @@ function getMergeStrings(tree, queries, idx, metricResolversData) {
                 queries[newIdx] = __assign(__assign({}, queries[idx]), { metrics: {} });
                 queries[newIdx].path = query.path + '';
                 queries[newIdx].idx = newIdx;
-                return getMergeStrings(t, queries, newIdx, metricResolversData);
+                return getMergeStrings(t, queries, newIdx, metricResolversData, hashContext);
             }
-            return getMergeStrings(t, queries, idx, metricResolversData);
+            return getMergeStrings(t, queries, idx, metricResolversData, hashContext);
         }, queries);
     }
     mergeMetric(tree, query, metricResolversData);
