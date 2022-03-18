@@ -1565,6 +1565,22 @@ const metricResolversData = {
       )
     }
   },
+  subtract: (tree, query) => {
+    const name = `${tree.name?.value}`
+    if (!query.subtract) query.subtract = {}
+    if (query.path.startsWith(':subtract') || query.path.startsWith(':subtract.'))
+      query.path = query.path.replace(/:subtract\.?/, '')
+
+    query.subtract[`${query.path}${!!query.path ? '.' : ''}${name}`] = ({
+      value,
+      replacedPath,
+      fullObject,
+    }) => {
+      return (
+        value - progressiveGet(fullObject[query.filters.by], replacedPath)
+      )
+    }
+  },
   divideBy: (tree, query) => {
     const name = `${tree.name?.value}`
     if (!query.divideBy) query.divideBy = {}
