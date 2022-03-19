@@ -114,11 +114,11 @@ export const postExecutedDirectives = {
         return {
           value:
             value /
-              progressiveGet(
-                originFullObject[args.by],
-                replacedPath,
-                getBatchContext(batches, args.by),
-              ) -
+            progressiveGet(
+              originFullObject[args.by],
+              replacedPath,
+              getBatchContext(batches, args.by),
+            ) -
             1,
         }
       } else {
@@ -130,7 +130,44 @@ export const postExecutedDirectives = {
 
     return transformer
   },
+  // Argumnets
+  // by: query name
+  subtract: (context: PostExecutedContext) => {
+    if (!context.tree.arguments) {
+      throw 'Subtract directive requires arguments'
+    }
 
+    const args = argumentsToObject(context.tree.arguments)
+
+    if (!args.by) {
+      throw "Subtract directive requires 'by' argument"
+    }
+
+    const transformer = ({
+      replacedPath,
+      originFullObject,
+      value,
+      batches,
+    }) => {
+      if (originFullObject) {
+        return {
+          value:
+            value -
+            progressiveGet(
+              originFullObject[args.by],
+              replacedPath,
+              getBatchContext(batches, args.by),
+            ),
+        }
+      } else {
+        return { value }
+      }
+    }
+
+    transformer.context = context
+
+    return transformer
+  },
   // Divide value by max value
   // Arguments
   // to: query name
@@ -396,11 +433,11 @@ export const postExecutedDirectives = {
         return {
           replacers: !isNotFirstTime
             ? {
-                ...currentData,
-                ...currentGroupData,
-                [key]: newValue,
-                ...args.replacers,
-              }
+              ...currentData,
+              ...currentGroupData,
+              [key]: newValue,
+              ...args.replacers,
+            }
             : null,
           path: newPath,
           value: newValue,

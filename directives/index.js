@@ -93,6 +93,31 @@ exports.postExecutedDirectives = {
         transformer.context = context;
         return transformer;
     },
+    // Argumnets
+    // by: query name
+    subtract: function (context) {
+        if (!context.tree.arguments) {
+            throw 'Subtract directive requires arguments';
+        }
+        var args = arguments_1.argumentsToObject(context.tree.arguments);
+        if (!args.by) {
+            throw "Subtract directive requires 'by' argument";
+        }
+        var transformer = function (_a) {
+            var replacedPath = _a.replacedPath, originFullObject = _a.originFullObject, value = _a.value, batches = _a.batches;
+            if (originFullObject) {
+                return {
+                    value: value -
+                        progressive_1.progressiveGet(originFullObject[args.by], replacedPath, progressive_1.getBatchContext(batches, args.by))
+                };
+            }
+            else {
+                return { value: value };
+            }
+        };
+        transformer.context = context;
+        return transformer;
+    },
     // Divide value by max value
     // Arguments
     // to: query name
