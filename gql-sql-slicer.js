@@ -254,6 +254,7 @@ var gqlToDb = function (opts) {
             return q.promise;
         }));
     };
+    var afterDbHandler = function (r) { return Promise.resolve(r); };
     var customMetricResolvers = {};
     var customMetricDataResolvers = {};
     var gqlFetch = function (gqlQuery) { return __awaiter(void 0, void 0, void 0, function () {
@@ -293,6 +294,7 @@ var gqlToDb = function (opts) {
                     resultFromDb = _a.sent();
                     if (!resultFromDb)
                         return [2 /*return*/, null];
+                    afterDbHandler(definitions_1, resultFromDb);
                     return [4 /*yield*/, exports.merge(definitions_1, resultFromDb, __assign(__assign({}, metricResolversData), customMetricDataResolvers))];
                 case 3: return [2 /*return*/, _a.sent()];
                 case 4:
@@ -309,6 +311,10 @@ var gqlToDb = function (opts) {
     };
     gqlFetch.dbFetch = function (fn) {
         dbHandler = fn;
+        return gqlFetch;
+    };
+    gqlFetch.afterDbFetch = function (fn) {
+        afterDbHandler = fn;
         return gqlFetch;
     };
     gqlFetch.useResolver = function (name, fn) {

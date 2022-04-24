@@ -275,6 +275,7 @@ export const gqlToDb = (opts: any = { client: 'pg' }) => {
       }),
     )
   }
+  let afterDbHandler: Function = (r) => Promise.resolve(r)
   let customMetricResolvers = {}
   let customMetricDataResolvers = {}
   const gqlFetch = async (gqlQuery: string): Promise<any> => {
@@ -311,7 +312,8 @@ export const gqlToDb = (opts: any = { client: 'pg' }) => {
       })
       if (!preparedGqlQuery) return null
       const resultFromDb = await dbHandler(preparedGqlQuery)
-      if (!resultFromDb) return null
+      if (!resultFromDb) return null;
+      afterDbHandler(definitions, resultFromDb)
       return await merge(definitions, resultFromDb, {
         ...metricResolversData,
         ...customMetricDataResolvers,
@@ -330,6 +332,11 @@ export const gqlToDb = (opts: any = { client: 'pg' }) => {
     dbHandler = fn
     return gqlFetch
   }
+  gqlFetch.afterDbFetch = (fn: Function) => {
+    afterDbHandler = fn
+    return gqlFetch
+  }
+
   gqlFetch.useResolver = (name: string, fn: metricResolver) => {
     customMetricResolvers = { ...customMetricResolvers, [name]: fn }
   }
