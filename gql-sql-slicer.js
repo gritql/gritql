@@ -1088,7 +1088,7 @@ function getMergeStrings(tree, queries, idx, metricResolversData, hashContext) {
     }
     if (Array.isArray(tree)) {
         return tree.reduce(function (queries, t, i) {
-            return getMergeStrings(t, queries, queries.length - 1, metricResolversData, hashContext);
+            return getMergeStrings(t, queries, queries.length - 1, metricResolversData);
         }, queries);
     }
     if (tree.kind === 'OperationDefinition' && !!tree.selectionSet) {
@@ -1105,7 +1105,7 @@ function getMergeStrings(tree, queries, idx, metricResolversData, hashContext) {
             else {
                 queries.push({ idx: queries.length, name: undefined });
             }
-            return getMergeStrings(t, queries, queries.length - 1, metricResolversData, hashContext);
+            return getMergeStrings(t, queries, queries.length - 1, metricResolversData);
         }, queries);
     }
     if (tree.name.value === 'with') {

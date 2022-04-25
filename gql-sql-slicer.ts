@@ -1355,7 +1355,7 @@ function getMergeStrings(
   if (Array.isArray(tree)) {
     return tree.reduce(
       (queries, t, i) =>
-        getMergeStrings(t, queries, queries.length - 1, metricResolversData, hashContext),
+        getMergeStrings(t, queries, queries.length - 1, metricResolversData),
       queries,
     )
   }
@@ -1376,8 +1376,7 @@ function getMergeStrings(
         t,
         queries,
         queries.length - 1,
-        metricResolversData,
-        hashContext
+        metricResolversData
       )
     }, queries)
   }
