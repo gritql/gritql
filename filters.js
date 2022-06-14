@@ -16,9 +16,10 @@ var __spreadArray = (this && this.__spreadArray) || function (to, from) {
     return to;
 };
 exports.__esModule = true;
-exports.applyRawJoin = exports.applyFilters = exports.parseAdvancedFilters = exports.buildFilter = exports.buildFullName = void 0;
+exports.transformFilters = exports.withFilters = exports.applyRawJoin = exports.applyFilters = exports.parseAdvancedFilters = exports.buildFilter = exports.buildFullName = void 0;
 var _ = require("lodash");
 var arguments_1 = require("./arguments");
+var cross_table_1 = require("./cross-table");
 var filterOperators = [
     'and',
     'eq',
@@ -185,6 +186,9 @@ function buildFilter(query, context, prefix) {
                     if (_.every(subQuery, isOp)) {
                         throw 'At least one property of search must be related to field';
                     }
+                    if (!context.query.providers[context.query.provider].keywords.includes('TO_TSVECTOR')) {
+                        throw new Error("Full text search is not supported by " + context.query.provider + " provider");
+                    }
                     return _.reduce(subQuery, function (accum, v, k) {
                         var _a;
                         var _b, _c;
@@ -311,3 +315,118 @@ function applyRawJoin(query, knex, joinType, from, on) {
     }), [from]));
 }
 exports.applyRawJoin = applyRawJoin;
+function withFilters(filters) {
+    return function (knexPipe) {
+        return filters.reduce(function (knexNext, filter, i) {
+            var selector = filter[1] === 'in' ? 'whereIn' : i === 0 ? 'where' : 'andWhere';
+            return knexNext[selector].apply(knexNext, filter[1] === 'in'
+                ? filter.filter(function (a) { return a !== 'in'; })
+                : filter[1] === 'search'
+                    ? [
+                        knexNext.raw("to_tsvector('simple', ??) @@ (plainto_tsquery('simple', ?)::text || ':*')::tsquery)", [filter[0], filter[2]]),
+                    ]
+                    : filter);
+        }, knexPipe);
+    };
+}
+exports.withFilters = withFilters;
+function transformFilters(args, query, knex) {
+    return args.reduce(function (res, arg) {
+        if (arg.name.value === 'from') {
+            return res;
+        }
+        // We need to ensure that we are not in join context
+        if (!!knex) {
+            if (arg.name.value === 'table') {
+                cross_table_1.changeQueryTable(query, knex, arg.value.value, false);
+                return res;
+            }
+            if (arg.name.value === 'filters') {
+                query.advancedFilters = arguments_1.argumentsToObject(arg.value.fields);
+                query.preparedAdvancedFilters = parseAdvancedFilters(query, knex, query.advancedFilters, true);
+                return res;
+            }
+        }
+        if (Object.values(cross_table_1.JoinType).includes(arg.name.value)) {
+            if (query && knex) {
+                cross_table_1.join(arg.name.value)(arg.value, query, knex);
+                return res;
+            }
+            else {
+                throw "Join can't be called inside of join";
+            }
+        }
+        if (arg.name.value === 'search') {
+            if (!query.providers[query.provider].keywords.includes('TO_TSVECTOR')) {
+                throw new Error("Full text search is not supported by " + query.provider + " provider");
+            }
+            var elements_1 = arguments_1.argumentsToObject(arg.value.value);
+            return res.concat([
+                Object.keys(elements_1).reduce(function (accum, k) {
+                    var _a;
+                    var _b, _c;
+                    var key = buildFullName(args, query, k, false);
+                    var v = elements_1[k];
+                    if ((_b = query.search) === null || _b === void 0 ? void 0 : _b[key]) {
+                        throw "Search for " + key + " already defined";
+                    }
+                    query.search = __assign(__assign({}, query.search), (_a = {}, _a[key] = ((_c = query.search) === null || _c === void 0 ? void 0 : _c[key]) || v, _a));
+                    accum.push([key, 'search', v]);
+                    return accum;
+                }, []),
+            ]);
+        }
+        if (arg.name.value.endsWith('_gt'))
+            return res.concat([
+                [
+                    buildFullName(args, query, arg.name.value.replace('_gt', ''), false),
+                    '>',
+                    arg.value.value,
+                ],
+            ]);
+        if (arg.name.value.endsWith('_gte'))
+            return res.concat([
+                [
+                    buildFullName(args, query, arg.name.value.replace('_gte', ''), false),
+                    '>=',
+                    arg.value.value,
+                ],
+            ]);
+        if (arg.name.value.endsWith('_lt'))
+            return res.concat([
+                [
+                    buildFullName(args, query, arg.name.value.replace('_lt', ''), false),
+                    '<',
+                    arg.value.value,
+                ],
+            ]);
+        if (arg.name.value.endsWith('_lte'))
+            return res.concat([
+                [
+                    buildFullName(args, query, arg.name.value.replace('_lte', ''), false),
+                    '<=',
+                    arg.value.value,
+                ],
+            ]);
+        if (arg.name.value.endsWith('_like'))
+            return res.concat([
+                [
+                    buildFullName(args, query, arg.name.value.replace('_like', ''), false),
+                    'LIKE',
+                    arg.value.value,
+                ],
+            ]);
+        if (arg.name.value.endsWith('_in'))
+            return res.concat([
+                [
+                    buildFullName(args, query, arg.name.value.replace('_in', ''), false),
+                    'in',
+                    arg.value.value.split('|'),
+                ],
+            ]);
+        return res.concat([
+            [buildFullName(args, query, arg.name.value, false), '=', arg.value.value],
+        ]);
+    }, []);
+}
+exports.transformFilters = transformFilters;

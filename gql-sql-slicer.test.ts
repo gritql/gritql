@@ -297,6 +297,60 @@ describe('SQL', () => {
     `)
     })
 
+    test('Search filter should work only with pg', async () => {
+      const querier = gqlToDb().beforeDbFetch(({ sql }) => {
+        expect(sql).toMatchSnapshot()
+      })
+
+      try {
+        return await querier(
+          `query table {
+      fetch(filters: { search: { brand: "Adidas", title: "T-shirt" }}) {
+          brand(type: Array, sort_desc: marketShare, limit: 10) {
+              title: unique(a:title) @omit
+              headlineTitle: searchHeadline(a:title)
+              rankingTitle: searchRanking(a:title)
+              headlineBrand: searchHeadline(a:brand)
+              rankingBrand: searchRanking(a:brand)
+          }
+      }
+    }
+ 
+    `,
+          'snowflake',
+        )
+      } catch (e) {
+        expect(e).toMatchSnapshot()
+      }
+    })
+
+    test('Search metrics should work only with pg', async () => {
+      const querier = gqlToDb().beforeDbFetch(({ sql }) => {
+        expect(sql).toMatchSnapshot()
+      })
+
+      try {
+        return await querier(
+          `query table {
+      fetch {
+          brand(type: Array, sort_desc: marketShare, limit: 10) {
+              title: unique(a:title) @omit
+              headlineTitle: searchHeadline(a:title)
+              rankingTitle: searchRanking(a:title)
+              headlineBrand: searchHeadline(a:brand)
+              rankingBrand: searchRanking(a:brand)
+          }
+      }
+    }
+ 
+    `,
+          'snowflake',
+        )
+      } catch (e) {
+        expect(e).toMatchSnapshot()
+      }
+    })
+
     test('percentile', () => {
       const querier = gqlToDb().beforeDbFetch(({ sql }) => {
         expect(sql).toMatchSnapshot()
@@ -307,6 +361,43 @@ describe('SQL', () => {
       }
     }
     `)
+    })
+
+    test('median', () => {
+      const querier = gqlToDb()
+        .beforeDbFetch(({ sql }) => {
+          expect(sql).toMatchSnapshot()
+        })
+        .dbFetch(() => {
+          return {
+            median: 0,
+          }
+        })
+      return querier(
+        `query table{
+      fetch{
+        median: median(a:price)
+      }
+    }
+    `,
+        'snowflake',
+      )
+    })
+
+    test('percentile shouldn\'t run without "a" parameters', async () => {
+      const querier = gqlToDb().beforeDbFetch(({ sql }) => {
+        expect(sql).toMatchSnapshot()
+      })
+      try {
+        return await querier(`query table{
+      fetch{
+        median: percentile(by: price)
+      }
+    }
+    `)
+      } catch (e) {
+        expect(e).toMatchSnapshot()
+      }
     })
 
     test('ranking', () => {
@@ -396,7 +487,7 @@ describe('SQL', () => {
       return querier(`query table{
       fetch(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
         device {
-          date(type: Array, groupBy:month){
+          date: groupBy(field: date, type: Array, by: month){
             no_unique_products: sum(a:no_unique_products)
             no_brand_products: sum(a:no_brand_products)
           }
@@ -567,7 +658,7 @@ describe('SQL', () => {
       const querier = gqlToDb().dbFetch(() => {
         return table
       })
-      return querier(`query table{
+      return querier(`query table {
       fetch(brand: Adidas, country: US, date_gt: "2020-1-1", date_lt: "2021-7-12") {
         device {
           date(type: Array){
@@ -578,7 +669,7 @@ describe('SQL', () => {
     }
     `).then((result) => expect(result).toMatchSnapshot())
     })
-    xtest('date formatting', () => {
+    test('date formatting', () => {
       const table = [
         {
           device: 'mobile',
@@ -749,7 +840,7 @@ describe('SQL', () => {
 
       querier(`  query ecom_benchmarking {
         fetch(category:"Travel_and_Tourism", country:"US", date_gt:"2020-10-13", date_lt:"2021-04-13") {
-            price (type: Array, sort_asc: share, groupByEach: 50) {
+            price: groupByEach(field: price, type: Array, sort_asc: share, each: 50) {
                 share: share(a: sessions)
             }
         }
@@ -796,212 +887,6 @@ describe('SQL', () => {
             }
         }
     }`)
-    })
-  })
-
-  describe('gql pick mutation', () => {
-    test('pick', () => {
-      const tables = [
-        [
-          {
-            channels: 'Organic',
-            value: 0.1,
-          },
-          {
-            channels: 'Paid',
-            value: 0.3,
-          },
-          {
-            channels: 'Organicsmall',
-            value: 0.05,
-          },
-          {
-            channels: 'Paidbig',
-            value: 0.5,
-          },
-        ],
-        [
-          {
-            date: '2020-01-02T23:00:00.000Z',
-            channels: 'Organic',
-            value: 0.2,
-          },
-          {
-            date: '2020-01-02T23:00:00.000Z',
-            channels: 'Paid',
-            value: 0.2,
-          },
-          {
-            date: '2020-01-02T23:00:00.000Z',
-            channels: 'Organicsmall',
-            value: 0.2,
-          },
-          {
-            date: '2020-01-02T23:00:00.000Z',
-            channels: 'Paidbig',
-            value: 0.2,
-          },
-          {
-            date: '2020-01-03T23:00:00.000Z',
-            channels: 'Organic',
-            value: 0.4,
-          },
-          {
-            date: '2020-01-03T23:00:00.000Z',
-            channels: 'Paid',
-            value: 0.4,
-          },
-          {
-            date: '2020-01-03T23:00:00.000Z',
-            channels: 'Organicsmall',
-            value: 0.8,
-          },
-          {
-            date: '2020-01-03T23:00:00.000Z',
-            channels: 'Paidbig',
-            value: 0.8,
-          },
-        ],
-        [],
-      ]
-      const querier = gqlToDb().dbFetch(({ sql }) => {
-        expect(sql).toMatchSnapshot()
-        return tables
-      })
-      querier(`query ecom_benchmarking {
-      topChannels: fetch(category:"Adult", country:"DE") {
-          channels (type: Array, sort_desc: value) {
-              value: share(a: sessions)    
-        }
-      }
-      series: fetch(category:"Adult", country:"US") {
-          date (type: Array, sort_asc: date) {
-              channels {
-                  value: share(a: transactions, by: date)
-              }
-          }
-      }
-    }
-    mutation {
-      series: pick(from: series, by: topChannels){
-        channels(value_gt: 0.2)
-      }
-    }`).then((result) => {
-        expect(result).toMatchSnapshot()
-      })
-    })
-  })
-
-  describe('gql diff mutation', () => {
-    test('pick', () => {
-      const tables = [
-        [
-          {
-            channels: 'Social',
-            value: 1,
-          },
-          {
-            channels: 'Organic',
-            value: 3,
-          },
-        ],
-        [
-          {
-            channels: 'Social',
-            value: 2,
-          },
-          {
-            channels: 'Organic',
-            value: 1,
-          },
-        ],
-      ]
-      const querier = gqlToDb().dbFetch(({ sql }) => {
-        expect(sql).toMatchSnapshot()
-        return tables
-      })
-      querier(`query ecom_benchmarking {
-      series: fetch(category:"Adult", country:"US") {
-        channels {
-            value: sum(a: sessions)
-        }
-    
-      }
-      prevSeries: fetch(category:"Adult", country:"US") {
-              channels {
-                  value: sum(a: sessions)
-              }
-      }
-      
-    }
-    mutation {
-      series: diff (of: series, by: prevSeries){
-        channels {
-          value
-        }
-      }
-      prevSeries: blank {
-        channels {
-          value
-        }
-      }
-    }`).then((result) => {
-        expect(result).toMatchSnapshot()
-      })
-    })
-  })
-
-  describe('gql blank mutation', () => {
-    test('pick', () => {
-      const tables = [
-        [
-          {
-            channels: 'Social',
-            value: 1,
-          },
-          {
-            channels: 'Organic',
-            value: 3,
-          },
-        ],
-        [
-          {
-            channels: 'Social',
-            value: 2,
-          },
-          {
-            channels: 'Organic',
-            value: 1,
-          },
-        ],
-      ]
-      const querier = gqlToDb().dbFetch(({ sql }) => {
-        expect(sql).toMatchSnapshot()
-        return tables
-      })
-      querier(`query ecom_benchmarking {
-
-      series: fetch(category:"Adult", country:"US") {
-              channels {
-                  value: sum(a: sessions)
-              }
-      }
-      prevSeries: fetch(category:"Adult", country:"US") {
-            channels {
-                value: sum(a: sessions)
-            }
-        
-       }
-    }
-    mutation {
-      series: blank {
-        channels {
-          value
-        }
-      }
-    }`).then((result) => {
-        expect(result).toMatchSnapshot()
-      })
     })
   })
 

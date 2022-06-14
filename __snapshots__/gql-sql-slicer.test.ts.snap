@@ -107,48 +107,6 @@ Object {
 }
 `;
 
-exports[`SQL gql blank mutation pick 1`] = `
-Array [
-  "select \\"channels\\", sum(\\"sessions\\") as \\"value\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Adult' and \\"ecom_benchmarking\\".\\"country\\" = 'US' group by \\"channels\\"",
-  "select \\"channels\\", sum(\\"sessions\\") as \\"value\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Adult' and \\"ecom_benchmarking\\".\\"country\\" = 'US' group by \\"channels\\"",
-]
-`;
-
-exports[`SQL gql blank mutation pick 2`] = `
-Object {
-  "prevSeries": Object {
-    "Organic": Object {
-      "value": 1,
-    },
-    "Social": Object {
-      "value": 2,
-    },
-  },
-  "series": Object {},
-}
-`;
-
-exports[`SQL gql diff mutation pick 1`] = `
-Array [
-  "select \\"channels\\", sum(\\"sessions\\") as \\"value\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Adult' and \\"ecom_benchmarking\\".\\"country\\" = 'US' group by \\"channels\\"",
-  "select \\"channels\\", sum(\\"sessions\\") as \\"value\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Adult' and \\"ecom_benchmarking\\".\\"country\\" = 'US' group by \\"channels\\"",
-]
-`;
-
-exports[`SQL gql diff mutation pick 2`] = `
-Object {
-  "prevSeries": Object {},
-  "series": Object {
-    "Organic": Object {
-      "value": 2,
-    },
-    "Social": Object {
-      "value": -0.5,
-    },
-  },
-}
-`;
-
 exports[`SQL gql directives @diff directive 1`] = `
 Array [
   "select \\"channels\\", sum(\\"sessions\\") as \\"value\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Adult' and \\"ecom_benchmarking\\".\\"country\\" = 'DE' group by \\"channels\\"",
@@ -336,56 +294,6 @@ Object {
 }
 `;
 
-exports[`SQL gql pick mutation pick 1`] = `
-Array [
-  "select \\"channels\\", sum(\\"sessions\\")/NULLIF(sum(sum(\\"sessions\\")) over (), 0)::float4 as \\"value\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Adult' and \\"ecom_benchmarking\\".\\"country\\" = 'DE' group by \\"channels\\" order by \\"value\\" desc",
-  "select \\"date\\", \\"channels\\", sum(\\"transactions\\")/NULLIF(sum(sum(\\"transactions\\")) over (partition by \\"date\\"), 0)::float4 as \\"value\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Adult' and \\"ecom_benchmarking\\".\\"country\\" = 'US' group by \\"date\\", \\"channels\\" order by \\"date\\" asc",
-]
-`;
-
-exports[`SQL gql pick mutation pick 2`] = `
-Object {
-  "series": Array [
-    Object {
-      "Paid": Object {
-        "value": 0.2,
-      },
-      "Paidbig": Object {
-        "value": 0.2,
-      },
-      "date": "2020-01-02T23:00:00.000Z",
-    },
-    Object {
-      "Paid": Object {
-        "value": 0.4,
-      },
-      "Paidbig": Object {
-        "value": 0.8,
-      },
-      "date": "2020-01-03T23:00:00.000Z",
-    },
-  ],
-  "topChannels": Array [
-    Object {
-      "channels": "Organic",
-      "value": 0.1,
-    },
-    Object {
-      "channels": "Paid",
-      "value": 0.3,
-    },
-    Object {
-      "channels": "Organicsmall",
-      "value": 0.05,
-    },
-    Object {
-      "channels": "Paidbig",
-      "value": 0.5,
-    },
-  ],
-}
-`;
-
 exports[`SQL gqlBuilder function share 1`] = `
 Array [
   "select \\"channels\\", sum(\\"sessions\\")/NULLIF(sum(sum(\\"sessions\\")) over (), 0)::float4 as \\"share\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"date\\" = '2020-11-27' and \\"ecom_benchmarking\\".\\"category\\" = 'Finance/Investing' group by \\"channels\\"",
@@ -427,6 +335,10 @@ Array [
   "select \\"channels\\", sum(\\"sessions\\")/NULLIF(sum(sum(\\"sessions\\")) over (), 0)::float4 as \\"share\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Travel_and_Tourism' and \\"ecom_benchmarking\\".\\"country\\" = 'US' and \\"ecom_benchmarking\\".\\"date\\" > '2020-10-13' and \\"ecom_benchmarking\\".\\"date\\" < '2021-04-13' group by \\"channels\\" order by \\"share\\" desc",
 ]
 `;
+
+exports[`SQL gqlBuilder single query Search filter should work only with pg 1`] = `[Error: Error: Full text search is not supported by snowflake provider]`;
+
+exports[`SQL gqlBuilder single query Search metrics should work only with pg 1`] = `[Error: Error: snowflake provider doesn't support searchHeadline metric]`;
 
 exports[`SQL gqlBuilder single query Search query example works 1`] = `
 Array [
@@ -471,6 +383,12 @@ Array [
 ]
 `;
 
+exports[`SQL gqlBuilder single query median 1`] = `
+Array [
+  "select MEDIAN(\\"price\\") OVER () AS \\"median\\" from \\"table\\"",
+]
+`;
+
 exports[`SQL gqlBuilder single query metric functions 1`] = `
 Array [
   "select \\"device\\", \\"date\\", sum(\\"no_unique_products\\") as \\"no_unique_products\\", sum(\\"no_brand_products\\") as \\"no_brand_products\\", cast(\\"sum\\"(\\"no_baskets\\") as float)/NULLIF(cast(\\"sum\\"(\\"no_all_baskets\\") as float), 0)::float4 as \\"average\\" from \\"table\\" where \\"table\\".\\"brand\\" = 'Adidas' and \\"table\\".\\"country\\" = 'US' and \\"table\\".\\"date\\" > '2020-1-1' and \\"table\\".\\"date\\" < '2021-7-12' group by \\"device\\", \\"date\\"",
@@ -482,6 +400,8 @@ Array [
   "select PERCENTILE_CONT(0.5) WITHIN GROUP(ORDER BY \\"price\\") AS \\"median\\" from \\"table\\"",
 ]
 `;
+
+exports[`SQL gqlBuilder single query percentile shouldn't run without "a" parameters 1`] = `[Error: Error: Failed arguments type: The arguments \`a\` is marked as required in \`percentile\`, but its value is \`undefined\`.]`;
 
 exports[`SQL gqlBuilder single query ranking 1`] = `
 Array [
@@ -569,6 +489,8 @@ Object {
   ],
 }
 `;
+
+exports[`SQL merge date formatting 1`] = `Object {}`;
 
 exports[`SQL merge dimension functions 1`] = `
 Object {

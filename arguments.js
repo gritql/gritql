@@ -11,7 +11,7 @@ var __assign = (this && this.__assign) || function () {
     return __assign.apply(this, arguments);
 };
 exports.__esModule = true;
-exports.argumentsToObject = void 0;
+exports.transformLinkedArgs = exports.argumentsToObject = void 0;
 function argumentsToObject(args) {
     if (!args)
         return null;
@@ -27,6 +27,13 @@ function argumentsToObject(args) {
     }
 }
 exports.argumentsToObject = argumentsToObject;
+function transformLinkedArgs(args, query) {
+    if ((args === null || args === void 0 ? void 0 : args.from) === '@') {
+        args.from = query.table;
+    }
+    return args;
+}
+exports.transformLinkedArgs = transformLinkedArgs;
 function parseValue(value) {
     if (value.kind === 'ObjectValue') {
         return value.fields.reduce(function (r, a) {

@@ -1,5 +1,6 @@
 import * as _ from 'lodash'
 import { argumentsToObject } from './arguments'
+import { changeQueryTable, join, JoinType } from './cross-table'
 
 export type Model = { [key: string]: unknown }
 
@@ -389,6 +390,16 @@ export function buildFilter(
             throw 'At least one property of search must be related to field'
           }
 
+          if (
+            !context.query.providers[context.query.provider].keywords.includes(
+              'TO_TSVECTOR',
+            )
+          ) {
+            throw new Error(
+              `Full text search is not supported by ${context.query.provider} provider`,
+            )
+          }
+
           return _.reduce(
             subQuery,
             (accum, v, k) => {
@@ -589,4 +600,149 @@ export function applyRawJoin(
     })}`,
     [from],
   ))
+}
+
+export function withFilters(filters) {
+  return (knexPipe) => {
+    return filters.reduce((knexNext, filter, i) => {
+      const selector =
+        filter[1] === 'in' ? 'whereIn' : i === 0 ? 'where' : 'andWhere'
+      return knexNext[selector].apply(
+        knexNext,
+        filter[1] === 'in'
+          ? filter.filter((a) => a !== 'in')
+          : filter[1] === 'search'
+          ? [
+              knexNext.raw(
+                `to_tsvector('simple', ??) @@ (plainto_tsquery('simple', ?)::text || ':*')::tsquery)`,
+                [filter[0], filter[2]],
+              ),
+            ]
+          : filter,
+      )
+    }, knexPipe)
+  }
+}
+
+export function transformFilters(args, query?, knex?) {
+  return args.reduce((res, arg) => {
+    if (arg.name.value === 'from') {
+      return res
+    }
+
+    // We need to ensure that we are not in join context
+    if (!!knex) {
+      if (arg.name.value === 'table') {
+        changeQueryTable(query, knex, arg.value.value, false)
+        return res
+      }
+
+      if (arg.name.value === 'filters') {
+        query.advancedFilters = argumentsToObject(arg.value.fields)
+        query.preparedAdvancedFilters = parseAdvancedFilters(
+          query,
+          knex,
+          query.advancedFilters,
+          true,
+        )
+        return res
+      }
+    }
+
+    if (Object.values(JoinType).includes(arg.name.value)) {
+      if (query && knex) {
+        join(arg.name.value)(arg.value, query, knex)
+        return res
+      } else {
+        throw "Join can't be called inside of join"
+      }
+    }
+
+    if (arg.name.value === 'search') {
+      if (!query.providers[query.provider].keywords.includes('TO_TSVECTOR')) {
+        throw new Error(
+          `Full text search is not supported by ${query.provider} provider`,
+        )
+      }
+
+      const elements = argumentsToObject(arg.value.value)
+
+      return res.concat([
+        Object.keys(elements).reduce((accum, k) => {
+          const key = buildFullName(args, query, k, false)
+          const v = elements[k]
+
+          if (query.search?.[key]) {
+            throw `Search for ${key} already defined`
+          }
+
+          query.search = {
+            ...query.search,
+            [key]: query.search?.[key] || v,
+          }
+
+          accum.push([key, 'search', v])
+
+          return accum
+        }, []),
+      ])
+    }
+
+    if (arg.name.value.endsWith('_gt'))
+      return res.concat([
+        [
+          buildFullName(args, query, arg.name.value.replace('_gt', ''), false),
+          '>',
+          arg.value.value,
+        ],
+      ])
+    if (arg.name.value.endsWith('_gte'))
+      return res.concat([
+        [
+          buildFullName(args, query, arg.name.value.replace('_gte', ''), false),
+          '>=',
+          arg.value.value,
+        ],
+      ])
+    if (arg.name.value.endsWith('_lt'))
+      return res.concat([
+        [
+          buildFullName(args, query, arg.name.value.replace('_lt', ''), false),
+          '<',
+          arg.value.value,
+        ],
+      ])
+    if (arg.name.value.endsWith('_lte'))
+      return res.concat([
+        [
+          buildFullName(args, query, arg.name.value.replace('_lte', ''), false),
+          '<=',
+          arg.value.value,
+        ],
+      ])
+    if (arg.name.value.endsWith('_like'))
+      return res.concat([
+        [
+          buildFullName(
+            args,
+            query,
+            arg.name.value.replace('_like', ''),
+            false,
+          ),
+          'LIKE',
+          arg.value.value,
+        ],
+      ])
+    if (arg.name.value.endsWith('_in'))
+      return res.concat([
+        [
+          buildFullName(args, query, arg.name.value.replace('_in', ''), false),
+          'in',
+          arg.value.value.split('|'),
+        ],
+      ])
+    return res.concat([
+      [buildFullName(args, query, arg.name.value, false), '=', arg.value.value],
+    ])
+  }, [])
 }
