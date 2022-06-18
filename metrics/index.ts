@@ -147,6 +147,7 @@ export const metricResolvers = {
               ),
             )
             .from(query.table || args.from),
+          knex,
         ),
         knex,
       )

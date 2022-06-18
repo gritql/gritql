@@ -33,6 +33,8 @@ Array [
 ]
 `;
 
+exports[`SQL builder for mulyquery requests join using by argument 1`] = `Array []`;
+
 exports[`SQL builder for mulyquery requests mixing the object 1`] = `
 Object {
   "desktop": Object {
@@ -105,6 +107,18 @@ Object {
     },
   },
 }
+`;
+
+exports[`SQL fragments Fragment with arguments 1`] = `
+Array [
+  "select \\"date\\", sum(\\"pageviews\\") as \\"value\\", sum(\\"pageviews\\")/NULLIF(sum(sum(\\"pageviews\\")) over (), 0)::float4 as \\"share\\" from \\"table\\" group by \\"date\\"",
+]
+`;
+
+exports[`SQL fragments Simple fragment 1`] = `
+Array [
+  "select \\"date\\", sum(\\"pageviews\\") as \\"value\\", sum(\\"pageviews\\")/NULLIF(sum(sum(\\"pageviews\\")) over (), 0)::float4 as \\"share\\" from \\"table\\" group by \\"date\\"",
+]
 `;
 
 exports[`SQL gql directives @diff directive 1`] = `
@@ -336,6 +350,12 @@ Array [
 ]
 `;
 
+exports[`SQL gqlBuilder single query Basic filters example works 1`] = `
+Array [
+  "select \\"brand\\", \\"title\\" as \\"title\\" from \\"table\\" where \\"table\\".\\"brand\\" like 'adidas%' and \\"table\\".\\"category\\" in ('1', '11', '12') and \\"table\\".\\"date\\" <= '2022-01-01' and \\"table\\".\\"date\\" >= '2021-01-01' and \\"table\\".\\"price\\" > '126' and \\"table\\".\\"price\\" < '220' group by \\"brand\\", \\"title\\" order by \\"marketShare\\" desc limit 10",
+]
+`;
+
 exports[`SQL gqlBuilder single query Search filter should work only with pg 1`] = `[Error: Error: Full text search is not supported by snowflake provider]`;
 
 exports[`SQL gqlBuilder single query Search metrics should work only with pg 1`] = `[Error: Error: snowflake provider doesn't support searchHeadline metric]`;
@@ -343,6 +363,12 @@ exports[`SQL gqlBuilder single query Search metrics should work only with pg 1`]
 exports[`SQL gqlBuilder single query Search query example works 1`] = `
 Array [
   "select \\"brand\\", \\"title\\" as \\"title\\", ts_headline('simple', \\"table\\".\\"title\\", (plainto_tsquery('simple', 'T-shirt')::text || ':*')::tsquery) as \\"headlineTitle\\", ts_rank(to_tsvector('simple', \\"table\\".\\"title\\"), (plainto_tsquery('simple', 'T-shirt')::text || ':*')::tsquery) as \\"rankingTitle\\", ts_headline('simple', \\"table\\".\\"brand\\", (plainto_tsquery('simple', 'Adidas')::text || ':*')::tsquery) as \\"headlineBrand\\", ts_rank(to_tsvector('simple', \\"table\\".\\"brand\\"), (plainto_tsquery('simple', 'Adidas')::text || ':*')::tsquery) as \\"rankingBrand\\" from \\"table\\" where (to_tsvector('simple', \\"table\\".\\"brand\\") @@ (plainto_tsquery('simple', 'Adidas')::text || ':*')::tsquery AND to_tsvector('simple', \\"table\\".\\"title\\") @@ (plainto_tsquery('simple', 'T-shirt')::text || ':*')::tsquery) group by \\"brand\\", \\"title\\" order by \\"marketShare\\" desc limit 10",
+]
+`;
+
+exports[`SQL gqlBuilder single query Search query using basic filters example works 1`] = `
+Array [
+  "select \\"brand\\", \\"title\\" as \\"title\\", ts_headline('simple', \\"table\\".\\"title\\", (plainto_tsquery('simple', 'T-shirt')::text || ':*')::tsquery) as \\"headlineTitle\\", ts_rank(to_tsvector('simple', \\"table\\".\\"title\\"), (plainto_tsquery('simple', 'T-shirt')::text || ':*')::tsquery) as \\"rankingTitle\\", ts_headline('simple', \\"table\\".\\"brand\\", (plainto_tsquery('simple', 'Adidas')::text || ':*')::tsquery) as \\"headlineBrand\\", ts_rank(to_tsvector('simple', \\"table\\".\\"brand\\"), (plainto_tsquery('simple', 'Adidas')::text || ':*')::tsquery) as \\"rankingBrand\\" from \\"table\\" where to_tsvector('simple', \\"table\\".\\"brand\\") @@ (plainto_tsquery('simple', 'Adidas')::text || ':*')::tsquery and to_tsvector('simple', \\"table\\".\\"title\\") @@ (plainto_tsquery('simple', 'T-shirt')::text || ':*')::tsquery group by \\"brand\\", \\"title\\" order by \\"marketShare\\" desc limit 10",
 ]
 `;
 
@@ -548,4 +574,28 @@ Object {
     },
   ],
 }
+`;
+
+exports[`SQL variables && types Union type 1`] = `
+Array [
+  "select sum(\\"pageviews\\") as \\"value\\" from \\"table\\"",
+]
+`;
+
+exports[`SQL variables && types input type must be traited as exact object type 1`] = `
+Array [
+  "select sum(\\"pageviews\\") as \\"value\\" from \\"table\\"",
+]
+`;
+
+exports[`SQL variables && types list type must be traited as array type 1`] = `
+Array [
+  "select sum(\\"pageviews\\") as \\"value\\" from \\"table\\"",
+]
+`;
+
+exports[`SQL variables && types type must be traited as shape object type 1`] = `
+Array [
+  "select sum(\\"pageviews\\") as \\"value\\" from \\"table\\"",
+]
 `;

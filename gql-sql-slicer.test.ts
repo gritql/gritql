@@ -1,6 +1,256 @@
 const { gqlToDb, gqlBuild } = require('./gql-sql-slicer')
 
 describe('SQL', () => {
+  describe('variables && types', () => {
+    test('input type must be traited as exact object type', () => {
+      const querier = gqlToDb().beforeDbFetch(({ sql }) => {
+        expect(sql).toMatchSnapshot()
+      })
+
+      return querier(
+        `
+      input Date {
+        gt: String!
+        lt: String!
+      }
+
+      input Filters {
+        brand: String!
+        country: String!
+        date: Date
+      }
+
+      query table($filters: Filters) {
+        fetch(filters: $filters) {
+          value: sum(a:pageviews)
+        }
+      }
+    `,
+        {
+          filters: {
+            brand: 'Adidas',
+            date: {
+              gt: '2021-01-01',
+              lt: '2022-01-01',
+            },
+            country: 'US',
+          },
+        },
+      )
+    })
+
+    test('list type must be traited as array type', () => {
+      const querier = gqlToDb().beforeDbFetch(({ sql }) => {
+        expect(sql).toMatchSnapshot()
+      })
+
+      return querier(
+        `
+      input Date {
+        gt: String!
+        lt: String!
+      }
+
+      input Filters {
+        brand: String!
+        country: String!
+        date: Date
+        categories: [Number!]!
+      }
+
+      query table($filters: Filters, $brand: [String!]!) {
+        fetch(filters: $filters) {
+          value: sum(a:pageviews)
+        }
+      }
+    `,
+        {
+          filters: {
+            brand: 'Adidas',
+            date: {
+              gt: '2021-01-01',
+              lt: '2022-01-01',
+            },
+            country: 'US',
+            categories: [1, 11, 6],
+          },
+          brand: ['Adidas', 'Nike'],
+        },
+      )
+    })
+
+    test('type must be traited as shape object type', () => {
+      const querier = gqlToDb().beforeDbFetch(({ sql }) => {
+        expect(sql).toMatchSnapshot()
+      })
+
+      return querier(
+        `
+      type Date {
+        gt: String!
+        lt: String!
+      }
+  
+      type Filters {
+        brand: String!
+        country: String!
+        date: Date
+      }
+  
+      query table($filters: Filters) {
+        fetch(filters: $filters) {
+          value: sum(a:pageviews)
+        }
+      }
+    `,
+        {
+          filters: {
+            brand: 'Adidas',
+            date: {
+              gt: '2021-01-01',
+              lt: '2022-01-01',
+            },
+            country: 'US',
+          },
+        },
+      )
+    })
+
+    test('Union type', () => {
+      const querier = gqlToDb().beforeDbFetch(({ sql }) => {
+        expect(sql).toMatchSnapshot()
+      })
+
+      return querier(
+        `
+      type Date1 {
+        gt: String!
+        lt: String!
+      }
+
+      type Date2 {
+        gte: String!
+        lte: String!
+      }
+
+      union Date = Date1 | Date2
+  
+      type Filters {
+        brand: String!
+        country: String!
+        date: Date
+      }
+  
+      query table($filters: Filters) {
+        fetch(filters: $filters) {
+          value: sum(a:pageviews)
+        }
+      }
+    `,
+        {
+          filters: {
+            brand: 'Adidas',
+            date: {
+              gt: '2021-01-01',
+              lt: '2022-01-01',
+            },
+            country: 'US',
+          },
+        },
+      )
+    })
+  })
+
+  describe('fragments', () => {
+    test('Simple fragment', () => {
+      const querier = gqlToDb().beforeDbFetch(({ sql }) => {
+        expect(sql).toMatchSnapshot()
+      })
+
+      return querier(
+        `
+      type Date {
+        gt: String!
+        lt: String!
+      }
+  
+      type Filters {
+        brand: String!
+        country: String!
+        date: Date
+      }
+
+      fragment AbsoluteAndShareByDate on Any {
+        date(type: Array) {
+          value: sum(a:pageviews)
+          share: share(a:pageviews)
+        }
+      }
+  
+      query table($filters: Filters) {
+        fetch(filters: $filters) {
+          ...AbsoluteAndShareByDate
+        }
+      }
+    `,
+        {
+          filters: {
+            brand: 'Adidas',
+            date: {
+              gt: '2021-01-01',
+              lt: '2022-01-01',
+            },
+            country: 'US',
+          },
+        },
+      )
+    })
+
+    test('Fragment with arguments', () => {
+      const querier = gqlToDb().beforeDbFetch(({ sql }) => {
+        expect(sql).toMatchSnapshot()
+      })
+
+      return querier(
+        `
+      type Date {
+        gt: String!
+        lt: String!
+      }
+  
+      type Filters {
+        brand: String!
+        country: String!
+        date: Date
+      }
+
+      fragment AbsoluteAndShareByDate($a: String!) on Any {
+        date(type: Array) {
+          value: sum(a:$a)
+          share: share(a:$a)
+        }
+      }
+  
+      query table($filters: Filters) {
+        fetch(filters: $filters) {
+          use(fragment: AbsoluteAndShareByDate, a:pageviews)
+        }
+      }
+    `,
+        {
+          filters: {
+            brand: 'Adidas',
+            date: {
+              gt: '2021-01-01',
+              lt: '2022-01-01',
+            },
+            country: 'US',
+          },
+        },
+      )
+    })
+  })
+
   describe('builder for mulyquery requests', () => {
     test('mixing the object', () => {
       const table = [
@@ -164,6 +414,26 @@ describe('SQL', () => {
     `)
     })
 
+    test('join using by argument', () => {
+      const querier = gqlToDb().beforeDbFetch(({ sql }) => {
+        expect(sql).toMatchSnapshot()
+      })
+
+      return querier(`query table {
+        productQuery: with(filters: { date: { gte: "2021-12-13", lte: "2022-01-09" }, price: { gte: 10 }, country: "DE", category: { in: ["Clothes", "Fashion"], nin: ["Bags"] } }) {
+              join(table: table_catalog, by: "@product:@product", by: "@country:@country") {
+                  product (type: Array, from: table, sort_desc: value) {
+                      value: sum(a:value)
+                      price: unique(a:price, from: table_catalog)
+                      brand: unique(a:brand, from: table_catalog)
+                  }
+              }
+      }
+    }
+ 
+    `)
+    })
+
     test('two queries', () => {
       const querier = gqlToDb().beforeDbFetch(({ sql }) => {
         expect(sql).toMatchSnapshot()
@@ -297,6 +567,42 @@ describe('SQL', () => {
     `)
     })
 
+    test('Search query using basic filters example works', () => {
+      const querier = gqlToDb().beforeDbFetch(({ sql }) => {
+        expect(sql).toMatchSnapshot()
+      })
+
+      return querier(`query table {
+      fetch(search: { brand: "Adidas", title: "T-shirt" }) {
+          brand(type: Array, sort_desc: marketShare, limit: 10) {
+              title: unique(a:title) @omit
+              headlineTitle: searchHeadline(a:title)
+              rankingTitle: searchRanking(a:title)
+              headlineBrand: searchHeadline(a:brand)
+              rankingBrand: searchRanking(a:brand)
+          }
+      }
+    }
+ 
+    `)
+    })
+
+    test('Basic filters example works', () => {
+      const querier = gqlToDb().beforeDbFetch(({ sql }) => {
+        expect(sql).toMatchSnapshot()
+      })
+
+      return querier(`query table {
+      fetch(brand_like: "adidas%", category_in: "1|11|12", date_lte: "2022-01-01", date_gte: "2021-01-01", price_gt: 126, price_lt: 220) {
+          brand(type: Array, sort_desc: marketShare, limit: 10) {
+              title: unique(a:title)
+          }
+      }
+    }
+ 
+    `)
+    })
+
     test('Search filter should work only with pg', async () => {
       const querier = gqlToDb().beforeDbFetch(({ sql }) => {
         expect(sql).toMatchSnapshot()
@@ -317,6 +623,7 @@ describe('SQL', () => {
     }
  
     `,
+          {},
           'snowflake',
         )
       } catch (e) {
@@ -344,6 +651,7 @@ describe('SQL', () => {
     }
  
     `,
+          {},
           'snowflake',
         )
       } catch (e) {
@@ -380,6 +688,7 @@ describe('SQL', () => {
       }
     }
     `,
+        {},
         'snowflake',
       )
     })

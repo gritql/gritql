@@ -603,7 +603,7 @@ export function applyRawJoin(
 }
 
 export function withFilters(filters) {
-  return (knexPipe) => {
+  return (knexPipe, knex) => {
     return filters.reduce((knexNext, filter, i) => {
       const selector =
         filter[1] === 'in' ? 'whereIn' : i === 0 ? 'where' : 'andWhere'
@@ -613,8 +613,8 @@ export function withFilters(filters) {
           ? filter.filter((a) => a !== 'in')
           : filter[1] === 'search'
           ? [
-              knexNext.raw(
-                `to_tsvector('simple', ??) @@ (plainto_tsquery('simple', ?)::text || ':*')::tsquery)`,
+              knex.raw(
+                `to_tsvector('simple', ??) @@ (plainto_tsquery('simple', ?)::text || ':*')::tsquery`,
                 [filter[0], filter[2]],
               ),
             ]
@@ -665,9 +665,11 @@ export function transformFilters(args, query?, knex?) {
         )
       }
 
-      const elements = argumentsToObject(arg.value.value)
+      const elements = argumentsToObject(arg.value.fields)
 
-      return res.concat([
+      console.log(elements)
+
+      return res.concat(
         Object.keys(elements).reduce((accum, k) => {
           const key = buildFullName(args, query, k, false)
           const v = elements[k]
@@ -685,7 +687,7 @@ export function transformFilters(args, query?, knex?) {
 
           return accum
         }, []),
-      ])
+      )
     }
 
     if (arg.name.value.endsWith('_gt'))

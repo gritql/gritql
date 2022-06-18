@@ -35,6 +35,7 @@ export const dimensionResolvers = {
               ]),
             ])
             .from(args.from || query.table),
+          knex,
         ),
         knex,
       )

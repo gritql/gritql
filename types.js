@@ -1,37 +1,11 @@
 "use strict";
-var __extends = (this && this.__extends) || (function () {
-    var extendStatics = function (d, b) {
-        extendStatics = Object.setPrototypeOf ||
-            ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
-            function (d, b) { for (var p in b) if (Object.prototype.hasOwnProperty.call(b, p)) d[p] = b[p]; };
-        return extendStatics(d, b);
-    };
-    return function (d, b) {
-        if (typeof b !== "function" && b !== null)
-            throw new TypeError("Class extends value " + String(b) + " is not a constructor or null");
-        extendStatics(d, b);
-        function __() { this.constructor = d; }
-        d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
-    };
-})();
-var __assign = (this && this.__assign) || function () {
-    __assign = Object.assign || function(t) {
-        for (var s, i = 1, n = arguments.length; i < n; i++) {
-            s = arguments[i];
-            for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p))
-                t[p] = s[p];
-        }
-        return t;
-    };
-    return __assign.apply(this, arguments);
-};
-exports.__esModule = true;
+Object.defineProperty(exports, "__esModule", { value: true });
 exports.checkPropTypes = exports.PropTypes = void 0;
-var has = Function.call.bind(Object.prototype.hasOwnProperty);
+const has = Function.call.bind(Object.prototype.hasOwnProperty);
 function emptyFunctionThatReturnsNull() {
     return null;
 }
-var ANONYMOUS = '<<anonymous>>';
+const ANONYMOUS = '<<anonymous>>';
 exports.PropTypes = {
     array: createPrimitiveTypeChecker('array'),
     bigint: createPrimitiveTypeChecker('bigint'),
@@ -46,19 +20,16 @@ exports.PropTypes = {
     oneOf: createEnumTypeChecker,
     oneOfType: createUnionTypeChecker,
     shape: createShapeTypeChecker,
-    exact: createStrictShapeTypeChecker
+    exact: createStrictShapeTypeChecker,
 };
-var PropTypeError = /** @class */ (function (_super) {
-    __extends(PropTypeError, _super);
-    function PropTypeError(message, data) {
-        var _this = _super.call(this) || this;
-        _this.message = message;
-        _this.data = data && typeof data === 'object' ? data : {};
-        _this.stack = '';
-        return _this;
+class PropTypeError extends Error {
+    constructor(message, data) {
+        super();
+        this.message = message;
+        this.data = data && typeof data === 'object' ? data : {};
+        this.stack = '';
     }
-    return PropTypeError;
-}(Error));
+}
 function createChainableTypeChecker(validate) {
     function checkType(isRequired, props, propName, componentName, location, propFullName) {
         componentName = componentName || ANONYMOUS;
@@ -86,16 +57,16 @@ function createChainableTypeChecker(validate) {
             return validate(props, propName, componentName, location, propFullName);
         }
     }
-    var chainedCheckType = checkType.bind(null, false);
+    const chainedCheckType = checkType.bind(null, false);
     chainedCheckType.isRequired = checkType.bind(null, true);
     return chainedCheckType;
 }
 function createPrimitiveTypeChecker(expectedType) {
     function validate(props, propName, componentName, location, propFullName) {
-        var propValue = props[propName];
-        var propType = getPropType(propValue);
+        const propValue = props[propName];
+        const propType = getPropType(propValue);
         if (propType !== expectedType) {
-            var preciseType = getPreciseType(propValue);
+            const preciseType = getPreciseType(propValue);
             return new PropTypeError('Invalid ' +
                 location +
                 ' `' +
@@ -124,9 +95,9 @@ function createArrayOfTypeChecker(typeChecker) {
                 componentName +
                 '` has invalid PropType notation inside arrayOf.');
         }
-        var propValue = props[propName];
+        const propValue = props[propName];
         if (!Array.isArray(propValue)) {
-            var propType = getPropType(propValue);
+            const propType = getPropType(propValue);
             return new PropTypeError('Invalid ' +
                 location +
                 ' `' +
@@ -138,8 +109,8 @@ function createArrayOfTypeChecker(typeChecker) {
                     componentName +
                     '`, expected an array.'));
         }
-        for (var i = 0; i < propValue.length; i++) {
-            var error = typeChecker(propValue, i, componentName, location, propFullName + '[' + i + ']');
+        for (let i = 0; i < propValue.length; i++) {
+            const error = typeChecker(propValue, i, componentName, location, propFullName + '[' + i + ']');
             if (error instanceof Error) {
                 return error;
             }
@@ -162,14 +133,14 @@ function createEnumTypeChecker(expectedValues) {
         return emptyFunctionThatReturnsNull;
     }
     function validate(props, propName, componentName, location, propFullName) {
-        var propValue = props[propName];
-        for (var i = 0; i < expectedValues.length; i++) {
+        const propValue = props[propName];
+        for (let i = 0; i < expectedValues.length; i++) {
             if (Object.is(propValue, expectedValues[i])) {
                 return null;
             }
         }
-        var valuesString = JSON.stringify(expectedValues, function replacer(key, value) {
-            var type = getPreciseType(value);
+        const valuesString = JSON.stringify(expectedValues, function replacer(key, value) {
+            const type = getPreciseType(value);
             if (type === 'symbol') {
                 return String(value);
             }
@@ -199,8 +170,8 @@ function createObjectOfTypeChecker(typeChecker) {
                 componentName +
                 '` has invalid PropType notation inside objectOf.');
         }
-        var propValue = props[propName];
-        var propType = getPropType(propValue);
+        const propValue = props[propName];
+        const propType = getPropType(propValue);
         if (propType !== 'object') {
             return new PropTypeError('Invalid ' +
                 location +
@@ -213,9 +184,9 @@ function createObjectOfTypeChecker(typeChecker) {
                     componentName +
                     '`, expected an object.'));
         }
-        for (var key in propValue) {
+        for (const key in propValue) {
             if (has(propValue, key)) {
-                var error = typeChecker(propValue, key, componentName, location, propFullName + '.' + key);
+                const error = typeChecker(propValue, key, componentName, location, propFullName + '.' + key);
                 if (error instanceof Error) {
                     return error;
                 }
@@ -230,8 +201,8 @@ function createUnionTypeChecker(arrayOfTypeCheckers) {
         console.warn('Invalid argument supplied to oneOfType, expected an instance of array.');
         return emptyFunctionThatReturnsNull;
     }
-    for (var i = 0; i < arrayOfTypeCheckers.length; i++) {
-        var checker = arrayOfTypeCheckers[i];
+    for (let i = 0; i < arrayOfTypeCheckers.length; i++) {
+        const checker = arrayOfTypeCheckers[i];
         if (typeof checker !== 'function') {
             console.warn('Invalid argument supplied to oneOfType. Expected an array of check functions, but ' +
                 'received ' +
@@ -243,10 +214,10 @@ function createUnionTypeChecker(arrayOfTypeCheckers) {
         }
     }
     function validate(props, propName, componentName, location, propFullName) {
-        var expectedTypes = [];
-        for (var i = 0; i < arrayOfTypeCheckers.length; i++) {
-            var checker = arrayOfTypeCheckers[i];
-            var checkerResult = checker(props, propName, componentName, location, propFullName);
+        const expectedTypes = [];
+        for (let i = 0; i < arrayOfTypeCheckers.length; i++) {
+            const checker = arrayOfTypeCheckers[i];
+            const checkerResult = checker(props, propName, componentName, location, propFullName);
             if (checkerResult == null) {
                 return null;
             }
@@ -254,7 +225,7 @@ function createUnionTypeChecker(arrayOfTypeCheckers) {
                 expectedTypes.push(checkerResult.data.expectedType);
             }
         }
-        var expectedTypesMessage = expectedTypes.length > 0
+        const expectedTypesMessage = expectedTypes.length > 0
             ? ', expected one of type [' + expectedTypes.join(', ') + ']'
             : '';
         return new PropTypeError('Invalid ' +
@@ -281,8 +252,8 @@ function invalidValidatorError(componentName, location, propFullName, key, type)
 }
 function createShapeTypeChecker(shapeTypes) {
     function validate(props, propName, componentName, location, propFullName) {
-        var propValue = props[propName];
-        var propType = getPropType(propValue);
+        const propValue = props[propName];
+        const propType = getPropType(propValue);
         if (propType !== 'object') {
             return new PropTypeError('Invalid ' +
                 location +
@@ -293,12 +264,12 @@ function createShapeTypeChecker(shapeTypes) {
                 '` ' +
                 ('supplied to `' + componentName + '`, expected `object`.'));
         }
-        for (var key in shapeTypes) {
-            var checker = shapeTypes[key];
+        for (const key in shapeTypes) {
+            const checker = shapeTypes[key];
             if (typeof checker !== 'function') {
                 return invalidValidatorError(componentName, location, propFullName, key, getPreciseType(checker));
             }
-            var error = checker(propValue, key, componentName, location, propFullName + '.' + key);
+            const error = checker(propValue, key, componentName, location, propFullName + '.' + key);
             if (error) {
                 return error;
             }
@@ -309,8 +280,8 @@ function createShapeTypeChecker(shapeTypes) {
 }
 function createStrictShapeTypeChecker(shapeTypes) {
     function validate(props, propName, componentName, location, propFullName) {
-        var propValue = props[propName];
-        var propType = getPropType(propValue);
+        const propValue = props[propName];
+        const propType = getPropType(propValue);
         if (propType !== 'object') {
             return new PropTypeError('Invalid ' +
                 location +
@@ -321,9 +292,9 @@ function createStrictShapeTypeChecker(shapeTypes) {
                 '` ' +
                 ('supplied to `' + componentName + '`, expected `object`.'));
         }
-        var allKeys = __assign(__assign({}, props[propName]), shapeTypes);
-        for (var key in allKeys) {
-            var checker = shapeTypes[key];
+        const allKeys = { ...props[propName], ...shapeTypes };
+        for (const key in allKeys) {
+            const checker = shapeTypes[key];
             if (has(shapeTypes, key) && typeof checker !== 'function') {
                 return invalidValidatorError(componentName, location, propFullName, key, getPreciseType(checker));
             }
@@ -342,7 +313,7 @@ function createStrictShapeTypeChecker(shapeTypes) {
                     '\nValid keys: ' +
                     JSON.stringify(Object.keys(shapeTypes), null, '  '));
             }
-            var error = checker(propValue, key, componentName, location, propFullName + '.' + key);
+            const error = checker(propValue, key, componentName, location, propFullName + '.' + key);
             if (error) {
                 return error;
             }
@@ -352,7 +323,7 @@ function createStrictShapeTypeChecker(shapeTypes) {
     return createChainableTypeChecker(validate);
 }
 function getPropType(propValue) {
-    var propType = typeof propValue;
+    const propType = typeof propValue;
     if (Array.isArray(propValue)) {
         return 'array';
     }
@@ -365,7 +336,7 @@ function getPreciseType(propValue) {
     if (typeof propValue === 'undefined' || propValue === null) {
         return '' + propValue;
     }
-    var propType = getPropType(propValue);
+    const propType = getPropType(propValue);
     if (propType === 'object') {
         if (propValue instanceof Date) {
             return 'date';
@@ -377,7 +348,7 @@ function getPreciseType(propValue) {
     return propType;
 }
 function getPostfixForTypeWarning(value) {
-    var type = getPreciseType(value);
+    const type = getPreciseType(value);
     switch (type) {
         case 'array':
         case 'object':
@@ -401,12 +372,12 @@ function getPostfixForTypeWarning(value) {
  * @private
  */
 function checkPropTypes(typeSpecs, values, location, componentName) {
-    for (var typeSpecName in typeSpecs) {
+    for (const typeSpecName in typeSpecs) {
         if (has(typeSpecs, typeSpecName)) {
-            var error = void 0;
+            let error;
             try {
                 if (typeof typeSpecs[typeSpecName] !== 'function') {
-                    var err = Error(componentName +
+                    const err = Error(componentName +
                         ': ' +
                         location +
                         ' type `' +

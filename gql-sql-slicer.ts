@@ -1,5 +1,4 @@
-const gql = require('graphql-tag')
-const knexConstructor = require('knex')
+import knexConstructor from 'knex'
 import { argumentsToObject } from './arguments'
 import { parseDirective } from './directives'
 import { gaQueryBuilder, gaMetricResolvers } from './gql-ga-slicer'
@@ -7,12 +6,28 @@ import { progressiveGet, progressiveSet, replVars } from './progressive'
 import { cloneDeep, omit } from 'lodash'
 import { applyFilters, withFilters } from './filters'
 import { metricResolvers } from './metrics'
-import { parseDimension, parseFilters, parseMetric } from './parser'
-import { DocumentNode } from 'graphql'
+import {
+  parseDimension,
+  parseFilters,
+  parseMetric,
+  parseType,
+  parseVariableDefinition,
+  processSelections,
+} from './parser'
+import type { DocumentNode } from 'graphql'
 import { dimensionResolvers } from './dimensions'
 import { Knex } from 'knex'
 import { Provider, providers } from './providers'
-const mergeDeep = require('deepmerge')
+import gql, {
+  enableExperimentalFragmentVariables,
+  disableFragmentWarnings,
+} from 'graphql-tag'
+import { checkPropTypes } from './types'
+import mergeDeep from 'deepmerge'
+import { defaultTypes } from './parser'
+
+enableExperimentalFragmentVariables()
+disableFragmentWarnings()
 
 interface GqlQuery {
   promise: Knex.QueryBuilder
@@ -64,6 +79,7 @@ export const gqlToDb = () => {
   let definedProviders = { ...providers }
   const gqlFetch = async (
     gqlQuery: string,
+    variables: Record<string, any>,
     provider?: string,
   ): Promise<any> => {
     const knex = definedProviders[provider || 'pg'].client
@@ -81,12 +97,24 @@ export const gqlToDb = () => {
         undefined,
         undefined,
         knex,
-        { ...metricResolvers, ...customMetricResolvers },
-        { ...dimensionResolvers, ...customDimensionResolvers },
-        definedProviders,
-        provider || 'pg',
+        {
+          metricResolvers: { ...metricResolvers, ...customMetricResolvers },
+          dimensionResolvers: {
+            ...dimensionResolvers,
+            ...customDimensionResolvers,
+          },
+          providers: definedProviders,
+          provider: provider || 'pg',
+        },
+        {
+          types: { ...defaultTypes },
+          fragments: {},
+          variablesValidator: {},
+          variables,
+        },
       )
         .filter((q) => !q.skip)
+        .filter((q) => !!q.promise)
         .map((q) => {
           q.promise = applyFilters(q, q.promise, knex)
 
@@ -159,19 +187,28 @@ function queryBuilder(
   queries: Array<any> | undefined = [],
   idx: number | undefined = undefined,
   knex,
-  metricResolvers,
-  dimensionResolvers,
-  definedProviders: Record<string, Provider>,
-  provider: string,
+  options: {
+    metricResolvers: Record<string, metricResolver>
+    dimensionResolvers: Record<string, metricResolver>
+    providers: Record<string, Provider>
+    provider: string
+  },
+  context = {
+    fragments: {},
+    types: {},
+    variablesValidator: {},
+    variables: {},
+  },
 ) {
   if (!!~idx && idx !== undefined && !queries[idx])
     queries[idx] = {
       idx,
       name: undefined,
-      metricResolvers,
-      dimensionResolvers,
-      providers: definedProviders,
-      provider: provider || 'pg',
+      metricResolvers: options.metricResolvers,
+      dimensionResolvers: options.dimensionResolvers,
+      providers: options.providers,
+      provider: options.provider || 'pg',
+      context,
     }
   const query = queries[idx]
   if (Array.isArray(tree)) {
@@ -182,49 +219,86 @@ function queryBuilder(
           table,
           t,
           queries,
-          queries.length - 1,
+          queries.length ? queries.length - 1 : 0,
           knex,
-          metricResolvers,
-          dimensionResolvers,
-          definedProviders,
-          provider,
+          options,
+          context,
         ),
       queries,
     )
   }
-  if (tree.kind === 'OperationDefinition' && !!tree.selectionSet) {
-    if (tree.operation === 'query' && !!tree.name?.value) {
-      if (
-        tree?.variableDefinitions[0]?.variable?.name?.value === 'source' &&
-        tree?.variableDefinitions[0]?.type?.name?.value === 'GA'
-      ) {
-        return gaQueryBuilder(
-          table,
-          tree,
-          queries,
-          idx,
-          knex,
-          gaMetricResolvers,
-        )
+
+  switch (tree.kind) {
+    case 'EnumTypeDefinition':
+    case 'UnionTypeDefinition':
+    case 'InputObjectTypeDefinition':
+    case 'ObjectTypeDefinition':
+      parseType(tree, context)
+
+      return queries.filter((query) => query.idx === idx)
+    case 'FragmentDefinition':
+      context.fragments[tree.name.value] = {
+        name: tree.name,
+        selections: tree.selectionSet.selections,
+        variableDefinitions: tree.variableDefinitions || [],
       }
-      table = tree.name?.value
-    }
-    return tree.selectionSet.selections.reduce(
-      (queries, t, i) =>
-        queryBuilder(
-          table,
-          t,
-          queries,
-          queries.length,
-          knex,
-          metricResolvers,
-          dimensionResolvers,
-          definedProviders,
-          provider,
-        ),
-      queries,
-    )
+
+      return queries.filter((query) => query.idx !== idx)
+    case 'OperationDefinition':
+      if (!!tree.selectionSet) {
+        const ctx = {
+          ...context,
+          variablesValidator: cloneDeep(context.variablesValidator),
+          variables: cloneDeep(context.variables),
+        }
+
+        if (tree.operation === 'query' && !!tree.name?.value) {
+          if (
+            tree?.variableDefinitions[0]?.variable?.name?.value === 'source' &&
+            tree?.variableDefinitions[0]?.type?.name?.value === 'GA'
+          ) {
+            return gaQueryBuilder(
+              table,
+              tree,
+              queries,
+              idx,
+              knex,
+              gaMetricResolvers,
+            )
+          } else {
+            tree.variableDefinitions.forEach((def) => {
+              parseVariableDefinition(def, ctx)
+            })
+
+            checkPropTypes(
+              ctx.variablesValidator,
+              ctx.variables,
+              'query',
+              tree.name.value,
+            )
+          }
+          table = tree.name?.value
+        }
+        return tree.selectionSet.selections
+          .reduce((selections, field) => {
+            return processSelections(selections, field, { context: ctx }, ctx)
+          }, [])
+          .reduce(
+            (queries, t, i) =>
+              queryBuilder(
+                table,
+                t,
+                queries,
+                queries.length,
+                knex,
+                options,
+                ctx,
+              ),
+            queries,
+          )
+      }
   }
+
   if (
     !query.filters &&
     (tree.name.value === 'fetch' ||
@@ -236,7 +310,7 @@ function queryBuilder(
     query.promise = knex.select().from(table)
     query.joins = []
     query.filters = parseFilters(tree, query, knex)
-    query.promise = withFilters(query.filters)(query.promise)
+    query.promise = withFilters(query.filters)(query.promise, knex)
 
     if (tree.name.value === 'with') {
       query.isWith = true
@@ -300,29 +374,9 @@ function queryBuilder(
           idx: newIdx,
         }
 
-        return queryBuilder(
-          table,
-          t,
-          queries,
-          newIdx,
-          knex,
-          metricResolvers,
-          dimensionResolvers,
-          definedProviders,
-          provider,
-        )
+        return queryBuilder(table, t, queries, newIdx, knex, options, context)
       }
-      return queryBuilder(
-        table,
-        t,
-        queries,
-        idx,
-        knex,
-        metricResolvers,
-        dimensionResolvers,
-        definedProviders,
-        provider,
-      )
+      return queryBuilder(table, t, queries, idx, knex, options, context)
     }, queries)
   }
   parseMetric(tree, query, knex)
@@ -370,10 +424,7 @@ export const merge = (
         const keys = Object.keys(resultData[j])
         for (var key in keys) {
           if (q.metrics[keys[key]]) {
-            let replacedPath = replVars(
-              q.metrics[keys[key]],
-              resultData[j],
-            ).replace(/:join\./g, '')
+            let replacedPath = replVars(q.metrics[keys[key]], resultData[j])
 
             let value = resultData[j][keys[key]]
             let skip = false
@@ -615,11 +666,6 @@ function mergeDimension(tree, query) {
   const args = argumentsToObject(tree.arguments)
   query.getters = query.getters || []
 
-  if (tree.name.value === 'groupByEach') {
-    query.getters.push(`groupByEach_max_${tree.alias.value}`)
-    query.getters.push(`groupByEach_min_${tree.alias.value}`)
-  }
-
   let name = tree.alias?.value || tree.name.value
   if (args?.type === 'Array') {
     const names: string[] = []
@@ -669,13 +715,6 @@ function mergeDimension(tree, query) {
     return parseDirective(tree, query, 'dimension')
   }
 }
-const comparisonFunction = {
-  gt: (v) => (x) => +x > +v,
-  lt: (v) => (x) => +x < +v,
-  gte: (v) => (x) => +x >= +v,
-  lte: (v) => (x) => +x <= +v,
-  eq: (v) => (x) => x == v,
-}
 
 const metricResolversData = {
   aggrAverage: (tree, query) => {
@@ -685,6 +724,14 @@ const metricResolversData = {
   weightAvg: (tree, query) => {
     const name = `${tree.alias?.value}`
     query.metrics[`${name}`] = `${query.path}${!!query.path ? '.' : ''}${name}`
+  },
+  join: (tree, query) => {
+    const name = `${tree.alias?.value || tree.name.value}`
+    query.metrics[name] = query.metrics[name].replace(/:join\./g, '')
+  },
+  groupByEach: (tree, query) => {
+    query.getters.push(`groupByEach_max_${tree.alias.value}`)
+    query.getters.push(`groupByEach_min_${tree.alias.value}`)
   },
   subtract: (tree, query) => {
     const name = `${tree.name?.value}`

@@ -68,6 +68,7 @@ function filterPropertyKey(keys, key) {
 export const preExecutedDirectives = {
   // include: (context: PreExecutedContext) => {},
   // skip: (context: PreExecutedContext) => {},
+  // compare: (context: PreExecuteContext) => {}
 }
 
 export const postExecutedDirectives = {
@@ -114,11 +115,11 @@ export const postExecutedDirectives = {
         return {
           value:
             value /
-            progressiveGet(
-              originFullObject[args.by],
-              replacedPath,
-              getBatchContext(batches, args.by),
-            ) -
+              progressiveGet(
+                originFullObject[args.by],
+                replacedPath,
+                getBatchContext(batches, args.by),
+              ) -
             1,
         }
       } else {
@@ -433,11 +434,11 @@ export const postExecutedDirectives = {
         return {
           replacers: !isNotFirstTime
             ? {
-              ...currentData,
-              ...currentGroupData,
-              [key]: newValue,
-              ...args.replacers,
-            }
+                ...currentData,
+                ...currentGroupData,
+                [key]: newValue,
+                ...args.replacers,
+              }
             : null,
           path: newPath,
           value: newValue,

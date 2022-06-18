@@ -1,16 +1,5 @@
 "use strict";
-var __assign = (this && this.__assign) || function () {
-    __assign = Object.assign || function(t) {
-        for (var s, i = 1, n = arguments.length; i < n; i++) {
-            s = arguments[i];
-            for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p))
-                t[p] = s[p];
-        }
-        return t;
-    };
-    return __assign.apply(this, arguments);
-};
-exports.__esModule = true;
+Object.defineProperty(exports, "__esModule", { value: true });
 exports.providers = void 0;
 exports.providers = {
     pg: {
@@ -52,25 +41,27 @@ exports.providers = {
             'LEFT',
             'RIGHT',
         ],
-        getConnector: function () { return require('postgres'); },
-        getConnection: function (configuration, connector) {
-            var _a;
-            var options = { max: ((_a = configuration.pool) === null || _a === void 0 ? void 0 : _a.max) || 20 };
+        getConnector: () => require('postgres'),
+        getConnection: (configuration, connector) => {
+            let options = { max: configuration.pool?.max || 20 };
             if (!configuration.connection.connectionString) {
-                options = __assign(__assign({}, configuration.connection), options);
+                options = {
+                    ...configuration.connection,
+                    ...options,
+                };
             }
-            var connection = configuration.connection.connectionString
+            const connection = configuration.connection.connectionString
                 ? connector(configuration.connection.connectionString, options)
                 : connector(options);
             return connection;
         },
-        execute: function (connection, sql) {
+        execute(connection, sql) {
             if (!connection) {
                 throw new Error("Provider isn't configured yet, please use #setupProvider() to provide config");
             }
-            var native = sql.toNative();
+            const native = sql.toNative();
             return connection.unsafe(native.sql, native.bindings || []);
-        }
+        },
     },
     snowflake: {
         // simulate pg client
@@ -106,25 +97,27 @@ exports.providers = {
             'LEFT',
             'RIGHT',
         ],
-        getConnector: function () {
+        getConnector: () => {
             return require('snowflake-sdk');
         },
-        getConnection: function (configuration, connector) {
+        getConnection: (configuration, connector) => {
             // Always connect trought pool, because snowflake has different interfaces for normal and pool connection
             return connector(configuration.connection.connectionString
                 ? configuration.connection.connectionString
-                : __assign({}, configuration.connection), configuration.pool || { min: 0, max: 20 });
+                : {
+                    ...configuration.connection,
+                }, configuration.pool || { min: 0, max: 20 });
         },
-        execute: function (connection, sql) {
+        execute: (connection, sql) => {
             if (!connection) {
                 throw new Error("Provider isn't configured yet, please use #setupProvider() to provide config");
             }
-            return connection.use(function (client) {
+            return connection.use((client) => {
                 return client.execute({
                     sqlText: sql.sql,
-                    binds: sql.bindings
+                    binds: sql.bindings,
                 });
             });
-        }
-    }
+        },
+    },
 };

@@ -1,7 +1,7 @@
 "use strict";
-exports.__esModule = true;
+Object.defineProperty(exports, "__esModule", { value: true });
 exports.combineQuery = void 0;
-var combineQuery = function (query, clonedQuery) {
+const combineQuery = (query, clonedQuery) => {
     // Meta information from metric/dimension
     // We are getting it like this to avoid side-effects of metric
     query.table = clonedQuery.table;
