@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.compileFragment = exports.processSelections = exports.processArguments = exports.parseVariableDefinition = exports.parseType = exports.defaultTypes = exports.parseFilters = exports.parseDimension = exports.parseMetric = void 0;
 const arguments_1 = require("./arguments");
+const directives_1 = require("./directives");
 const filters_1 = require("./filters");
 const types_1 = require("./types");
 function parseMetric(tree, query, knex) {
@@ -159,7 +160,7 @@ function processArguments(args, context) {
 }
 exports.processArguments = processArguments;
 function processSelections(selections, field, query, context) {
-    if (field.kind === 'FragmentSpread') {
+    if (field?.kind === 'FragmentSpread') {
         if (context.fragments[field.name.value]) {
             selections = selections.concat(compileFragment(context.fragments[field.name.value], query, []));
             return selections;
@@ -168,7 +169,7 @@ function processSelections(selections, field, query, context) {
             throw new Error(`${field.name.value} fragment is not defined yet`);
         }
     }
-    if (field.name.value === 'use') {
+    if (field?.name.value === 'use') {
         const { fragment, args } = {
             args: field.arguments.filter((f) => f.name.value !== 'fragment'),
             fragment: field.arguments.filter((f) => f.name.value === 'fragment'),
@@ -186,11 +187,27 @@ function processSelections(selections, field, query, context) {
             throw new Error(`use requires fragment arguments with name of fragment which you want to compile`);
         }
     }
-    field.arguments = processArguments(field.arguments, context);
-    if (field.selectionSet) {
-        field.selectionSet.selections = field.selectionSet.selections.reduce((selections, field) => processSelections(selections, field, query, context), []);
+    if (field?.directives) {
+        field.directives = field.directives.map((directive) => {
+            if (directive.arguments) {
+                directive.arguments = processArguments(directive.arguments, context);
+            }
+            return directive;
+        });
+        field = (0, directives_1.parseDirective)(field, null, 'field');
+        console.log(field);
     }
-    selections.push(field);
+    if (field?.arguments) {
+        field.arguments = processArguments(field.arguments, context);
+    }
+    if (field?.selectionSet) {
+        field.selectionSet.selections = field.selectionSet.selections
+            .reduce((selections, field) => processSelections(selections, field, query, context), [])
+            .filter(Boolean);
+    }
+    if (field) {
+        selections.push(field);
+    }
     return selections;
 }
 exports.processSelections = processSelections;
@@ -210,6 +227,8 @@ function compileFragment(fragment, query, arglist) {
         });
         (0, types_1.checkPropTypes)(context.variablesValidator, context.variables, 'fragment', fragment.name.value);
     }
-    return fragment.selections.reduce((selections, field) => processSelections(selections, field, query, context), []);
+    return fragment.selections
+        .reduce((selections, field) => processSelections(selections, field, query, context), [])
+        .filter(Boolean);
 }
 exports.compileFragment = compileFragment;

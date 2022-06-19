@@ -159,6 +159,69 @@ describe('SQL', () => {
         },
       )
     })
+
+    describe('Pre executive @directives', () => {
+      test('@compare', () => {
+        const table = [
+          [
+            {
+              device: 'mobile',
+              date: '2020-01-01T23:00:00.000Z',
+              no_baskets: '101',
+              value: '101',
+            },
+            {
+              device: 'mobile',
+              date: '2020-01-02T23:00:00.000Z',
+              no_baskets: '107',
+              value: '107',
+            },
+            {
+              device: 'desktop',
+              date: '2020-01-01T23:00:00.000Z',
+              no_baskets: '201',
+              value: '201',
+            },
+            {
+              device: 'desktop',
+              date: '2020-01-02T23:00:00.000Z',
+              no_baskets: '207',
+              value: '207',
+            },
+          ],
+        ]
+
+        const querier = gqlToDb()
+          .beforeDbFetch((def) => {
+            expect(def.sql).toMatchSnapshot()
+
+            return def
+          })
+          .dbFetch(() => {
+            return table
+          })
+
+        const query = `
+        query table($limit: Number!) {
+          fetch {
+            date(type: Array, limit: $limit) {
+              device {
+                value: no_baskets @compare(value: $limit, neq: 10) @skip
+                no_baskets @compare(value: $limit, eq: 2) @include
+              }
+            }
+          }
+        }
+      `
+
+        Promise.all([
+          querier(query, { limit: 2 }),
+          querier(query, { limit: 10 }),
+        ]).then((result) => {
+          expect(result).toMatchSnapshot()
+        })
+      })
+    })
   })
 
   describe('fragments', () => {

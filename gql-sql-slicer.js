@@ -63,7 +63,7 @@ const gqlToDb = () => {
             })
             : (0, knex_1.default)({});
         try {
-            const definitions = (0, graphql_tag_1.default)(gqlQuery).definitions;
+            const definitions = (0, lodash_1.cloneDeep)((0, graphql_tag_1.default)(gqlQuery).definitions);
             const queries = queryBuilder(null, definitions, undefined, undefined, knex, {
                 metricResolvers: { ...metrics_1.metricResolvers, ...customMetricResolvers },
                 dimensionResolvers: {
@@ -201,6 +201,7 @@ function queryBuilder(table, tree, queries = [], idx = undefined, knex, options,
                     .reduce((selections, field) => {
                     return (0, parser_1.processSelections)(selections, field, { context: ctx }, ctx);
                 }, [])
+                    .filter(Boolean)
                     .reduce((queries, t, i) => queryBuilder(table, t, queries, queries.length, knex, options, ctx), queries);
             }
     }
@@ -297,6 +298,7 @@ const merge = (tree, data, metricResolversData) => {
             originFullObject = fullObject;
         }
         return quer.reduce((result, q) => {
+            console.log(q);
             const resultData = data[q.bid];
             for (var j = 0; j < resultData.length; j++) {
                 const keys = Object.keys(resultData[j]);

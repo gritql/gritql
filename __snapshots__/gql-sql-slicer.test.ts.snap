@@ -576,6 +576,63 @@ Object {
 }
 `;
 
+exports[`SQL variables && types Pre executive @directives @compare 1`] = `
+Array [
+  "select \\"date\\", \\"device\\", \\"no_baskets\\" from \\"table\\" group by \\"date\\", \\"device\\" limit 2",
+]
+`;
+
+exports[`SQL variables && types Pre executive @directives @compare 2`] = `
+Array [
+  "select \\"date\\", \\"device\\", \\"no_baskets\\" as \\"value\\" from \\"table\\" group by \\"date\\", \\"device\\" limit 10",
+]
+`;
+
+exports[`SQL variables && types Pre executive @directives @compare 3`] = `
+Array [
+  Array [
+    Object {
+      "date": "2020-01-01T23:00:00.000Z",
+      "desktop": Object {
+        "no_baskets": "201",
+      },
+      "mobile": Object {
+        "no_baskets": "101",
+      },
+    },
+    Object {
+      "date": "2020-01-02T23:00:00.000Z",
+      "desktop": Object {
+        "no_baskets": "207",
+      },
+      "mobile": Object {
+        "no_baskets": "107",
+      },
+    },
+  ],
+  Array [
+    Object {
+      "date": "2020-01-01T23:00:00.000Z",
+      "desktop": Object {
+        "value": "201",
+      },
+      "mobile": Object {
+        "value": "101",
+      },
+    },
+    Object {
+      "date": "2020-01-02T23:00:00.000Z",
+      "desktop": Object {
+        "value": "207",
+      },
+      "mobile": Object {
+        "value": "107",
+      },
+    },
+  ],
+]
+`;
+
 exports[`SQL variables && types Union type 1`] = `
 Array [
   "select sum(\\"pageviews\\") as \\"value\\" from \\"table\\"",

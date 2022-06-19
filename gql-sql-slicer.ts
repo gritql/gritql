@@ -89,7 +89,7 @@ export const gqlToDb = () => {
       : knexConstructor({})
 
     try {
-      const definitions = gql(gqlQuery).definitions
+      const definitions = cloneDeep(gql(gqlQuery).definitions)
 
       const queries = queryBuilder(
         null,
@@ -283,6 +283,7 @@ function queryBuilder(
           .reduce((selections, field) => {
             return processSelections(selections, field, { context: ctx }, ctx)
           }, [])
+          .filter(Boolean)
           .reduce(
             (queries, t, i) =>
               queryBuilder(
@@ -419,6 +420,8 @@ export const merge = (
     }
 
     return quer.reduce((result, q) => {
+      console.log(q)
+
       const resultData = data[q.bid]
       for (var j = 0; j < resultData.length; j++) {
         const keys = Object.keys(resultData[j])

@@ -1,4 +1,5 @@
 import { argumentsToObject } from './arguments'
+import { parseDirective } from './directives'
 import { transformFilters } from './filters'
 import { checkPropTypes, PropTypes } from './types'
 
@@ -184,7 +185,7 @@ export function processArguments(args, context) {
 }
 
 export function processSelections(selections, field, query, context) {
-  if (field.kind === 'FragmentSpread') {
+  if (field?.kind === 'FragmentSpread') {
     if (context.fragments[field.name.value]) {
       selections = selections.concat(
         compileFragment(context.fragments[field.name.value], query, []),
@@ -196,7 +197,7 @@ export function processSelections(selections, field, query, context) {
     }
   }
 
-  if (field.name.value === 'use') {
+  if (field?.name.value === 'use') {
     const { fragment, args } = {
       args: field.arguments.filter((f) => f.name.value !== 'fragment'),
       fragment: field.arguments.filter((f) => f.name.value === 'fragment'),
@@ -223,17 +224,37 @@ export function processSelections(selections, field, query, context) {
     }
   }
 
-  field.arguments = processArguments(field.arguments, context)
+  if (field?.directives) {
+    field.directives = field.directives.map((directive) => {
+      if (directive.arguments) {
+        directive.arguments = processArguments(directive.arguments, context)
+      }
 
-  if (field.selectionSet) {
-    field.selectionSet.selections = field.selectionSet.selections.reduce(
-      (selections, field) =>
-        processSelections(selections, field, query, context),
-      [],
-    )
+      return directive
+    })
+
+    field = parseDirective(field, null, 'field')
+
+    console.log(field)
   }
 
-  selections.push(field)
+  if (field?.arguments) {
+    field.arguments = processArguments(field.arguments, context)
+  }
+
+  if (field?.selectionSet) {
+    field.selectionSet.selections = field.selectionSet.selections
+      .reduce(
+        (selections, field) =>
+          processSelections(selections, field, query, context),
+        [],
+      )
+      .filter(Boolean)
+  }
+
+  if (field) {
+    selections.push(field)
+  }
 
   return selections
 }
@@ -263,8 +284,11 @@ export function compileFragment(fragment, query, arglist: any) {
     )
   }
 
-  return fragment.selections.reduce(
-    (selections, field) => processSelections(selections, field, query, context),
-    [],
-  )
+  return fragment.selections
+    .reduce(
+      (selections, field) =>
+        processSelections(selections, field, query, context),
+      [],
+    )
+    .filter(Boolean)
 }

@@ -1,6 +1,6 @@
 {
   "name": "gql-sql-slicer",
-  "version": "3.0.0-alpha.2",
+  "version": "3.0.0-alpha.3",
   "main": "gql-sql-slicer.js",
   "types": "gql-sql-slicer.ts",
   "repository": "git@github.com:edjafarov/gql-sql-slicer.git",

@@ -22,6 +22,9 @@ const resolvers = {
     lte: (a, b) => {
         return a <= b;
     },
+    neq: (a, b) => {
+        return a != b;
+    },
 };
 function findResolvers(keys, value, args, name) {
     return keys.some((k) => {
@@ -36,9 +39,82 @@ function filterPropertyKey(keys, key) {
         .map((k) => k.split('_').slice(-1)[0]);
 }
 exports.preExecutedDirectives = {
-// include: (context: PreExecutedContext) => {},
-// skip: (context: PreExecutedContext) => {},
-// compare: (context: PreExecuteContext) => {}
+    // if: Boolean to compare
+    // Skips metric/dimension when 'if' argument is false
+    include: (context) => {
+        if (context.caller?.data?.value !== undefined) {
+            if (!context.caller.data.value) {
+                return null;
+            }
+            else {
+                return context.caller;
+            }
+        }
+        if (!context.tree.arguments) {
+            throw new Error('Include directive requires arguments or result of previous directive');
+        }
+        const args = (0, arguments_1.argumentsToObject)(context.tree.arguments);
+        if (args.if === undefined) {
+            throw new Error('Include directive requires `if` argument');
+        }
+        if (args.if) {
+            return context.caller;
+        }
+        else {
+            return null;
+        }
+    },
+    // if: Boolean to compare
+    // Skips metric/dimension when 'if' argument is true
+    skip: (context) => {
+        if (context.caller?.data?.value !== undefined) {
+            if (context.caller.data.value) {
+                return null;
+            }
+            else {
+                return context.caller;
+            }
+        }
+        if (!context.tree.arguments) {
+            throw new Error('Skip directive requires arguments or result of previous directive');
+        }
+        const args = (0, arguments_1.argumentsToObject)(context.tree.arguments);
+        if (args.if === undefined) {
+            throw new Error('Skip directive requires `if` argument');
+        }
+        if (!args.if) {
+            return context.caller;
+        }
+        else {
+            return null;
+        }
+    },
+    compare: (context) => {
+        if (!context.tree.arguments) {
+            throw new Error('Compare directive requires arguments');
+        }
+        let { value, ...rest } = (0, arguments_1.argumentsToObject)(context.tree.arguments);
+        value = value ?? context.caller?.data?.value;
+        if (value === undefined) {
+            throw new Error('Compare directive requires `value` argument or result of previous directive');
+        }
+        if (Object.keys(rest).length === 0) {
+            throw new Error('Compare directive requires at least one argument ([`eq`, `in`, `neq`, `lt`, `gt`, `lte`, `gte`]) to compare with value');
+        }
+        value = Object.keys(rest).reduce((value, key) => {
+            if (resolvers[key] && value !== false) {
+                return resolvers[key](value, rest[key]);
+            }
+            else {
+                throw new Error(`Can't find resolver for '${key}'`);
+            }
+        }, value);
+        context.caller.data = {
+            ...context.caller.data,
+            value,
+        };
+        return context.caller;
+    },
 };
 exports.postExecutedDirectives = {
     // Arguments
@@ -313,11 +389,14 @@ exports.postExecutedDirectives = {
     // groupBy: (context: PostExecutedContext) => {}
 };
 function parseDirective(tree, query, on, path) {
-    if (!query.directives)
+    if (query && !query.directives)
         query.directives = [];
     if (tree.directives) {
-        tree.directives.forEach((directive) => {
-            if (exports.postExecutedDirectives[directive.name.value]) {
+        return tree.directives.reduce((tree, directive, i) => {
+            if (!directive) {
+                return tree;
+            }
+            if (query && exports.postExecutedDirectives[directive.name.value]) {
                 query.directives.push(exports.postExecutedDirectives[directive.name.value]({
                     tree: directive,
                     caller: tree,
@@ -329,10 +408,18 @@ function parseDirective(tree, query, on, path) {
                     name: tree.alias?.value || tree.name?.value,
                 }));
             }
-            if (exports.preExecutedDirectives[directive.name.value]) {
-                // TODO: support of pre executed directives
+            else if (exports.preExecutedDirectives[directive.name.value]) {
+                tree = exports.preExecutedDirectives[directive.name.value]({
+                    tree: directive,
+                    caller: tree,
+                    query,
+                    data: {},
+                    type: directive.name.value,
+                    on,
+                });
             }
-        });
+            return tree;
+        }, tree);
     }
     return tree;
 }
