@@ -308,9 +308,149 @@ Object {
 }
 `;
 
+exports[`SQL gql directives @subtract directive 1`] = `
+Array [
+  "select \\"channels\\", sum(\\"sessions\\") as \\"value\\", \\"rank\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Adult' and \\"ecom_benchmarking\\".\\"country\\" = 'DE' group by \\"channels\\"",
+  "select \\"channels\\", sum(\\"sessions\\") as \\"value\\", \\"rank\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Adult' and \\"ecom_benchmarking\\".\\"country\\" = 'DE' group by \\"channels\\"",
+]
+`;
+
+exports[`SQL gql directives @subtract directive 2`] = `
+Object {
+  "prevSeries": Array [
+    Object {
+      "channels": "Social",
+      "rank": 1,
+      "value": 0,
+    },
+    Object {
+      "channels": "Organic",
+      "rank": 2,
+      "value": 0,
+    },
+  ],
+  "series": Array [
+    Object {
+      "channels": "Social",
+      "rank": 2,
+      "value": -1,
+    },
+    Object {
+      "channels": "Organic",
+      "rank": 2,
+      "value": -2,
+    },
+  ],
+}
+`;
+
+exports[`SQL gql directives @subtract directive on deep path 1`] = `
+Array [
+  "select \\"channels\\", \\"country\\", sum(\\"sessions\\") as \\"value\\", \\"rank\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Adult' and \\"ecom_benchmarking\\".\\"country\\" = 'DE' group by \\"channels\\", \\"country\\"",
+  "select \\"channels\\", \\"country\\", sum(\\"sessions\\") as \\"value\\", \\"rank\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Adult' and \\"ecom_benchmarking\\".\\"country\\" = 'DE' group by \\"channels\\", \\"country\\"",
+]
+`;
+
+exports[`SQL gql directives @subtract directive on deep path 2`] = `
+Object {
+  "prevSeries": Array [
+    Object {
+      "channels": "Social",
+      "country": Array [
+        Object {
+          "country": "DE",
+          "rank": 1,
+          "value": 0,
+        },
+      ],
+    },
+    Object {
+      "channels": "Organic",
+      "country": Array [
+        Object {
+          "country": "US",
+          "rank": 2,
+          "value": 0,
+        },
+      ],
+    },
+  ],
+  "series": Array [
+    Object {
+      "channels": "Social",
+      "country": Array [
+        Object {
+          "country": "DE",
+          "rank": 2,
+          "value": -1,
+        },
+      ],
+    },
+    Object {
+      "channels": "Organic",
+      "country": Array [
+        Object {
+          "country": "DE",
+          "rank": 2,
+          "value": NaN,
+        },
+      ],
+    },
+  ],
+}
+`;
+
+exports[`SQL gqlBuilder function avg 1`] = `
+Array [
+  "select \\"channels\\", avg(\\"sessions\\") over ()::float4 as \\"avg\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"date\\" = '2020-11-27' and \\"ecom_benchmarking\\".\\"category\\" = 'Finance/Investing' group by \\"channels\\"",
+]
+`;
+
+exports[`SQL gqlBuilder function avgPerDimension 1`] = `
+Array [
+  "select sum(\\"sessions\\")::float/COUNT(DISTINCT \\"channels\\")::float4 as \\"avg\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"date\\" = '2020-11-27' and \\"ecom_benchmarking\\".\\"category\\" = 'Finance/Investing'",
+]
+`;
+
+exports[`SQL gqlBuilder function count 1`] = `
+Array [
+  "select count(\\"channels\\") as \\"undefined\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"date\\" = '2020-11-27' and \\"ecom_benchmarking\\".\\"category\\" = 'Finance/Investing'",
+]
+`;
+
+exports[`SQL gqlBuilder function countDistinct 1`] = `
+Array [
+  "select count(distinct \\"channels\\") as \\"undefined\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"date\\" = '2020-11-27' and \\"ecom_benchmarking\\".\\"category\\" = 'Finance/Investing'",
+]
+`;
+
+exports[`SQL gqlBuilder function indexed 1`] = `
+Array [
+  "select \\"channels\\", sum(\\"sessions\\")/NULLIF(max(sum(\\"sessions\\")::float) over (), 0)::float4 as \\"value\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"date\\" = '2020-11-27' and \\"ecom_benchmarking\\".\\"category\\" = 'Finance/Investing' group by \\"channels\\"",
+]
+`;
+
+exports[`SQL gqlBuilder function max 1`] = `
+Array [
+  "select \\"channels\\", max(\\"sessions\\") as \\"max\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"date\\" = '2020-11-27' and \\"ecom_benchmarking\\".\\"category\\" = 'Finance/Investing' group by \\"channels\\"",
+]
+`;
+
+exports[`SQL gqlBuilder function min 1`] = `
+Array [
+  "select \\"channels\\", min(\\"sessions\\") as \\"min\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"date\\" = '2020-11-27' and \\"ecom_benchmarking\\".\\"category\\" = 'Finance/Investing' group by \\"channels\\"",
+]
+`;
+
 exports[`SQL gqlBuilder function share 1`] = `
 Array [
   "select \\"channels\\", sum(\\"sessions\\")/NULLIF(sum(sum(\\"sessions\\")) over (), 0)::float4 as \\"share\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"date\\" = '2020-11-27' and \\"ecom_benchmarking\\".\\"category\\" = 'Finance/Investing' group by \\"channels\\"",
+]
+`;
+
+exports[`SQL gqlBuilder function share with by argument 1`] = `
+Array [
+  "select \\"channels\\", sum(\\"sessions\\")/NULLIF(sum(sum(\\"sessions\\")) over (PARTITION BY \\"channels\\"), 0)::float4 as \\"share\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"date\\" = '2020-11-27' and \\"ecom_benchmarking\\".\\"category\\" = 'Finance/Investing' group by \\"channels\\"",
 ]
 `;
 
@@ -589,6 +729,63 @@ Array [
 `;
 
 exports[`SQL variables && types Pre executive @directives @compare 3`] = `
+Array [
+  Array [
+    Object {
+      "date": "2020-01-01T23:00:00.000Z",
+      "desktop": Object {
+        "no_baskets": "201",
+      },
+      "mobile": Object {
+        "no_baskets": "101",
+      },
+    },
+    Object {
+      "date": "2020-01-02T23:00:00.000Z",
+      "desktop": Object {
+        "no_baskets": "207",
+      },
+      "mobile": Object {
+        "no_baskets": "107",
+      },
+    },
+  ],
+  Array [
+    Object {
+      "date": "2020-01-01T23:00:00.000Z",
+      "desktop": Object {
+        "value": "201",
+      },
+      "mobile": Object {
+        "value": "101",
+      },
+    },
+    Object {
+      "date": "2020-01-02T23:00:00.000Z",
+      "desktop": Object {
+        "value": "207",
+      },
+      "mobile": Object {
+        "value": "107",
+      },
+    },
+  ],
+]
+`;
+
+exports[`SQL variables && types Pre executive @directives @include && @skip 1`] = `
+Array [
+  "select \\"date\\", \\"device\\", \\"no_baskets\\" from \\"table\\" group by \\"date\\", \\"device\\"",
+]
+`;
+
+exports[`SQL variables && types Pre executive @directives @include && @skip 2`] = `
+Array [
+  "select \\"date\\", \\"device\\", \\"no_baskets\\" as \\"value\\" from \\"table\\" group by \\"date\\", \\"device\\"",
+]
+`;
+
+exports[`SQL variables && types Pre executive @directives @include && @skip 3`] = `
 Array [
   Array [
     Object {

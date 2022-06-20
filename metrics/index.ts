@@ -1,8 +1,30 @@
 import { Knex } from 'knex'
+import { InferProps } from 'prop-types'
 import { changeQueryTable, join, JoinType } from '../cross-table'
 import { applyFilters, buildFullName, withFilters } from '../filters'
 import { PropTypes } from '../types'
 import { metricWrapper } from './wrapper'
+
+export const partitionByTypes = {
+  by: PropTypes.string,
+}
+
+export function partitionBy(
+  args: InferProps<typeof partitionByTypes>,
+  query,
+  knex: Knex,
+) {
+  let partition: Knex.Raw
+  if (!!args.by) {
+    let partitionBy = buildFullName(args, query, args.by, false)
+    if (query.replaceWith?.[args.by]) {
+      partitionBy = query.replaceWith[args.by].value
+    }
+    partition = knex.raw(`PARTITION BY ??`, [partitionBy])
+  }
+
+  return partition || ''
+}
 
 export const metricResolvers = {
   percentile: metricWrapper(
@@ -24,17 +46,11 @@ export const metricResolvers = {
   ),
   median: metricWrapper(
     (alias, args, query, knex) => {
-      let partition: Knex.Raw
-      if (!!args.by) {
-        let partitionBy = buildFullName(args, query, args.by, false)
-        if (query.replaceWith?.[args.by]) {
-          partitionBy = query.replaceWith[args.by].value
-        }
-        partition = knex.raw(`PARTITION BY ??`, [partitionBy])
-      }
-
       return query.promise.select(
-        knex.raw(`MEDIAN(??) OVER (${partition || ''}) AS ??`, [args.a, alias]),
+        knex.raw(`MEDIAN(??) OVER (${partitionBy(args, query, knex)}) AS ??`, [
+          args.a,
+          alias,
+        ]),
       )
     },
     {
@@ -116,15 +132,6 @@ export const metricResolvers = {
   fullOuterJoin: join(JoinType.FULL_OUTER),
   ranking: metricWrapper(
     (alias, args, query, knex) => {
-      let partition: Knex.Raw
-      if (!!args.by) {
-        let partitionBy = buildFullName(args, query, args.by, false)
-        if (query.replaceWith?.[args.by]) {
-          partitionBy = query.replaceWith[args.by].value
-        }
-        partition = knex.raw(`partition by ??`, [partitionBy])
-      }
-
       let alg = 'DENSE_RANK'
 
       if (args.alg === 'denseRank') {
@@ -142,7 +149,11 @@ export const metricResolvers = {
             .select('*')
             .select(
               knex.raw(
-                `${alg}() over (${partition || ''} ORDER BY ?? desc) as ??`,
+                `${alg}() over (${partitionBy(
+                  args,
+                  query,
+                  knex,
+                )} ORDER BY ?? desc) as ??`,
                 [buildFullName(args, query, args.a, false), alias],
               ),
             )
@@ -246,20 +257,12 @@ export const metricResolvers = {
   ),
   avg: metricWrapper(
     (alias, args, query, knex) => {
-      //TODO: test
-      if (!!args.by) {
-        return query.promise.select(
-          knex.raw(`avg(??) over (partition by ??)::float4 as ??`, [
-            buildFullName(args, query, args.a, false),
-            buildFullName(args, query, args.by, false),
-            alias,
-          ]),
-        )
-      } else {
-        return query.promise.avg(
-          `${buildFullName(args, query, args.a, false)} as ${alias}`,
-        )
-      }
+      return query.promise.select(
+        knex.raw(
+          `avg(??) over (${partitionBy(args, query, knex)})::float4 as ??`,
+          [buildFullName(args, query, args.a, false), alias],
+        ),
+      )
     },
     {
       a: PropTypes.string.isRequired,
@@ -287,20 +290,13 @@ export const metricResolvers = {
   ),
   share: metricWrapper(
     (alias, args, query, knex) => {
-      let partition: Knex.Raw
-      if (!!args.by) {
-        let partitionBy = buildFullName(args, query, args.by, false)
-        if (query.replaceWith?.[args.by]) {
-          partitionBy = query.replaceWith[args.by].value
-        }
-        partition = knex.raw(`partition by ??`, [partitionBy])
-      }
-
       return query.promise.select(
         knex.raw(
-          `sum(??)/NULLIF(sum(sum(??)) over (${
-            partition || ''
-          }), 0)::float4 as ??`,
+          `sum(??)/NULLIF(sum(sum(??)) over (${partitionBy(
+            args,
+            query,
+            knex,
+          )}), 0)::float4 as ??`,
           [
             buildFullName(args, query, args.a, false),
             buildFullName(args, query, args.a, false),
@@ -318,16 +314,13 @@ export const metricResolvers = {
   ),
   indexed: metricWrapper(
     (alias, args, query, knex) => {
-      let partition: Knex.Raw
-      if (!!args.by)
-        partition = knex.raw(`partition by ??`, [
-          buildFullName(args, query, args.by, false),
-        ])
       return query.promise.select(
         knex.raw(
-          `sum(??)/NULLIF(max(sum(??)::float) over (${
-            partition || ''
-          }), 0)::float4 as ??`,
+          `sum(??)/NULLIF(max(sum(??)::float) over (${partitionBy(
+            args,
+            query,
+            knex,
+          )}), 0)::float4 as ??`,
           [
             buildFullName(args, query, args.a, false),
             buildFullName(args, query, args.a, false),

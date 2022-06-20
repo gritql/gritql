@@ -1,10 +1,25 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.metricResolvers = void 0;
+exports.metricResolvers = exports.partitionBy = exports.partitionByTypes = void 0;
 const cross_table_1 = require("../cross-table");
 const filters_1 = require("../filters");
 const types_1 = require("../types");
 const wrapper_1 = require("./wrapper");
+exports.partitionByTypes = {
+    by: types_1.PropTypes.string,
+};
+function partitionBy(args, query, knex) {
+    let partition;
+    if (!!args.by) {
+        let partitionBy = (0, filters_1.buildFullName)(args, query, args.by, false);
+        if (query.replaceWith?.[args.by]) {
+            partitionBy = query.replaceWith[args.by].value;
+        }
+        partition = knex.raw(`PARTITION BY ??`, [partitionBy]);
+    }
+    return partition || '';
+}
+exports.partitionBy = partitionBy;
 exports.metricResolvers = {
     percentile: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
         return query.promise.select(knex.raw(`PERCENTILE_CONT(??) WITHIN GROUP(ORDER BY ??) AS ??`, [
@@ -18,15 +33,10 @@ exports.metricResolvers = {
         from: types_1.PropTypes.string,
     }, ['PERCENTILE_CONT', 'WITHIN GROUP']),
     median: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
-        let partition;
-        if (!!args.by) {
-            let partitionBy = (0, filters_1.buildFullName)(args, query, args.by, false);
-            if (query.replaceWith?.[args.by]) {
-                partitionBy = query.replaceWith[args.by].value;
-            }
-            partition = knex.raw(`PARTITION BY ??`, [partitionBy]);
-        }
-        return query.promise.select(knex.raw(`MEDIAN(??) OVER (${partition || ''}) AS ??`, [args.a, alias]));
+        return query.promise.select(knex.raw(`MEDIAN(??) OVER (${partitionBy(args, query, knex)}) AS ??`, [
+            args.a,
+            alias,
+        ]));
     }, {
         from: types_1.PropTypes.string,
         a: types_1.PropTypes.string.isRequired,
@@ -73,14 +83,6 @@ exports.metricResolvers = {
     rightOuterJoin: (0, cross_table_1.join)(cross_table_1.JoinType.RIGHT_OUTER),
     fullOuterJoin: (0, cross_table_1.join)(cross_table_1.JoinType.FULL_OUTER),
     ranking: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
-        let partition;
-        if (!!args.by) {
-            let partitionBy = (0, filters_1.buildFullName)(args, query, args.by, false);
-            if (query.replaceWith?.[args.by]) {
-                partitionBy = query.replaceWith[args.by].value;
-            }
-            partition = knex.raw(`partition by ??`, [partitionBy]);
-        }
         let alg = 'DENSE_RANK';
         if (args.alg === 'denseRank') {
             alg = 'DENSE_RANK';
@@ -93,7 +95,7 @@ exports.metricResolvers = {
         }
         const promise = (0, filters_1.applyFilters)(query, (0, filters_1.withFilters)(query.filters)(knex
             .select('*')
-            .select(knex.raw(`${alg}() over (${partition || ''} ORDER BY ?? desc) as ??`, [(0, filters_1.buildFullName)(args, query, args.a, false), alias]))
+            .select(knex.raw(`${alg}() over (${partitionBy(args, query, knex)} ORDER BY ?? desc) as ??`, [(0, filters_1.buildFullName)(args, query, args.a, false), alias]))
             .from(query.table || args.from), knex), knex);
         const table = args.tableAlias || args.from || query.table;
         const finalPromise = query.promise
@@ -139,17 +141,7 @@ exports.metricResolvers = {
         from: types_1.PropTypes.string.isRequired,
     }, []),
     avg: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
-        //TODO: test
-        if (!!args.by) {
-            return query.promise.select(knex.raw(`avg(??) over (partition by ??)::float4 as ??`, [
-                (0, filters_1.buildFullName)(args, query, args.a, false),
-                (0, filters_1.buildFullName)(args, query, args.by, false),
-                alias,
-            ]));
-        }
-        else {
-            return query.promise.avg(`${(0, filters_1.buildFullName)(args, query, args.a, false)} as ${alias}`);
-        }
+        return query.promise.select(knex.raw(`avg(??) over (${partitionBy(args, query, knex)})::float4 as ??`, [(0, filters_1.buildFullName)(args, query, args.a, false), alias]));
     }, {
         a: types_1.PropTypes.string.isRequired,
         by: types_1.PropTypes.string,
@@ -167,15 +159,7 @@ exports.metricResolvers = {
         from: types_1.PropTypes.string,
     }, ['SUM', 'COUNT', 'DISTINCT']),
     share: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
-        let partition;
-        if (!!args.by) {
-            let partitionBy = (0, filters_1.buildFullName)(args, query, args.by, false);
-            if (query.replaceWith?.[args.by]) {
-                partitionBy = query.replaceWith[args.by].value;
-            }
-            partition = knex.raw(`partition by ??`, [partitionBy]);
-        }
-        return query.promise.select(knex.raw(`sum(??)/NULLIF(sum(sum(??)) over (${partition || ''}), 0)::float4 as ??`, [
+        return query.promise.select(knex.raw(`sum(??)/NULLIF(sum(sum(??)) over (${partitionBy(args, query, knex)}), 0)::float4 as ??`, [
             (0, filters_1.buildFullName)(args, query, args.a, false),
             (0, filters_1.buildFullName)(args, query, args.a, false),
             alias,
@@ -186,12 +170,7 @@ exports.metricResolvers = {
         from: types_1.PropTypes.string,
     }, ['SUM', 'NULLIF', 'OVER', 'PARTITION BY']),
     indexed: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
-        let partition;
-        if (!!args.by)
-            partition = knex.raw(`partition by ??`, [
-                (0, filters_1.buildFullName)(args, query, args.by, false),
-            ]);
-        return query.promise.select(knex.raw(`sum(??)/NULLIF(max(sum(??)::float) over (${partition || ''}), 0)::float4 as ??`, [
+        return query.promise.select(knex.raw(`sum(??)/NULLIF(max(sum(??)::float) over (${partitionBy(args, query, knex)}), 0)::float4 as ??`, [
             (0, filters_1.buildFullName)(args, query, args.a, false),
             (0, filters_1.buildFullName)(args, query, args.a, false),
             alias,
