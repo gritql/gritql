@@ -136,8 +136,6 @@ export const dimensionResolvers = {
   ),
   combine: dimensionWrapper(
     (_, args, query, knex) => {
-      console.log('Combine called')
-
       if (!args.fields || !Array.isArray(args.fields))
         throw "Combine function requires 'fields' argument with a list of fields"
 

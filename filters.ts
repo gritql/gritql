@@ -573,8 +573,6 @@ export function transformFilters(args, query?, knex?) {
 
       const elements = argumentsToObject(arg.value.fields)
 
-      console.log(elements)
-
       return res.concat(
         Object.keys(elements).reduce((accum, k) => {
           const key = buildFullName(args, query, k, false)

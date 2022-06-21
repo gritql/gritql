@@ -234,8 +234,6 @@ export function processSelections(selections, field, query, context) {
     })
 
     field = parseDirective(field, null, 'field')
-
-    console.log(field)
   }
 
   if (field?.arguments) {
