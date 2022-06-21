@@ -3,7 +3,8 @@
         "target": "es2021",
         "esModuleInterop": true,
         "moduleResolution": "node",
-        "module": "CommonJS"
+        "module": "CommonJS",
+        "declaration": true
     },
     "files": ["gql-sql-slicer.ts"]
 }
