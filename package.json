@@ -1,11 +1,11 @@
 {
   "name": "gql-sql-slicer",
   "version": "3.0.0-alpha.4",
-  "main": "gql-sql-slicer.js",
-  "types": "gql-sql-slicer.ts",
+  "types": "dist/index.d.ts",
   "repository": "git@github.com:edjafarov/gql-sql-slicer.git",
   "author": "Eldar Djafarov <djkojb@gmail.com>",
   "license": "MIT",
+  "main": "dist/index.js",
   "scripts": {
     "test": "node ./node_modules/jest/bin/jest.js",
     "test-dev": "node ./node_modules/jest/bin/jest.js --watch",

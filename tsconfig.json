@@ -4,7 +4,8 @@
         "esModuleInterop": true,
         "moduleResolution": "node",
         "module": "CommonJS",
-        "declaration": true
+        "declaration": true,
+        "outDir": "dist"
     },
-    "files": ["gql-sql-slicer.ts"]
+    "files": ["index.ts"]
 }

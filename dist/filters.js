@@ -1,30 +1,10 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
-    __setModuleDefault(result, mod);
-    return result;
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.transformFilters = exports.withFilters = exports.applyRawJoin = exports.applyFilters = exports.parseAdvancedFilters = exports.buildFilter = exports.buildFullName = void 0;
-const _ = __importStar(require("lodash"));
+const lodash_1 = __importDefault(require("lodash"));
 const arguments_1 = require("./arguments");
 const cross_table_1 = require("./cross-table");
 const filterOperators = [
@@ -104,39 +84,39 @@ function getCombineRunner(accum, runner, combiner = 'AND') {
     }
 }
 function buildFilter(query, context, prefix = '') {
-    const ops = _.mapValues(_.keyBy(filterOperators), (op) => `${prefix}${op}`);
-    const isOp = (key) => _.includes(_.values(ops), key);
+    const ops = lodash_1.default.mapValues(lodash_1.default.keyBy(filterOperators), (op) => `${prefix}${op}`);
+    const isOp = (key) => lodash_1.default.includes(lodash_1.default.values(ops), key);
     const getOp = (key) => (isOp(key) ? key : null);
     const sub = (subQuery, op, field, context) => {
         switch (op) {
             case ops.and:
                 return runOrSkip(context, ({ context }) => '(' +
-                    _.reduce(subQuery, (accum, cur) => {
+                    lodash_1.default.reduce(subQuery, (accum, cur) => {
                         return runOrSkip(context, ({ context }) => getCombineRunner(accum, () => buildFilter(cur, context, prefix)), '', accum, cur);
                     }, '') +
                     ')', '', '', subQuery);
             case ops.or:
                 return runOrSkip(context, ({ context }) => '(' +
-                    _.reduce(subQuery, (accum, cur) => {
+                    lodash_1.default.reduce(subQuery, (accum, cur) => {
                         return runOrSkip(context, ({ context }) => getCombineRunner(accum, () => buildFilter(cur, context, prefix), 'OR'), '', accum, '');
                     }, '') +
                     ')', '', '', subQuery);
             case ops.nor:
                 return runOrSkip(context, ({ context }) => 'NOT (' +
-                    _.reduce(subQuery, (accum, cur) => {
+                    lodash_1.default.reduce(subQuery, (accum, cur) => {
                         return runOrSkip(context, ({ context }) => getCombineRunner(accum, () => buildFilter(cur, context, prefix), 'OR'), '', accum, cur);
                     }, '') +
                     ')', '', '', subQuery);
             case ops.in:
-                if (!_.isArray(subQuery)) {
+                if (!lodash_1.default.isArray(subQuery)) {
                     throw 'IN requries array value';
                 }
-                return runDefaultRunner(context, ({ key: k, value: v, context }) => context.knex.raw(`?? IN (${_.map(subQuery, () => '?').join(',')})`, [k, ...v]), field, subQuery);
+                return runDefaultRunner(context, ({ key: k, value: v, context }) => context.knex.raw(`?? IN (${lodash_1.default.map(subQuery, () => '?').join(',')})`, [k, ...v]), field, subQuery);
             case ops.nin:
-                if (!_.isArray(subQuery)) {
+                if (!lodash_1.default.isArray(subQuery)) {
                     throw 'NIN requries array value';
                 }
-                return runDefaultRunner(context, ({ key: k, value: v, context }) => context.knex.raw(`?? NOT IN(${_.map(subQuery, () => '?').join(',')})`, [k, ...v]), field, subQuery);
+                return runDefaultRunner(context, ({ key: k, value: v, context }) => context.knex.raw(`?? NOT IN(${lodash_1.default.map(subQuery, () => '?').join(',')})`, [k, ...v]), field, subQuery);
             case ops.eq:
                 return runDefaultRunner(context, '=', field, subQuery);
             case ops.gt:
@@ -154,14 +134,14 @@ function buildFilter(query, context, prefix = '') {
             case ops.regex:
                 return runDefaultRunner(context, 'LIKE', field, subQuery);
             case ops.search:
-                if (_.isObject(subQuery)) {
-                    if (_.every(subQuery, isOp)) {
+                if (lodash_1.default.isObject(subQuery)) {
+                    if (lodash_1.default.every(subQuery, isOp)) {
                         throw 'At least one property of search must be related to field';
                     }
                     if (!context.query.providers[context.query.provider].keywords.includes('TO_TSVECTOR')) {
                         throw new Error(`Full text search is not supported by ${context.query.provider} provider`);
                     }
-                    return _.reduce(subQuery, (accum, v, k) => {
+                    return lodash_1.default.reduce(subQuery, (accum, v, k) => {
                         if (isOp(k)) {
                             return runOrSkip(context, ({ context }) => getCombineRunner(accum, () => sub(v, getOp(k), field, { ...context })), k, accum, v);
                         }
@@ -185,8 +165,8 @@ function buildFilter(query, context, prefix = '') {
                     throw 'Search filter requires object value';
                 }
             default:
-                return _.isObject(subQuery)
-                    ? _.reduce(subQuery, (accum, v, k) => {
+                return lodash_1.default.isObject(subQuery)
+                    ? lodash_1.default.reduce(subQuery, (accum, v, k) => {
                         return runOrSkip(context, ({ context }) => getCombineRunner(accum, () => sub(v, getOp(k), field, { ...context })), k, accum, v);
                     }, '')
                     : field
@@ -194,7 +174,7 @@ function buildFilter(query, context, prefix = '') {
                         : subQuery;
         }
     };
-    return _.reduce(query, (accum, subQuery, key) => {
+    return lodash_1.default.reduce(query, (accum, subQuery, key) => {
         const field = isOp(key) ? null : key;
         const op = isOp(key) ? key : null;
         return runOrSkip(context, ({ context }) => getCombineRunner(accum, () => sub(subQuery, op, field, { ...context })), key, accum, subQuery);
@@ -207,7 +187,7 @@ function parseAdvancedFilters(query, knex, filters, onlyInherited, from) {
         having: '',
     };
     if (filters) {
-        let where = _.omit(filters, ['having']);
+        let where = lodash_1.default.omit(filters, ['having']);
         if (from) {
             where = { ...where, from };
         }
