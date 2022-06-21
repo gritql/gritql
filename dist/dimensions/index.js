@@ -95,7 +95,6 @@ exports.dimensionResolvers = {
         each: types_1.PropTypes.number,
     }, ['CAST', 'FLOOR', 'CEIL', 'GROUP BY']),
     combine: (0, wrapper_1.dimensionWrapper)((_, args, query, knex) => {
-        console.log('Combine called');
         if (!args.fields || !Array.isArray(args.fields))
             throw "Combine function requires 'fields' argument with a list of fields";
         args.fields.forEach((field) => {

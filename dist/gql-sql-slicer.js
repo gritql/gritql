@@ -298,7 +298,6 @@ const merge = (tree, data, metricResolversData) => {
             originFullObject = fullObject;
         }
         return quer.reduce((result, q) => {
-            console.log(q);
             const resultData = data[q.bid];
             for (var j = 0; j < resultData.length; j++) {
                 const keys = Object.keys(resultData[j]);

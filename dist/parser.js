@@ -195,7 +195,6 @@ function processSelections(selections, field, query, context) {
             return directive;
         });
         field = (0, directives_1.parseDirective)(field, null, 'field');
-        console.log(field);
     }
     if (field?.arguments) {
         field.arguments = processArguments(field.arguments, context);

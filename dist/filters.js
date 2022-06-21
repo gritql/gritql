@@ -298,7 +298,6 @@ function transformFilters(args, query, knex) {
                 throw new Error(`Full text search is not supported by ${query.provider} provider`);
             }
             const elements = (0, arguments_1.argumentsToObject)(arg.value.fields);
-            console.log(elements);
             return res.concat(Object.keys(elements).reduce((accum, k) => {
                 const key = buildFullName(args, query, k, false);
                 const v = elements[k];
