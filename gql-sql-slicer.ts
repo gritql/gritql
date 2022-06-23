@@ -572,6 +572,18 @@ function getMergeStrings(
     query.hashContext = hashContext
   }
 
+  if (
+    [
+      'EnumTypeDefinition',
+      'UnionTypeDefinition',
+      'InputObjectTypeDefinition',
+      'ObjectTypeDefinition',
+      'FragmentDefinition',
+    ].includes(tree?.kind)
+  ) {
+    return queries
+  }
+
   if (Array.isArray(tree)) {
     return tree.reduce(
       (queries, t, i) =>

@@ -404,6 +404,15 @@ function getMergeStrings(tree, queries = [], idx = undefined, metricResolversDat
     if (query) {
         query.hashContext = hashContext;
     }
+    if ([
+        'EnumTypeDefinition',
+        'UnionTypeDefinition',
+        'InputObjectTypeDefinition',
+        'ObjectTypeDefinition',
+        'FragmentDefinition',
+    ].includes(tree?.kind)) {
+        return queries;
+    }
     if (Array.isArray(tree)) {
         return tree.reduce((queries, t, i) => getMergeStrings(t, queries, queries.length - 1, metricResolversData), queries);
     }
