@@ -12,6 +12,14 @@ export function argumentsToObject(args) {
   }
 }
 
+export function transformLinkedArgs(args, query) {
+  if (args?.from === '@') {
+    args.from = query.table
+  }
+
+  return args
+}
+
 function parseValue(value) {
   if (value.kind === 'ObjectValue') {
     return value.fields.reduce(

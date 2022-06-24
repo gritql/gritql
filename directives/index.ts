@@ -45,6 +45,9 @@ const resolvers = {
   lte: (a: any, b: any) => {
     return a <= b
   },
+  neq: (a: any, b: any) => {
+    return a != b
+  },
 }
 
 function findResolvers(keys, value, args, name?: string) {
@@ -66,8 +69,100 @@ function filterPropertyKey(keys, key) {
 }
 
 export const preExecutedDirectives = {
-  // include: (context: PreExecutedContext) => {},
-  // skip: (context: PreExecutedContext) => {},
+  // if: Boolean to compare
+  // Skips metric/dimension when 'if' argument is false
+  include: (context: PreExecutedContext) => {
+    if (context.caller?.data?.value !== undefined) {
+      if (!context.caller.data.value) {
+        return null
+      } else {
+        return context.caller
+      }
+    }
+
+    if (!context.tree.arguments) {
+      throw new Error(
+        'Include directive requires arguments or result of previous directive',
+      )
+    }
+
+    const args = argumentsToObject(context.tree.arguments)
+
+    if (args.if === undefined) {
+      throw new Error('Include directive requires `if` argument')
+    }
+
+    if (args.if) {
+      return context.caller
+    } else {
+      return null
+    }
+  },
+  // if: Boolean to compare
+  // Skips metric/dimension when 'if' argument is true
+  skip: (context: PreExecutedContext) => {
+    if (context.caller?.data?.value !== undefined) {
+      if (context.caller.data.value) {
+        return null
+      } else {
+        return context.caller
+      }
+    }
+
+    if (!context.tree.arguments) {
+      throw new Error(
+        'Skip directive requires arguments or result of previous directive',
+      )
+    }
+
+    const args = argumentsToObject(context.tree.arguments)
+
+    if (args.if === undefined) {
+      throw new Error('Skip directive requires `if` argument')
+    }
+
+    if (!args.if) {
+      return context.caller
+    } else {
+      return null
+    }
+  },
+  compare: (context: PreExecutedContext) => {
+    if (!context.tree.arguments) {
+      throw new Error('Compare directive requires arguments')
+    }
+
+    let { value, ...rest } = argumentsToObject(context.tree.arguments)
+
+    value = value ?? context.caller?.data?.value
+
+    if (value === undefined) {
+      throw new Error(
+        'Compare directive requires `value` argument or result of previous directive',
+      )
+    }
+
+    if (Object.keys(rest).length === 0) {
+      throw new Error(
+        'Compare directive requires at least one argument ([`eq`, `in`, `neq`, `lt`, `gt`, `lte`, `gte`]) to compare with value',
+      )
+    }
+
+    value = Object.keys(rest).reduce((value, key) => {
+      if (resolvers[key] && value !== false) {
+        return resolvers[key](value, rest[key])
+      } else {
+        throw new Error(`Can't find resolver for '${key}'`)
+      }
+    }, value)
+
+    context.caller.data = {
+      ...context.caller.data,
+      value,
+    }
+
+    return context.caller
+  },
 }
 
 export const postExecutedDirectives = {
@@ -114,11 +209,11 @@ export const postExecutedDirectives = {
         return {
           value:
             value /
-            progressiveGet(
-              originFullObject[args.by],
-              replacedPath,
-              getBatchContext(batches, args.by),
-            ) -
+              progressiveGet(
+                originFullObject[args.by],
+                replacedPath,
+                getBatchContext(batches, args.by),
+              ) -
             1,
         }
       } else {
@@ -433,11 +528,11 @@ export const postExecutedDirectives = {
         return {
           replacers: !isNotFirstTime
             ? {
-              ...currentData,
-              ...currentGroupData,
-              [key]: newValue,
-              ...args.replacers,
-            }
+                ...currentData,
+                ...currentGroupData,
+                [key]: newValue,
+                ...args.replacers,
+              }
             : null,
           path: newPath,
           value: newValue,
@@ -462,11 +557,15 @@ export function parseDirective(
   on: string,
   path?: string,
 ) {
-  if (!query.directives) query.directives = []
+  if (query && !query.directives) query.directives = []
 
   if (tree.directives) {
-    tree.directives.forEach((directive) => {
-      if (postExecutedDirectives[directive.name.value]) {
+    return tree.directives.reduce((tree, directive, i) => {
+      if (!directive) {
+        return tree
+      }
+
+      if (query && postExecutedDirectives[directive.name.value]) {
         query.directives.push(
           postExecutedDirectives[directive.name.value]({
             tree: directive,
@@ -479,12 +578,19 @@ export function parseDirective(
             name: tree.alias?.value || tree.name?.value,
           }),
         )
+      } else if (preExecutedDirectives[directive.name.value]) {
+        tree = preExecutedDirectives[directive.name.value]({
+          tree: directive,
+          caller: tree,
+          query,
+          data: {},
+          type: directive.name.value,
+          on,
+        })
       }
 
-      if (preExecutedDirectives[directive.name.value]) {
-        // TODO: support of pre executed directives
-      }
-    })
+      return tree
+    }, tree)
   }
 
   return tree

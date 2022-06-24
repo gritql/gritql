@@ -1,100 +1,7 @@
-import * as _ from 'lodash'
+import _ from 'lodash'
 import { argumentsToObject } from './arguments'
-
-export type Model = { [key: string]: unknown }
-
-export type Filter = {
-  [Property in Join<NestedPaths<Model>, '.'>]?: Condition<
-    PropertyType<Model, Property>
-  >
-} & RootFilterOperators
-
-export type Join<T extends unknown[], D extends string> = T extends []
-  ? ''
-  : T extends [string | number]
-  ? `${T[0]}`
-  : T extends [string | number, ...infer R]
-  ? `${T[0]}${D}${Join<R, D>}`
-  : string
-
-export type NestedPaths<Type> = Type extends string | number | boolean
-  ? []
-  : Type extends ReadonlyArray<infer ArrayType>
-  ? [number, ...NestedPaths<ArrayType>]
-  : Type extends Map<string, any>
-  ? [string]
-  : Type extends object
-  ? {
-      [Key in Extract<keyof Type, string>]: [Key, ...NestedPaths<Type[Key]>]
-    }[Extract<keyof Type, string>]
-  : []
-
-export type PropertyType<
-  Type,
-  Property extends string,
-> = string extends Property
-  ? unknown
-  : Property extends keyof Type
-  ? Type[Property]
-  : Property extends `${number}`
-  ? Type extends ReadonlyArray<infer ArrayType>
-    ? ArrayType
-    : unknown
-  : Property extends `${infer Key}.${infer Rest}`
-  ? Key extends `${number}`
-    ? Type extends ReadonlyArray<infer ArrayType>
-      ? PropertyType<ArrayType, Rest>
-      : unknown
-    : Key extends keyof Type
-    ? Type[Key] extends Map<string, infer MapType>
-      ? MapType
-      : PropertyType<Type[Key], Rest>
-    : unknown
-  : unknown
-
-export interface RootFilterOperators extends Model {
-  and?: Filter[]
-  nor?: Filter[]
-  or?: Filter[]
-  not?: Filter[]
-  search?: Filter & {
-    language?: string
-    // caseSensitive?: boolean
-    // diacriticSensitive?: boolean
-  }
-}
-
-export type EnhancedOmit<TRecordOrUnion, KeyUnion> =
-  string extends keyof TRecordOrUnion
-    ? TRecordOrUnion
-    : TRecordOrUnion extends any
-    ? Pick<TRecordOrUnion, Exclude<keyof TRecordOrUnion, KeyUnion>>
-    : never
-
-export type Condition<T> =
-  | AlternativeType<T>
-  | FilterOperators<AlternativeType<T>>
-
-export type AlternativeType<T> = T extends ReadonlyArray<infer U>
-  ? T | RegExpOrString<U>
-  : RegExpOrString<T>
-
-export type RegExpOrString<T> = T extends string ? RegExp | T : T
-
-export interface FilterOperators<TValue = unknown> extends Model {
-  eq?: TValue
-  gt?: TValue
-  gte?: TValue
-  in?: ReadonlyArray<TValue>
-  lt?: TValue
-  lte?: TValue
-  ne?: TValue
-  nin?: ReadonlyArray<TValue>
-  regex?: TValue
-  from?: string
-  inherited?: boolean
-}
-
+import { changeQueryTable, join, JoinType } from './cross-table'
+import { Filter, FilterOperators, RootFilterOperators } from './filter'
 export interface BuilderContext<T = string | number | boolean> {
   query: any
   knex: any
@@ -389,6 +296,16 @@ export function buildFilter(
             throw 'At least one property of search must be related to field'
           }
 
+          if (
+            !context.query.providers[context.query.provider].keywords.includes(
+              'TO_TSVECTOR',
+            )
+          ) {
+            throw new Error(
+              `Full text search is not supported by ${context.query.provider} provider`,
+            )
+          }
+
           return _.reduce(
             subQuery,
             (accum, v, k) => {
@@ -589,4 +506,149 @@ export function applyRawJoin(
     })}`,
     [from],
   ))
+}
+
+export function withFilters(filters) {
+  return (knexPipe, knex) => {
+    return filters.reduce((knexNext, filter, i) => {
+      const selector =
+        filter[1] === 'in' ? 'whereIn' : i === 0 ? 'where' : 'andWhere'
+      return knexNext[selector].apply(
+        knexNext,
+        filter[1] === 'in'
+          ? filter.filter((a) => a !== 'in')
+          : filter[1] === 'search'
+          ? [
+              knex.raw(
+                `to_tsvector('simple', ??) @@ (plainto_tsquery('simple', ?)::text || ':*')::tsquery`,
+                [filter[0], filter[2]],
+              ),
+            ]
+          : filter,
+      )
+    }, knexPipe)
+  }
+}
+
+export function transformFilters(args, query?, knex?) {
+  return args.reduce((res, arg) => {
+    if (arg.name.value === 'from') {
+      return res
+    }
+
+    // We need to ensure that we are not in join context
+    if (!!knex) {
+      if (arg.name.value === 'table') {
+        changeQueryTable(query, knex, arg.value.value, false)
+        return res
+      }
+
+      if (arg.name.value === 'filters') {
+        query.advancedFilters = argumentsToObject(arg.value.fields)
+        query.preparedAdvancedFilters = parseAdvancedFilters(
+          query,
+          knex,
+          query.advancedFilters,
+          true,
+        )
+        return res
+      }
+    }
+
+    if (Object.values(JoinType).includes(arg.name.value)) {
+      if (query && knex) {
+        join(arg.name.value)(arg.value, query, knex)
+        return res
+      } else {
+        throw "Join can't be called inside of join"
+      }
+    }
+
+    if (arg.name.value === 'search') {
+      if (!query.providers[query.provider].keywords.includes('TO_TSVECTOR')) {
+        throw new Error(
+          `Full text search is not supported by ${query.provider} provider`,
+        )
+      }
+
+      const elements = argumentsToObject(arg.value.fields)
+
+      return res.concat(
+        Object.keys(elements).reduce((accum, k) => {
+          const key = buildFullName(args, query, k, false)
+          const v = elements[k]
+
+          if (query.search?.[key]) {
+            throw `Search for ${key} already defined`
+          }
+
+          query.search = {
+            ...query.search,
+            [key]: query.search?.[key] || v,
+          }
+
+          accum.push([key, 'search', v])
+
+          return accum
+        }, []),
+      )
+    }
+
+    if (arg.name.value.endsWith('_gt'))
+      return res.concat([
+        [
+          buildFullName(args, query, arg.name.value.replace('_gt', ''), false),
+          '>',
+          arg.value.value,
+        ],
+      ])
+    if (arg.name.value.endsWith('_gte'))
+      return res.concat([
+        [
+          buildFullName(args, query, arg.name.value.replace('_gte', ''), false),
+          '>=',
+          arg.value.value,
+        ],
+      ])
+    if (arg.name.value.endsWith('_lt'))
+      return res.concat([
+        [
+          buildFullName(args, query, arg.name.value.replace('_lt', ''), false),
+          '<',
+          arg.value.value,
+        ],
+      ])
+    if (arg.name.value.endsWith('_lte'))
+      return res.concat([
+        [
+          buildFullName(args, query, arg.name.value.replace('_lte', ''), false),
+          '<=',
+          arg.value.value,
+        ],
+      ])
+    if (arg.name.value.endsWith('_like'))
+      return res.concat([
+        [
+          buildFullName(
+            args,
+            query,
+            arg.name.value.replace('_like', ''),
+            false,
+          ),
+          'LIKE',
+          arg.value.value,
+        ],
+      ])
+    if (arg.name.value.endsWith('_in'))
+      return res.concat([
+        [
+          buildFullName(args, query, arg.name.value.replace('_in', ''), false),
+          'in',
+          arg.value.value.split('|'),
+        ],
+      ])
+    return res.concat([
+      [buildFullName(args, query, arg.name.value, false), '=', arg.value.value],
+    ])
+  }, [])
 }
