@@ -9,6 +9,7 @@ import { parseDimension } from '../parser'
 import { combineQuery } from '../query-combiner'
 import { PropTypes } from '../types'
 import { dimensionWrapper } from './wrapper'
+import type { DocumentNode } from 'graphql'
 
 export const dimensionResolvers = {
   groupBy: dimensionWrapper(

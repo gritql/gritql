@@ -4,6 +4,7 @@ import { changeQueryTable, join, JoinType } from '../cross-table'
 import { applyFilters, buildFullName, withFilters } from '../filters'
 import { PropTypes } from '../types'
 import { metricWrapper } from './wrapper'
+import type { DocumentNode } from 'graphql'
 
 export const partitionByTypes = {
   by: PropTypes.string,
