@@ -312,7 +312,7 @@ export const gqlToDb = (opts: any = { client: 'pg' }) => {
       })
       if (!preparedGqlQuery) return null
       const resultFromDb = await dbHandler(preparedGqlQuery)
-      if (!resultFromDb) return null;
+      if (!resultFromDb) return null
       afterDbHandler(definitions, resultFromDb)
       return await merge(definitions, resultFromDb, {
         ...metricResolversData,
@@ -1211,8 +1211,8 @@ export const merge = (
                     result = progressiveSet(
                       result,
                       replacedPath.slice(0, replacedPath.lastIndexOf('.')) +
-                      '.' +
-                      k,
+                        '.' +
+                        k,
                       directiveResult.replacers[k],
                       false,
                       q.hashContext,
@@ -1343,14 +1343,10 @@ function getMergeStrings(
   queries = [],
   idx = undefined,
   metricResolversData,
-  hashContext = {}
+  hashContext = {},
 ) {
-  if (!!~idx && idx !== undefined && !queries[idx])
+  if (idx !== undefined && !!~idx && !queries[idx])
     queries[idx] = { idx, name: undefined }
-  const query = queries[idx]
-  if (query) {
-    query.hashContext = hashContext
-  }
 
   if (Array.isArray(tree)) {
     return tree.reduce(
@@ -1376,9 +1372,15 @@ function getMergeStrings(
         t,
         queries,
         queries.length - 1,
-        metricResolversData
+        metricResolversData,
+        !t.alias ? hashContext : {},
       )
     }, queries)
+  }
+
+  const query = queries[idx]
+  if (query) {
+    query.hashContext = hashContext
   }
 
   if (tree.name.value === 'with') {
@@ -1444,16 +1446,18 @@ function mergeMetric(tree, query, metricResolversData) {
   const args = argumentsToObject(tree.arguments)
   if (args?.type === 'Array') {
     query.path += `${!!query.path ? '.' : ''}[@${name}=:${name}]`
-    query.metrics[`${isInGetters ? fieldName : name}`] = `${query.path}${!!query.path ? '.' : ''
-      }${name}`
+    query.metrics[`${isInGetters ? fieldName : name}`] = `${query.path}${
+      !!query.path ? '.' : ''
+    }${name}`
     return parseDirective(tree, query, 'metric', query.metrics[`${name}`])
   } else {
     if (!!query.mutation)
       return metricResolversData[query.mutationFunction](tree, query)
     if (tree.alias && metricResolversData[tree.name?.value])
       return metricResolversData[tree.name?.value](tree, query)
-    query.metrics[`${isInGetters ? fieldName : name}`] = `${query.path}${!!query.path ? '.' : ''
-      }${name}`
+    query.metrics[`${isInGetters ? fieldName : name}`] = `${query.path}${
+      !!query.path ? '.' : ''
+    }${name}`
     return parseDirective(tree, query, 'metric', query.metrics[`${name}`])
   }
 }
@@ -1476,8 +1480,9 @@ function mergeDimension(tree, query) {
     : tree.alias?.value || tree.name.value
   if (args?.type === 'Array') {
     if (!!args?.cutoff) {
-      query.cutoff = `${query.path}${!!query.path ? '.' : ''
-        }[@${name}=:${name}]`
+      query.cutoff = `${query.path}${
+        !!query.path ? '.' : ''
+      }[@${name}=:${name}]`
     }
 
     const names: string[] = []
@@ -1574,7 +1579,10 @@ const metricResolversData = {
   subtract: (tree, query) => {
     const name = `${tree.name?.value}`
     if (!query.subtract) query.subtract = {}
-    if (query.path.startsWith(':subtract') || query.path.startsWith(':subtract.'))
+    if (
+      query.path.startsWith(':subtract') ||
+      query.path.startsWith(':subtract.')
+    )
       query.path = query.path.replace(/:subtract\.?/, '')
 
     query.subtract[`${query.path}${!!query.path ? '.' : ''}${name}`] = ({
@@ -1582,9 +1590,7 @@ const metricResolversData = {
       replacedPath,
       fullObject,
     }) => {
-      return (
-        value - progressiveGet(fullObject[query.filters.by], replacedPath)
-      )
+      return value - progressiveGet(fullObject[query.filters.by], replacedPath)
     }
   },
   divideBy: (tree, query) => {
@@ -1624,13 +1630,13 @@ function withFilters(filters) {
         filter[1] === 'in'
           ? filter.filter((a) => a !== 'in')
           : filter[1] === 'search'
-            ? [
+          ? [
               knexNext.raw(
                 `to_tsvector('simple', ??) @@ (plainto_tsquery('simple', ?)::text || ':*')::tsquery)`,
                 [filter[0], filter[2]],
               ),
             ]
-            : filter,
+          : filter,
       )
     }, knexPipe)
   }
