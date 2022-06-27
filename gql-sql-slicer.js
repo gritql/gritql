@@ -1080,12 +1080,8 @@ function getMergeStrings(tree, queries, idx, metricResolversData, hashContext) {
     if (queries === void 0) { queries = []; }
     if (idx === void 0) { idx = undefined; }
     if (hashContext === void 0) { hashContext = {}; }
-    if (!!~idx && idx !== undefined && !queries[idx])
+    if (idx !== undefined && !!~idx && !queries[idx])
         queries[idx] = { idx: idx, name: undefined };
-    var query = queries[idx];
-    if (query) {
-        query.hashContext = hashContext;
-    }
     if (Array.isArray(tree)) {
         return tree.reduce(function (queries, t, i) {
             return getMergeStrings(t, queries, queries.length - 1, metricResolversData);
@@ -1105,8 +1101,12 @@ function getMergeStrings(tree, queries, idx, metricResolversData, hashContext) {
             else {
                 queries.push({ idx: queries.length, name: undefined });
             }
-            return getMergeStrings(t, queries, queries.length - 1, metricResolversData);
+            return getMergeStrings(t, queries, queries.length - 1, metricResolversData, !t.alias ? hashContext : {});
         }, queries);
+    }
+    var query = queries[idx];
+    if (query) {
+        query.hashContext = hashContext;
     }
     if (tree.name.value === 'with') {
         query.skipBatching = true;
@@ -1145,7 +1145,7 @@ function getMergeStrings(tree, queries, idx, metricResolversData, hashContext) {
                 queries[newIdx] = __assign(__assign({}, queries[idx]), { metrics: {} });
                 queries[newIdx].path = query.path + '';
                 queries[newIdx].idx = newIdx;
-                return getMergeStrings(t, queries, newIdx, metricResolversData, hashContext);
+                return getMergeStrings(t, queries, newIdx, metricResolversData);
             }
             return getMergeStrings(t, queries, idx, metricResolversData, hashContext);
         }, queries);
@@ -1285,11 +1285,12 @@ var metricResolversData = {
         var name = "" + ((_a = tree.name) === null || _a === void 0 ? void 0 : _a.value);
         if (!query.subtract)
             query.subtract = {};
-        if (query.path.startsWith(':subtract') || query.path.startsWith(':subtract.'))
+        if (query.path.startsWith(':subtract') ||
+            query.path.startsWith(':subtract.'))
             query.path = query.path.replace(/:subtract\.?/, '');
         query.subtract["" + query.path + (!!query.path ? '.' : '') + name] = function (_a) {
             var value = _a.value, replacedPath = _a.replacedPath, fullObject = _a.fullObject;
-            return (value - progressive_1.progressiveGet(fullObject[query.filters.by], replacedPath));
+            return value - progressive_1.progressiveGet(fullObject[query.filters.by], replacedPath);
         };
     },
     divideBy: function (tree, query) {
