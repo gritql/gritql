@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.parseDirective = exports.postExecutedDirectives = exports.preExecutedDirectives = void 0;
 const arguments_1 = require("../arguments");
 const progressive_1 = require("../progressive");
+const luxon_1 = require("luxon");
 const resolvers = {
     in: (a, b) => {
         return b.includes(a);
@@ -386,7 +387,81 @@ exports.postExecutedDirectives = {
         transfomer.context = context;
         return transfomer;
     },
-    // groupBy: (context: PostExecutedContext) => {}
+    groupBy: (context) => {
+        if (!context.tree.arguments) {
+            throw 'GroupBy directive requires arguments';
+        }
+        const args = (0, arguments_1.argumentsToObject)(context.tree.arguments);
+        context.data.checked = {};
+        if (!args.by) {
+            throw "GroupBy directive requires 'by' argument";
+        }
+        const targetKey = context.caller.alias?.value || context.caller.name.value;
+        const transfomer = ({ row, path, data, value, key, globalReplacedPath, originFullObject, batches, result, q, }) => {
+            if (!originFullObject) {
+                return {};
+            }
+            const currentData = (0, progressive_1.progressiveGet)(Object.keys(batches).length > 1 || context.query.name
+                ? originFullObject[context.query.name]
+                : originFullObject, globalReplacedPath, q.hashContext);
+            const isNotFirstTime = !!context.data.checked[row];
+            const transfomeredKey = !isNotFirstTime
+                ? luxon_1.DateTime.fromISO(data[targetKey]).startOf(args.by).toISODate()
+                : context.data.checked[row];
+            context.data.checked[row] = transfomeredKey;
+            const newPath = (0, progressive_1.replVars)(path, { ...data, [targetKey]: transfomeredKey });
+            const currentGroupData = (0, progressive_1.progressiveGet)(result, newPath.replace(new RegExp(`\\.${key}$`), ''), q.hashContext);
+            const newValue = typeof currentGroupData?.[key] === 'number'
+                ? currentGroupData?.[key] + value
+                : value;
+            return {
+                replacers: !isNotFirstTime
+                    ? {
+                        ...currentData,
+                        ...currentGroupData,
+                        [targetKey]: transfomeredKey,
+                        [key]: newValue,
+                    }
+                    : null,
+                path: newPath,
+                value: newValue,
+                skip: !isNotFirstTime,
+            };
+        };
+        transfomer.context = context;
+        return transfomer;
+    },
+    // Arguments
+    // by: Query name
+    // byField: second field name
+    divide: (context) => {
+        if (!context.tree.arguments) {
+            throw 'Diff directive requires arguments';
+        }
+        const args = (0, arguments_1.argumentsToObject)(context.tree.arguments);
+        if (!(args.by || args.byField)) {
+            throw "Diff directive requires 'by' or 'byField' argument";
+        }
+        const transformer = ({ replacedPath, originFullObject, value, key, batches, }) => {
+            if (originFullObject) {
+                return {
+                    value: value /
+                        (0, progressive_1.progressiveGet)(originFullObject[args.by
+                            ? args.by
+                            : Object.keys(batches).length > 1 || context.query.name
+                                ? originFullObject[context.query.name]
+                                : originFullObject], args.byField
+                            ? replacedPath.replace(new RegExp(`\\.${key}$`), args.byField)
+                            : replacedPath, (0, progressive_1.getBatchContext)(batches, args.by ? args.by : context.query.name)),
+                };
+            }
+            else {
+                return { value };
+            }
+        };
+        transformer.context = context;
+        return transformer;
+    },
 };
 function parseDirective(tree, query, on, path) {
     if (query && !query.directives)
@@ -395,6 +470,16 @@ function parseDirective(tree, query, on, path) {
         return tree.directives.reduce((tree, directive, i) => {
             if (!directive) {
                 return tree;
+            }
+            if (exports.preExecutedDirectives[directive.name.value]) {
+                tree = exports.preExecutedDirectives[directive.name.value]({
+                    tree: directive,
+                    caller: tree,
+                    query,
+                    data: {},
+                    type: directive.name.value,
+                    on,
+                });
             }
             if (query && exports.postExecutedDirectives[directive.name.value]) {
                 query.directives.push(exports.postExecutedDirectives[directive.name.value]({
@@ -407,16 +492,6 @@ function parseDirective(tree, query, on, path) {
                     on,
                     name: tree.alias?.value || tree.name?.value,
                 }));
-            }
-            else if (exports.preExecutedDirectives[directive.name.value]) {
-                tree = exports.preExecutedDirectives[directive.name.value]({
-                    tree: directive,
-                    caller: tree,
-                    query,
-                    data: {},
-                    type: directive.name.value,
-                    on,
-                });
             }
             return tree;
         }, tree);

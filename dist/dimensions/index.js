@@ -12,7 +12,7 @@ exports.dimensionResolvers = {
         if (args.from !== query.table) {
             query.preparedAdvancedFilters = (0, filters_1.parseAdvancedFilters)(query, knex, query.advancedFilters, true);
         }
-        const pre_trunc = (0, filters_1.applyFilters)(query, (0, filters_1.withFilters)(query.filters)(knex
+        const pre_trunc = (0, filters_1.applyFilters)(query, (0, filters_1.withFilters)(query, query.filters)(knex
             .select([
             '*',
             knex.raw(`date_trunc(?, ??) as ??`, [
@@ -56,7 +56,7 @@ exports.dimensionResolvers = {
         ]),
         from: types_1.PropTypes.string,
         alias: types_1.PropTypes.string,
-    }, ['DATE_TRUNC', 'GROUP BY']),
+    }, ['DATE_TRUNC', 'GROUP BY'], 'knex'),
     groupByEach: (0, wrapper_1.dimensionWrapper)((alias, args, query, knex) => {
         const amount = parseFloat(args.each);
         query.getters = query.getters || [];
@@ -93,7 +93,7 @@ exports.dimensionResolvers = {
         field: types_1.PropTypes.string.isRequired,
         from: types_1.PropTypes.string,
         each: types_1.PropTypes.number,
-    }, ['CAST', 'FLOOR', 'CEIL', 'GROUP BY']),
+    }, ['CAST', 'FLOOR', 'CEIL', 'GROUP BY'], 'knex'),
     combine: (0, wrapper_1.dimensionWrapper)((_, args, query, knex) => {
         if (!args.fields || !Array.isArray(args.fields))
             throw "Combine function requires 'fields' argument with a list of fields";
@@ -141,15 +141,20 @@ exports.dimensionResolvers = {
                 resolver: types_1.PropTypes.string,
             }),
         ])).isRequired,
-    }, ['GROUP BY']),
+    }, [], 'knex'),
     default: (0, wrapper_1.dimensionWrapper)((alias, args, query, knex, { tree }) => {
-        const fullName = (0, filters_1.buildFullName)(args, query, tree.name.value, false);
-        return query.promise
-            .select(alias ? knex.raw(`?? AS ??`, [fullName, alias]) : fullName)
-            .groupBy(fullName);
+        if (query.provider !== 'ga') {
+            const fullName = (0, filters_1.buildFullName)(args, query, tree.name.value, false);
+            return query.promise
+                .select(alias ? knex.raw(`?? AS ??`, [fullName, alias]) : fullName)
+                .groupBy(fullName);
+        }
+        else {
+            return query.promise;
+        }
     }, {
         from: types_1.PropTypes.string,
-    }, ['GROUP BY']),
+    }, []),
     join: (0, cross_table_1.join)(cross_table_1.JoinType.DEFAULT, cross_table_1.Kind.DIMENSION),
     leftJoin: (0, cross_table_1.join)(cross_table_1.JoinType.LEFT, cross_table_1.Kind.DIMENSION),
     rightJoin: (0, cross_table_1.join)(cross_table_1.JoinType.RIGHT, cross_table_1.Kind.DIMENSION),

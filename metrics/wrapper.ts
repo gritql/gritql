@@ -23,6 +23,7 @@ export const metricWrapper = <T = ValidationMap<any>>(
   ) => void,
   properties?: T,
   keywords?: string[],
+  builder?: string,
 ) => {
   return (tree: DocumentNode, query, knex: Knex) => {
     const { metrics = [] } = query
@@ -37,6 +38,14 @@ export const metricWrapper = <T = ValidationMap<any>>(
       throw new Error(
         `${query.provider} provider doesn't support ${tree.name.value} metric`,
       )
+    }
+
+    if (builder) {
+      if (query.providers[query.provider].queryBuilder !== builder) {
+        throw new Error(
+          `${query.provider} provider doesn't support ${tree.name.value} metric`,
+        )
+      }
     }
 
     let args: InferProps<T> & InferProps<typeof defaultPropTypes> =
@@ -80,13 +89,24 @@ export const metricWrapper = <T = ValidationMap<any>>(
 
     query = combineQuery(query, clonedQuery)
 
-    if (args?.sort == 'desc' || args?.sort == 'asc')
-      query.promise.orderBy(
-        buildFullName(args, query, tree.name.value),
-        args.sort,
-      )
-    if (args?.limit) query.promise.limit(args.limit)
-    if (args?.offset) query.promise.offset(args.offset)
+    if (query.providers[query.provider].queryBuilder === 'knex') {
+      if (args?.sort == 'desc' || args?.sort == 'asc')
+        query.promise.orderBy(
+          buildFullName(args, query, tree.name.value),
+          args.sort,
+        )
+      if (args?.limit) query.promise.limit(args.limit)
+      if (args?.offset) query.promise.offset(args.offset)
+    } else {
+      if (args?.sort === 'desc')
+        query.orderBys = (query.orderBys || []).concat(
+          `-${tree.alias?.value || tree.name.value}`,
+        )
+      if (args?.sort === 'asc')
+        query.orderBys = (query.orderBys || []).concat(
+          tree.alias?.value || tree.name.value,
+        )
+    }
 
     // Getters are needed only for additionaly selected fields by some specific functions
     // example: price(groupByEach: 50) -> price: 0-50 -> groupByEach_min_price: 0 -> groupByEach_max_price: 50

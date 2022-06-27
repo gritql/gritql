@@ -1867,5 +1867,117 @@ describe('SQL', () => {
         expect(result).toMatchSnapshot()
       })
     })
+
+    test('@divide directive on deep path', () => {
+      const tables = [
+        [
+          {
+            channels: 'Social',
+            value: 1,
+            country: 'DE',
+            rank: 2,
+          },
+          {
+            channels: 'Organic',
+            value: 3,
+            country: 'DE',
+            rank: 2,
+          },
+        ],
+        [
+          {
+            channels: 'Social',
+            value: 2,
+            country: 'DE',
+            rank: 1,
+          },
+          {
+            channels: 'Organic',
+            value: 5,
+            country: 'US',
+            rank: 2,
+          },
+        ],
+      ]
+      const querier = gqlToDb().dbFetch(({ sql }) => {
+        expect(sql).toMatchSnapshot()
+        return tables
+      })
+      querier(`query ecom_benchmarking {
+
+      series: fetch(category:"Adult", country:"DE") {
+              channels(type: Array) {
+                  country(type: Array) {
+                    value: sum(a: sessions) @divide(by: prevSeries)
+                    rank
+                  }
+              }
+      }
+      prevSeries: fetch(category:"Adult", country:"DE") {
+            channels(type: Array) {
+              country(type: Array) {
+                value: sum(a: sessions) @divide(by: prevSeries)
+                rank
+              }
+            }
+       }
+    }`).then((result) => {
+        expect(result).toMatchSnapshot()
+      })
+    })
+
+    test('@groupBy directive', () => {
+      const tables = [
+        [
+          {
+            value: 1,
+            rank: 2,
+            date: '2022-06-27T10:43:24.088Z',
+          },
+          {
+            value: 3,
+            rank: 2,
+            date: '2022-06-27T10:43:20.088Z',
+          },
+          {
+            value: 3,
+            rank: 2,
+            date: '2022-06-19T10:43:24.088Z',
+          },
+        ],
+        [
+          {
+            value: 2,
+            date: '2022-06-27T10:43:24.088Z',
+            rank: 1,
+          },
+          {
+            value: 5,
+            date: '2022-06-19T10:43:24.088Z',
+            rank: 2,
+          },
+        ],
+      ]
+      const querier = gqlToDb().dbFetch(({ sql }) => {
+        expect(sql).toMatchSnapshot()
+        return tables
+      })
+      querier(`query ecom_benchmarking {
+      series: fetch {
+                  date(type: Array) @groupBy(by: week) {
+                    value: sum(a:sessions)
+                    rank
+                  }
+      }
+      prevSeries: fetch {
+              date(type: Array) @groupBy(by: day) {
+                value: sum(a:sessions)
+                rank
+              } 
+       }
+    }`).then((result) => {
+        expect(result).toMatchSnapshot()
+      })
+    })
   })
 })

@@ -104,6 +104,7 @@ export function join(type: JoinType, kind = Kind.METRIC) {
         'ON',
       ]),
     ),
+    'knex',
   )
 }
 

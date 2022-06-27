@@ -149,6 +149,62 @@ Object {
 }
 `;
 
+exports[`SQL gql directives @divide directive on deep path 1`] = `
+Array [
+  "select \\"channels\\", \\"country\\", sum(\\"sessions\\") as \\"value\\", \\"rank\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Adult' and \\"ecom_benchmarking\\".\\"country\\" = 'DE' group by \\"channels\\", \\"country\\"",
+  "select \\"channels\\", \\"country\\", sum(\\"sessions\\") as \\"value\\", \\"rank\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Adult' and \\"ecom_benchmarking\\".\\"country\\" = 'DE' group by \\"channels\\", \\"country\\"",
+]
+`;
+
+exports[`SQL gql directives @divide directive on deep path 2`] = `
+Object {
+  "prevSeries": Array [
+    Object {
+      "channels": "Social",
+      "country": Array [
+        Object {
+          "country": "DE",
+          "rank": 1,
+          "value": 1,
+        },
+      ],
+    },
+    Object {
+      "channels": "Organic",
+      "country": Array [
+        Object {
+          "country": "US",
+          "rank": 2,
+          "value": 1,
+        },
+      ],
+    },
+  ],
+  "series": Array [
+    Object {
+      "channels": "Social",
+      "country": Array [
+        Object {
+          "country": "DE",
+          "rank": 2,
+          "value": 0.5,
+        },
+      ],
+    },
+    Object {
+      "channels": "Organic",
+      "country": Array [
+        Object {
+          "country": "DE",
+          "rank": 2,
+          "value": NaN,
+        },
+      ],
+    },
+  ],
+}
+`;
+
 exports[`SQL gql directives @filter directive 1`] = `
 Array [
   "select \\"channels\\", sum(\\"sessions\\") as \\"value\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Adult' and \\"ecom_benchmarking\\".\\"country\\" = 'DE' group by \\"channels\\"",
@@ -194,6 +250,42 @@ Object {
       "rank": 1,
     },
   },
+}
+`;
+
+exports[`SQL gql directives @groupBy directive 1`] = `
+Array [
+  "select \\"date\\", sum(\\"sessions\\") as \\"value\\", \\"rank\\" from \\"ecom_benchmarking\\" group by \\"date\\"",
+  "select \\"date\\", sum(\\"sessions\\") as \\"value\\", \\"rank\\" from \\"ecom_benchmarking\\" group by \\"date\\"",
+]
+`;
+
+exports[`SQL gql directives @groupBy directive 2`] = `
+Object {
+  "prevSeries": Array [
+    Object {
+      "date": "2022-06-27",
+      "rank": 2,
+      "value": 2,
+    },
+    Object {
+      "date": "2022-06-19",
+      "rank": 4,
+      "value": 5,
+    },
+  ],
+  "series": Array [
+    Object {
+      "date": "2022-06-27",
+      "rank": 6,
+      "value": 4,
+    },
+    Object {
+      "date": "2022-06-13",
+      "rank": 4,
+      "value": 3,
+    },
+  ],
 }
 `;
 

@@ -2,9 +2,10 @@ import _ from 'lodash'
 import { argumentsToObject } from './arguments'
 import { changeQueryTable, join, JoinType } from './cross-table'
 import { Filter, FilterOperators, RootFilterOperators } from './filter'
+import { disableArgumentFor } from './providers'
 export interface BuilderContext<T = string | number | boolean> {
   query: any
-  knex: any
+  builder: any
   onlyInherited?: boolean
   from?: string
   inherited?: boolean
@@ -69,7 +70,7 @@ function runDefaultRunner(
     context,
     typeof operator === 'string'
       ? ({ key, value, isField, context }) =>
-          context.knex.raw(`?? ${operator} ${isField ? '??' : '?'}`, [
+          context.builder.raw(`?? ${operator} ${isField ? '??' : '?'}`, [
             key,
             value,
           ])
@@ -236,7 +237,7 @@ export function buildFilter(
         return runDefaultRunner(
           context,
           ({ key: k, value: v, context }) =>
-            context.knex.raw(
+            context.builder.raw(
               `?? IN (${_.map(subQuery, () => '?').join(',')})`,
               [k, ...v],
             ),
@@ -252,7 +253,7 @@ export function buildFilter(
         return runDefaultRunner(
           context,
           ({ key: k, value: v, context }) =>
-            context.knex.raw(
+            context.builder.raw(
               `?? NOT IN(${_.map(subQuery, () => '?').join(',')})`,
               [k, ...v],
             ),
@@ -343,7 +344,7 @@ export function buildFilter(
                 [key]: context.query.search?.[key] || value,
               }
 
-              const tsQuery = context.knex.raw(
+              const tsQuery = context.builder.raw(
                 `to_tsvector('simple', ??) @@ (plainto_tsquery('simple', ${
                   value?.isField ? '??' : '?'
                 })::text || ':*')::tsquery`,
@@ -410,7 +411,7 @@ export function buildFilter(
 
 export function parseAdvancedFilters(
   query,
-  knex,
+  builder,
   filters: Filter & { having?: Filter },
   onlyInherited?: boolean,
   from?: string,
@@ -429,7 +430,7 @@ export function parseAdvancedFilters(
 
     result.where = buildFilter(where, {
       query,
-      knex,
+      builder,
       onlyInherited,
       valueTransformer(context, k, v) {
         return v
@@ -445,7 +446,7 @@ export function parseAdvancedFilters(
 
       result.having = buildFilter(having, {
         query,
-        knex,
+        builder,
         onlyInherited,
         valueTransformer(context, k, v) {
           return v
@@ -457,21 +458,21 @@ export function parseAdvancedFilters(
   return result
 }
 
-export function applyFilters(query, knexPipe, knex) {
+export function applyFilters(query, queryPromise, builder) {
   if (query.preparedAdvancedFilters?.where) {
-    knexPipe.where(knex.raw(query.preparedAdvancedFilters.where))
+    queryPromise.where(builder.raw(query.preparedAdvancedFilters.where))
   }
 
   if (query.preparedAdvancedFilters?.having) {
-    knexPipe.having(knex.raw(query.preparedAdvancedFilters.having))
+    queryPromise.having(builder.raw(query.preparedAdvancedFilters.having))
   }
 
-  return knexPipe
+  return queryPromise
 }
 
 export function applyRawJoin(
   query,
-  knex,
+  builder,
   joinType: string,
   from: string,
   on: Filter,
@@ -485,7 +486,7 @@ export function applyRawJoin(
       .join(' ')
       .toUpperCase()} ?? ON ${buildFilter(on, {
       query,
-      knex,
+      builder,
       from,
       ignoreFrom: true,
       valueTransformer(context, k, v) {
@@ -508,46 +509,55 @@ export function applyRawJoin(
   ))
 }
 
-export function withFilters(filters) {
-  return (knexPipe, knex) => {
-    return filters.reduce((knexNext, filter, i) => {
+export function getDefaultFiltersResolver(filters) {
+  return (queryPromise, builder) => {
+    return filters.reduce((queryPromise, filter, i) => {
       const selector =
         filter[1] === 'in' ? 'whereIn' : i === 0 ? 'where' : 'andWhere'
-      return knexNext[selector].apply(
-        knexNext,
+      return queryPromise[selector].apply(
+        queryPromise,
         filter[1] === 'in'
           ? filter.filter((a) => a !== 'in')
           : filter[1] === 'search'
           ? [
-              knex.raw(
+              builder.raw(
                 `to_tsvector('simple', ??) @@ (plainto_tsquery('simple', ?)::text || ':*')::tsquery`,
                 [filter[0], filter[2]],
               ),
             ]
           : filter,
       )
-    }, knexPipe)
+    }, queryPromise)
   }
 }
 
-export function transformFilters(args, query?, knex?) {
+export function withFilters(query, filters) {
+  return (
+    query.providers[query.provider]?.getFiltersResolver?.(filters) ||
+    getDefaultFiltersResolver(filters)
+  )
+}
+
+export function transformFilters(args, query?, builder?) {
   return args.reduce((res, arg) => {
     if (arg.name.value === 'from') {
       return res
     }
 
     // We need to ensure that we are not in join context
-    if (!!knex) {
+    if (!!builder) {
       if (arg.name.value === 'table') {
-        changeQueryTable(query, knex, arg.value.value, false)
+        disableArgumentFor(query, 'table', 'ga')
+        changeQueryTable(query, builder, arg.value.value, false)
         return res
       }
 
       if (arg.name.value === 'filters') {
+        disableArgumentFor(query, 'filters', 'ga')
         query.advancedFilters = argumentsToObject(arg.value.fields)
         query.preparedAdvancedFilters = parseAdvancedFilters(
           query,
-          knex,
+          builder,
           query.advancedFilters,
           true,
         )
@@ -556,8 +566,9 @@ export function transformFilters(args, query?, knex?) {
     }
 
     if (Object.values(JoinType).includes(arg.name.value)) {
-      if (query && knex) {
-        join(arg.name.value)(arg.value, query, knex)
+      disableArgumentFor(query, arg.name.value, 'ga')
+      if (query && builder) {
+        join(arg.name.value)(arg.value, query, builder)
         return res
       } else {
         throw "Join can't be called inside of join"

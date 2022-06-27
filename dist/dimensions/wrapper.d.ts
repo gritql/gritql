@@ -22,5 +22,5 @@ export declare const dimensionWrapper: <T = ValidationMap<any>>(dimension: (alia
     type: any;
 }, "type" | "offset" | "limit" | "sort_desc" | "sort_asc">>>, query: any, knex: Knex, extras: {
     tree: DocumentNode;
-}) => void, properties?: T, keywords?: string[]) => (tree: DocumentNode, query: any, knex: Knex) => any;
+}) => void, properties?: T, keywords?: string[], builder?: string) => (tree: DocumentNode, query: any, knex: Knex) => any;
 export {};

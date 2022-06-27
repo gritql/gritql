@@ -3,10 +3,11 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.transformFilters = exports.withFilters = exports.applyRawJoin = exports.applyFilters = exports.parseAdvancedFilters = exports.buildFilter = exports.buildFullName = void 0;
+exports.transformFilters = exports.withFilters = exports.getDefaultFiltersResolver = exports.applyRawJoin = exports.applyFilters = exports.parseAdvancedFilters = exports.buildFilter = exports.buildFullName = void 0;
 const lodash_1 = __importDefault(require("lodash"));
 const arguments_1 = require("./arguments");
 const cross_table_1 = require("./cross-table");
+const providers_1 = require("./providers");
 const filterOperators = [
     'and',
     'eq',
@@ -38,7 +39,7 @@ function buildFullName(args, query, field, evaluateOnlyWithLinkSymbol = true) {
 exports.buildFullName = buildFullName;
 function runDefaultRunner(context, operator, field, subQuery) {
     return runOrSkip(context, typeof operator === 'string'
-        ? ({ key, value, isField, context }) => context.knex.raw(`?? ${operator} ${isField ? '??' : '?'}`, [
+        ? ({ key, value, isField, context }) => context.builder.raw(`?? ${operator} ${isField ? '??' : '?'}`, [
             key,
             value,
         ])
@@ -111,12 +112,12 @@ function buildFilter(query, context, prefix = '') {
                 if (!lodash_1.default.isArray(subQuery)) {
                     throw 'IN requries array value';
                 }
-                return runDefaultRunner(context, ({ key: k, value: v, context }) => context.knex.raw(`?? IN (${lodash_1.default.map(subQuery, () => '?').join(',')})`, [k, ...v]), field, subQuery);
+                return runDefaultRunner(context, ({ key: k, value: v, context }) => context.builder.raw(`?? IN (${lodash_1.default.map(subQuery, () => '?').join(',')})`, [k, ...v]), field, subQuery);
             case ops.nin:
                 if (!lodash_1.default.isArray(subQuery)) {
                     throw 'NIN requries array value';
                 }
-                return runDefaultRunner(context, ({ key: k, value: v, context }) => context.knex.raw(`?? NOT IN(${lodash_1.default.map(subQuery, () => '?').join(',')})`, [k, ...v]), field, subQuery);
+                return runDefaultRunner(context, ({ key: k, value: v, context }) => context.builder.raw(`?? NOT IN(${lodash_1.default.map(subQuery, () => '?').join(',')})`, [k, ...v]), field, subQuery);
             case ops.eq:
                 return runDefaultRunner(context, '=', field, subQuery);
             case ops.gt:
@@ -157,7 +158,7 @@ function buildFilter(query, context, prefix = '') {
                             ...context.query.search,
                             [key]: context.query.search?.[key] || value,
                         };
-                        const tsQuery = context.knex.raw(`to_tsvector('simple', ??) @@ (plainto_tsquery('simple', ${value?.isField ? '??' : '?'})::text || ':*')::tsquery`, [key, transformedValue]);
+                        const tsQuery = context.builder.raw(`to_tsvector('simple', ??) @@ (plainto_tsquery('simple', ${value?.isField ? '??' : '?'})::text || ':*')::tsquery`, [key, transformedValue]);
                         return runOrSkip(context, () => (accum ? `${accum} AND ${tsQuery}` : tsQuery), key, accum, value);
                     }, '');
                 }
@@ -181,7 +182,7 @@ function buildFilter(query, context, prefix = '') {
     }, '');
 }
 exports.buildFilter = buildFilter;
-function parseAdvancedFilters(query, knex, filters, onlyInherited, from) {
+function parseAdvancedFilters(query, builder, filters, onlyInherited, from) {
     const result = {
         where: '',
         having: '',
@@ -193,7 +194,7 @@ function parseAdvancedFilters(query, knex, filters, onlyInherited, from) {
         }
         result.where = buildFilter(where, {
             query,
-            knex,
+            builder,
             onlyInherited,
             valueTransformer(context, k, v) {
                 return v;
@@ -206,7 +207,7 @@ function parseAdvancedFilters(query, knex, filters, onlyInherited, from) {
             }
             result.having = buildFilter(having, {
                 query,
-                knex,
+                builder,
                 onlyInherited,
                 valueTransformer(context, k, v) {
                     return v;
@@ -217,17 +218,17 @@ function parseAdvancedFilters(query, knex, filters, onlyInherited, from) {
     return result;
 }
 exports.parseAdvancedFilters = parseAdvancedFilters;
-function applyFilters(query, knexPipe, knex) {
+function applyFilters(query, queryPromise, builder) {
     if (query.preparedAdvancedFilters?.where) {
-        knexPipe.where(knex.raw(query.preparedAdvancedFilters.where));
+        queryPromise.where(builder.raw(query.preparedAdvancedFilters.where));
     }
     if (query.preparedAdvancedFilters?.having) {
-        knexPipe.having(knex.raw(query.preparedAdvancedFilters.having));
+        queryPromise.having(builder.raw(query.preparedAdvancedFilters.having));
     }
-    return knexPipe;
+    return queryPromise;
 }
 exports.applyFilters = applyFilters;
-function applyRawJoin(query, knex, joinType, from, on) {
+function applyRawJoin(query, builder, joinType, from, on) {
     query.joins = query.joins || [];
     query.joins.push(from);
     return (query.promise = query.promise.joinRaw(`${joinType
@@ -235,7 +236,7 @@ function applyRawJoin(query, knex, joinType, from, on) {
         .join(' ')
         .toUpperCase()} ?? ON ${buildFilter(on, {
         query,
-        knex,
+        builder,
         from,
         ignoreFrom: true,
         valueTransformer(context, k, v) {
@@ -252,41 +253,49 @@ function applyRawJoin(query, knex, joinType, from, on) {
     })}`, [from]));
 }
 exports.applyRawJoin = applyRawJoin;
-function withFilters(filters) {
-    return (knexPipe, knex) => {
-        return filters.reduce((knexNext, filter, i) => {
+function getDefaultFiltersResolver(filters) {
+    return (queryPromise, builder) => {
+        return filters.reduce((queryPromise, filter, i) => {
             const selector = filter[1] === 'in' ? 'whereIn' : i === 0 ? 'where' : 'andWhere';
-            return knexNext[selector].apply(knexNext, filter[1] === 'in'
+            return queryPromise[selector].apply(queryPromise, filter[1] === 'in'
                 ? filter.filter((a) => a !== 'in')
                 : filter[1] === 'search'
                     ? [
-                        knex.raw(`to_tsvector('simple', ??) @@ (plainto_tsquery('simple', ?)::text || ':*')::tsquery`, [filter[0], filter[2]]),
+                        builder.raw(`to_tsvector('simple', ??) @@ (plainto_tsquery('simple', ?)::text || ':*')::tsquery`, [filter[0], filter[2]]),
                     ]
                     : filter);
-        }, knexPipe);
+        }, queryPromise);
     };
 }
+exports.getDefaultFiltersResolver = getDefaultFiltersResolver;
+function withFilters(query, filters) {
+    return (query.providers[query.provider]?.getFiltersResolver?.(filters) ||
+        getDefaultFiltersResolver(filters));
+}
 exports.withFilters = withFilters;
-function transformFilters(args, query, knex) {
+function transformFilters(args, query, builder) {
     return args.reduce((res, arg) => {
         if (arg.name.value === 'from') {
             return res;
         }
         // We need to ensure that we are not in join context
-        if (!!knex) {
+        if (!!builder) {
             if (arg.name.value === 'table') {
-                (0, cross_table_1.changeQueryTable)(query, knex, arg.value.value, false);
+                (0, providers_1.disableArgumentFor)(query, 'table', 'ga');
+                (0, cross_table_1.changeQueryTable)(query, builder, arg.value.value, false);
                 return res;
             }
             if (arg.name.value === 'filters') {
+                (0, providers_1.disableArgumentFor)(query, 'filters', 'ga');
                 query.advancedFilters = (0, arguments_1.argumentsToObject)(arg.value.fields);
-                query.preparedAdvancedFilters = parseAdvancedFilters(query, knex, query.advancedFilters, true);
+                query.preparedAdvancedFilters = parseAdvancedFilters(query, builder, query.advancedFilters, true);
                 return res;
             }
         }
         if (Object.values(cross_table_1.JoinType).includes(arg.name.value)) {
-            if (query && knex) {
-                (0, cross_table_1.join)(arg.name.value)(arg.value, query, knex);
+            (0, providers_1.disableArgumentFor)(query, arg.name.value, 'ga');
+            if (query && builder) {
+                (0, cross_table_1.join)(arg.name.value)(arg.value, query, builder);
                 return res;
             }
             else {

@@ -24,7 +24,7 @@ export const dimensionResolvers = {
 
       const pre_trunc = applyFilters(
         query,
-        withFilters(query.filters)(
+        withFilters(query, query.filters)(
           knex
             .select([
               '*',
@@ -80,6 +80,7 @@ export const dimensionResolvers = {
       alias: PropTypes.string,
     },
     ['DATE_TRUNC', 'GROUP BY'],
+    'knex',
   ),
   groupByEach: dimensionWrapper(
     (alias, args, query, knex) => {
@@ -133,6 +134,7 @@ export const dimensionResolvers = {
       each: PropTypes.number,
     },
     ['CAST', 'FLOOR', 'CEIL', 'GROUP BY'],
+    'knex',
   ),
   combine: dimensionWrapper(
     (_, args, query, knex) => {
@@ -199,20 +201,25 @@ export const dimensionResolvers = {
         ]),
       ).isRequired,
     },
-    ['GROUP BY'],
+    [],
+    'knex',
   ),
   default: dimensionWrapper(
     (alias, args, query, knex, { tree }) => {
-      const fullName = buildFullName(args, query, tree.name.value, false)
+      if (query.provider !== 'ga') {
+        const fullName = buildFullName(args, query, tree.name.value, false)
 
-      return query.promise
-        .select(alias ? knex.raw(`?? AS ??`, [fullName, alias]) : fullName)
-        .groupBy(fullName)
+        return query.promise
+          .select(alias ? knex.raw(`?? AS ??`, [fullName, alias]) : fullName)
+          .groupBy(fullName)
+      } else {
+        return query.promise
+      }
     },
     {
       from: PropTypes.string,
     },
-    ['GROUP BY'],
+    [],
   ),
   join: join(JoinType.DEFAULT, Kind.DIMENSION),
   leftJoin: join(JoinType.LEFT, Kind.DIMENSION),

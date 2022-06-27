@@ -31,7 +31,7 @@ exports.metricResolvers = {
         a: types_1.PropTypes.string.isRequired,
         factor: types_1.PropTypes.number,
         from: types_1.PropTypes.string,
-    }, ['PERCENTILE_CONT', 'WITHIN GROUP']),
+    }, ['PERCENTILE_CONT', 'WITHIN GROUP'], 'knex'),
     median: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
         return query.promise.select(knex.raw(`MEDIAN(??) OVER (${partitionBy(args, query, knex)}) AS ??`, [
             args.a,
@@ -41,25 +41,25 @@ exports.metricResolvers = {
         from: types_1.PropTypes.string,
         a: types_1.PropTypes.string.isRequired,
         by: types_1.PropTypes.string,
-    }, ['MEDIAN', 'PARTITION BY', 'ORDER BY']),
+    }, ['MEDIAN', 'PARTITION BY', 'ORDER BY'], 'knex'),
     sum: (0, wrapper_1.metricWrapper)((alias, args, query) => {
         return query.promise.sum(`${(0, filters_1.buildFullName)(args, query, args.a, false)} as ${alias}`);
     }, {
         a: types_1.PropTypes.string,
         from: types_1.PropTypes.string,
-    }, ['SUM']),
+    }, ['SUM'], 'knex'),
     min: (0, wrapper_1.metricWrapper)((alias, args, query) => {
         return query.promise.min(`${(0, filters_1.buildFullName)(args, query, args.a, false)} as ${alias}`);
     }, {
         a: types_1.PropTypes.string.isRequired,
         from: types_1.PropTypes.string,
-    }, ['MIN']),
+    }, ['MIN'], 'knex'),
     max: (0, wrapper_1.metricWrapper)((alias, args, query) => {
         return query.promise.max(`${(0, filters_1.buildFullName)(args, query, args.a, false)} as ${alias}`);
     }, {
         a: types_1.PropTypes.string.isRequired,
         from: types_1.PropTypes.string,
-    }, ['MAX']),
+    }, ['MAX'], 'knex'),
     count: (0, wrapper_1.metricWrapper)((alias, args, query) => {
         return query.promise.count(args.a
             ? `${(0, filters_1.buildFullName)(args, query, args.a, false)} as ${alias}`
@@ -67,13 +67,13 @@ exports.metricResolvers = {
     }, {
         a: types_1.PropTypes.string,
         from: types_1.PropTypes.string,
-    }, ['COUNT']),
+    }, ['COUNT'], 'knex'),
     countDistinct: (0, wrapper_1.metricWrapper)((alias, args, query) => {
         return query.promise.countDistinct(`${(0, filters_1.buildFullName)(args, query, args.a, false)} as ${alias}`);
     }, {
         a: types_1.PropTypes.string.isRequired,
         from: types_1.PropTypes.string,
-    }, ['COUNT', 'DISTINCT']),
+    }, ['COUNT', 'DISTINCT'], 'knex'),
     join: (0, cross_table_1.join)(cross_table_1.JoinType.DEFAULT),
     leftJoin: (0, cross_table_1.join)(cross_table_1.JoinType.LEFT),
     rightJoin: (0, cross_table_1.join)(cross_table_1.JoinType.RIGHT),
@@ -93,7 +93,7 @@ exports.metricResolvers = {
         else if (args.alg === 'rowNumber') {
             alg = 'ROW_NUMBER';
         }
-        const promise = (0, filters_1.applyFilters)(query, (0, filters_1.withFilters)(query.filters)(knex
+        const promise = (0, filters_1.applyFilters)(query, (0, filters_1.withFilters)(query, query.filters)(knex
             .select('*')
             .select(knex.raw(`${alg}() over (${partitionBy(args, query, knex)} ORDER BY ?? desc) as ??`, [(0, filters_1.buildFullName)(args, query, args.a, false), alias]))
             .from(query.table || args.from), knex), knex);
@@ -110,13 +110,13 @@ exports.metricResolvers = {
         alg: types_1.PropTypes.oneOf(['denseRank', 'rank', 'rowNumber']),
         from: types_1.PropTypes.string,
         tableAlias: types_1.PropTypes.string,
-    }, ['DENSE_RANK', 'RANK', 'ROW_NUMBER', 'OVER', 'PARTITION BY']),
+    }, ['DENSE_RANK', 'RANK', 'ROW_NUMBER', 'OVER', 'PARTITION BY'], 'knex'),
     searchRanking: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
         const key = (0, filters_1.buildFullName)({ from: args.from || query.table }, query, args.a, false);
         if (!query.search[key])
             throw `SearchRanking requires search query for ${key} field`;
         return query.promise.select(knex.raw("ts_rank(to_tsvector('simple', ??), (plainto_tsquery('simple', ?)::text || ':*')::tsquery) as ??", [key, query.search[key], alias]));
-    }, { a: types_1.PropTypes.string.isRequired, from: types_1.PropTypes.string }, ['PLAINTO_TSQUERY', 'TO_TSVECTOR', 'TS_RANK']),
+    }, { a: types_1.PropTypes.string.isRequired, from: types_1.PropTypes.string }, ['PLAINTO_TSQUERY', 'TO_TSVECTOR', 'TS_RANK'], 'knex'),
     searchHeadline: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
         const key = (0, filters_1.buildFullName)({ from: args.from || query.table }, query, args.a, false);
         if (!query.search[key])
@@ -125,28 +125,28 @@ exports.metricResolvers = {
     }, {
         a: types_1.PropTypes.string.isRequired,
         from: types_1.PropTypes.string,
-    }, ['PLAINTO_TSQUERY', 'TS_HEADLINE']),
+    }, ['PLAINTO_TSQUERY', 'TS_HEADLINE'], 'knex'),
     unique: (0, wrapper_1.metricWrapper)((alias, args, query) => {
         const field = (0, filters_1.buildFullName)(args, query, args?.a || alias, false);
         return query.promise.select(`${field} as ${alias}`).groupBy(field);
     }, {
         a: types_1.PropTypes.string,
         from: types_1.PropTypes.string,
-    }, ['GROUP BY']),
+    }, ['GROUP BY'], 'knex'),
     from: (0, wrapper_1.metricWrapper)((alias, args, query) => {
         const field = (0, filters_1.buildFullName)(args, query, args?.a || alias, false);
         return query.promise.select(`${field} as ${alias}`);
     }, {
         a: types_1.PropTypes.string,
         from: types_1.PropTypes.string.isRequired,
-    }, []),
+    }, [], 'knex'),
     avg: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
         return query.promise.select(knex.raw(`avg(??) over (${partitionBy(args, query, knex)})::float4 as ??`, [(0, filters_1.buildFullName)(args, query, args.a, false), alias]));
     }, {
         a: types_1.PropTypes.string.isRequired,
         by: types_1.PropTypes.string,
         from: types_1.PropTypes.string,
-    }, ['AVG', 'PARTITION BY']),
+    }, ['AVG', 'PARTITION BY'], 'knex'),
     avgPerDimension: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
         return query.promise.select(knex.raw(`sum(??)::float/COUNT(DISTINCT ??)::float4 as ??`, [
             (0, filters_1.buildFullName)(args, query, args.a, false),
@@ -157,7 +157,7 @@ exports.metricResolvers = {
         a: types_1.PropTypes.string.isRequired,
         per: types_1.PropTypes.string.isRequired,
         from: types_1.PropTypes.string,
-    }, ['SUM', 'COUNT', 'DISTINCT']),
+    }, ['SUM', 'COUNT', 'DISTINCT'], 'knex'),
     share: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
         return query.promise.select(knex.raw(`sum(??)/NULLIF(sum(sum(??)) over (${partitionBy(args, query, knex)}), 0)::float4 as ??`, [
             (0, filters_1.buildFullName)(args, query, args.a, false),
@@ -168,7 +168,7 @@ exports.metricResolvers = {
         a: types_1.PropTypes.string.isRequired,
         by: types_1.PropTypes.string,
         from: types_1.PropTypes.string,
-    }, ['SUM', 'NULLIF', 'OVER', 'PARTITION BY']),
+    }, ['SUM', 'NULLIF', 'OVER', 'PARTITION BY'], 'knex'),
     indexed: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
         return query.promise.select(knex.raw(`sum(??)/NULLIF(max(sum(??)::float) over (${partitionBy(args, query, knex)}), 0)::float4 as ??`, [
             (0, filters_1.buildFullName)(args, query, args.a, false),
@@ -179,7 +179,7 @@ exports.metricResolvers = {
         a: types_1.PropTypes.string.isRequired,
         by: types_1.PropTypes.string,
         from: types_1.PropTypes.string,
-    }, ['MAX', 'SUM', 'NULLIF', 'OVER', 'PARTITION BY']),
+    }, ['MAX', 'SUM', 'NULLIF', 'OVER', 'PARTITION BY'], 'knex'),
     divide: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
         const functions = Object.keys(args).reduce((r, k) => {
             const fns = args[k].split('|');
@@ -200,7 +200,7 @@ exports.metricResolvers = {
         a: types_1.PropTypes.string.isRequired,
         by: types_1.PropTypes.string.isRequired,
         from: types_1.PropTypes.string,
-    }, ['CAST', 'NULLIF']),
+    }, ['CAST', 'NULLIF'], 'knex'),
     aggrAverage: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
         let internal = query.promise
             .select((0, filters_1.buildFullName)(args, query, alias, false))
@@ -225,7 +225,7 @@ exports.metricResolvers = {
         to: types_1.PropTypes.string.isRequired,
         by: types_1.PropTypes.string.isRequired,
         from: types_1.PropTypes.string,
-    }, ['SUM', 'MAX', 'GROUP BY']),
+    }, ['SUM', 'MAX', 'GROUP BY'], 'knex'),
     weightAvg: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
         let internal = query.promise
             .select((0, filters_1.buildFullName)(args, query, args.a, false))
@@ -248,23 +248,30 @@ exports.metricResolvers = {
         a: types_1.PropTypes.string.isRequired,
         by: types_1.PropTypes.string.isRequired,
         from: types_1.PropTypes.string,
-    }, ['SUM', 'GROUP BY']),
+    }, ['SUM', 'GROUP BY'], 'knex'),
     distinct: (0, wrapper_1.metricWrapper)((alias, args, query) => {
         return query.promise.distinct((0, filters_1.buildFullName)(args, query, alias, false));
     }, {
         from: types_1.PropTypes.string,
-    }, ['DISTINCT']),
+    }, ['DISTINCT'], 'knex'),
     default: (0, wrapper_1.metricWrapper)((alias, args, query, _, { tree }) => {
         // Getters are needed only for additionaly selected fields by some specific functions
         // example: price(groupByEach: 50) -> price: 0-50 -> groupByEach_min_price: 0 -> groupByEach_max_price: 50
         // would be useful for further grouping && filtering
         const isInGetters = query.getters?.find((name) => name === tree.name.value);
         if (!isInGetters) {
-            if (!alias) {
-                return query.promise.select(`${(0, filters_1.buildFullName)(args, query, tree.name.value)}`);
+            if (query.provider === 'ga') {
+                if (alias) {
+                    throw new Error('Aliases for metrics are not supported by GA provider');
+                }
             }
             else {
-                return query.promise.select(`${(0, filters_1.buildFullName)(args, query, tree.name.value)} as ${alias}`);
+                if (!alias) {
+                    return query.promise.select(`${(0, filters_1.buildFullName)(args, query, tree.name.value)}`);
+                }
+                else {
+                    return query.promise.select(`${(0, filters_1.buildFullName)(args, query, tree.name.value)} as ${alias}`);
+                }
             }
         }
         return query.promise;

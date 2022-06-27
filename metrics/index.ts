@@ -43,6 +43,7 @@ export const metricResolvers = {
       from: PropTypes.string,
     },
     ['PERCENTILE_CONT', 'WITHIN GROUP'],
+    'knex',
   ),
   median: metricWrapper(
     (alias, args, query, knex) => {
@@ -59,6 +60,7 @@ export const metricResolvers = {
       by: PropTypes.string,
     },
     ['MEDIAN', 'PARTITION BY', 'ORDER BY'],
+    'knex',
   ),
   sum: metricWrapper(
     (alias, args, query) => {
@@ -71,6 +73,7 @@ export const metricResolvers = {
       from: PropTypes.string,
     },
     ['SUM'],
+    'knex',
   ),
   min: metricWrapper(
     (alias, args, query) => {
@@ -83,6 +86,7 @@ export const metricResolvers = {
       from: PropTypes.string,
     },
     ['MIN'],
+    'knex',
   ),
   max: metricWrapper(
     (alias, args, query) => {
@@ -95,6 +99,7 @@ export const metricResolvers = {
       from: PropTypes.string,
     },
     ['MAX'],
+    'knex',
   ),
   count: metricWrapper(
     (alias, args, query) => {
@@ -109,6 +114,7 @@ export const metricResolvers = {
       from: PropTypes.string,
     },
     ['COUNT'],
+    'knex',
   ),
   countDistinct: metricWrapper(
     (alias, args, query) => {
@@ -121,6 +127,7 @@ export const metricResolvers = {
       from: PropTypes.string,
     },
     ['COUNT', 'DISTINCT'],
+    'knex',
   ),
   join: join(JoinType.DEFAULT),
   leftJoin: join(JoinType.LEFT),
@@ -144,7 +151,7 @@ export const metricResolvers = {
 
       const promise = applyFilters(
         query,
-        withFilters(query.filters)(
+        withFilters(query, query.filters)(
           knex
             .select('*')
             .select(
@@ -183,6 +190,7 @@ export const metricResolvers = {
       tableAlias: PropTypes.string,
     },
     ['DENSE_RANK', 'RANK', 'ROW_NUMBER', 'OVER', 'PARTITION BY'],
+    'knex',
   ),
   searchRanking: metricWrapper(
     (alias, args, query, knex) => {
@@ -205,6 +213,7 @@ export const metricResolvers = {
     },
     { a: PropTypes.string.isRequired, from: PropTypes.string },
     ['PLAINTO_TSQUERY', 'TO_TSVECTOR', 'TS_RANK'],
+    'knex',
   ),
   searchHeadline: metricWrapper(
     (alias, args, query, knex) => {
@@ -230,6 +239,7 @@ export const metricResolvers = {
       from: PropTypes.string,
     },
     ['PLAINTO_TSQUERY', 'TS_HEADLINE'],
+    'knex',
   ),
   unique: metricWrapper(
     (alias, args, query) => {
@@ -242,6 +252,7 @@ export const metricResolvers = {
       from: PropTypes.string,
     },
     ['GROUP BY'],
+    'knex',
   ),
   from: metricWrapper(
     (alias, args, query) => {
@@ -254,6 +265,7 @@ export const metricResolvers = {
       from: PropTypes.string.isRequired,
     },
     [],
+    'knex',
   ),
   avg: metricWrapper(
     (alias, args, query, knex) => {
@@ -270,6 +282,7 @@ export const metricResolvers = {
       from: PropTypes.string,
     },
     ['AVG', 'PARTITION BY'],
+    'knex',
   ),
   avgPerDimension: metricWrapper(
     (alias, args, query, knex) => {
@@ -287,6 +300,7 @@ export const metricResolvers = {
       from: PropTypes.string,
     },
     ['SUM', 'COUNT', 'DISTINCT'],
+    'knex',
   ),
   share: metricWrapper(
     (alias, args, query, knex) => {
@@ -311,6 +325,7 @@ export const metricResolvers = {
       from: PropTypes.string,
     },
     ['SUM', 'NULLIF', 'OVER', 'PARTITION BY'],
+    'knex',
   ),
   indexed: metricWrapper(
     (alias, args, query, knex) => {
@@ -335,6 +350,7 @@ export const metricResolvers = {
       from: PropTypes.string,
     },
     ['MAX', 'SUM', 'NULLIF', 'OVER', 'PARTITION BY'],
+    'knex',
   ),
   divide: metricWrapper(
     (alias, args, query, knex) => {
@@ -369,6 +385,7 @@ export const metricResolvers = {
       from: PropTypes.string,
     },
     ['CAST', 'NULLIF'],
+    'knex',
   ),
   aggrAverage: metricWrapper(
     (alias, args, query, knex) => {
@@ -410,6 +427,7 @@ export const metricResolvers = {
       from: PropTypes.string,
     },
     ['SUM', 'MAX', 'GROUP BY'],
+    'knex',
   ),
   weightAvg: metricWrapper(
     (alias, args, query, knex) => {
@@ -443,6 +461,7 @@ export const metricResolvers = {
       from: PropTypes.string,
     },
     ['SUM', 'GROUP BY'],
+    'knex',
   ),
   distinct: metricWrapper(
     (alias, args, query) => {
@@ -452,6 +471,7 @@ export const metricResolvers = {
       from: PropTypes.string,
     },
     ['DISTINCT'],
+    'knex',
   ),
   default: metricWrapper((alias, args, query, _, { tree }) => {
     // Getters are needed only for additionaly selected fields by some specific functions
@@ -459,14 +479,22 @@ export const metricResolvers = {
     // would be useful for further grouping && filtering
     const isInGetters = query.getters?.find((name) => name === tree.name.value)
     if (!isInGetters) {
-      if (!alias) {
-        return query.promise.select(
-          `${buildFullName(args, query, tree.name.value)}`,
-        )
+      if (query.provider === 'ga') {
+        if (alias) {
+          throw new Error(
+            'Aliases for metrics are not supported by GA provider',
+          )
+        }
       } else {
-        return query.promise.select(
-          `${buildFullName(args, query, tree.name.value)} as ${alias}`,
-        )
+        if (!alias) {
+          return query.promise.select(
+            `${buildFullName(args, query, tree.name.value)}`,
+          )
+        } else {
+          return query.promise.select(
+            `${buildFullName(args, query, tree.name.value)} as ${alias}`,
+          )
+        }
       }
     }
 

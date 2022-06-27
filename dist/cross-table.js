@@ -81,7 +81,7 @@ function join(type, kind = Kind.METRIC) {
             .replace('_', ' ')}`,
         'JOIN',
         'ON',
-    ])));
+    ])), 'knex');
 }
 exports.join = join;
 function changeQueryTable(query, knex, table, dropJoins) {

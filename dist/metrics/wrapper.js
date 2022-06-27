@@ -11,13 +11,18 @@ const defaultPropTypes = {
     limit: types_1.PropTypes.oneOfType([types_1.PropTypes.string, types_1.PropTypes.number]),
     offset: types_1.PropTypes.oneOfType([types_1.PropTypes.string, types_1.PropTypes.number]),
 };
-const metricWrapper = (metric, properties, keywords) => {
+const metricWrapper = (metric, properties, keywords, builder) => {
     return (tree, query, knex) => {
         const { metrics = [] } = query;
         query.metrics = metrics;
         if (keywords &&
             !keywords.every((keyword) => query.providers[query.provider].keywords.includes(keyword))) {
             throw new Error(`${query.provider} provider doesn't support ${tree.name.value} metric`);
+        }
+        if (builder) {
+            if (query.providers[query.provider].queryBuilder !== builder) {
+                throw new Error(`${query.provider} provider doesn't support ${tree.name.value} metric`);
+            }
         }
         let args = tree.arguments ? (0, arguments_1.argumentsToObject)(tree.arguments) : null;
         if (properties && !args) {
@@ -38,12 +43,20 @@ const metricWrapper = (metric, properties, keywords) => {
         }
         query.promise = promise;
         query = (0, query_combiner_1.combineQuery)(query, clonedQuery);
-        if (args?.sort == 'desc' || args?.sort == 'asc')
-            query.promise.orderBy((0, filters_1.buildFullName)(args, query, tree.name.value), args.sort);
-        if (args?.limit)
-            query.promise.limit(args.limit);
-        if (args?.offset)
-            query.promise.offset(args.offset);
+        if (query.providers[query.provider].queryBuilder === 'knex') {
+            if (args?.sort == 'desc' || args?.sort == 'asc')
+                query.promise.orderBy((0, filters_1.buildFullName)(args, query, tree.name.value), args.sort);
+            if (args?.limit)
+                query.promise.limit(args.limit);
+            if (args?.offset)
+                query.promise.offset(args.offset);
+        }
+        else {
+            if (args?.sort === 'desc')
+                query.orderBys = (query.orderBys || []).concat(`-${tree.alias?.value || tree.name.value}`);
+            if (args?.sort === 'asc')
+                query.orderBys = (query.orderBys || []).concat(tree.alias?.value || tree.name.value);
+        }
         // Getters are needed only for additionaly selected fields by some specific functions
         // example: price(groupByEach: 50) -> price: 0-50 -> groupByEach_min_price: 0 -> groupByEach_max_price: 50
         // would be useful for further grouping && filtering

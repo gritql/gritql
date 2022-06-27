@@ -16,5 +16,5 @@ export declare const metricWrapper: <T = ValidationMap<any>>(metric: (alias: str
     offset: any;
 }, "sort" | "offset" | "limit">>>, query: any, knex: Knex, extras: {
     tree: DocumentNode;
-}) => void, properties?: T, keywords?: string[]) => (tree: DocumentNode, query: any, knex: Knex) => void;
+}) => void, properties?: T, keywords?: string[], builder?: string) => (tree: DocumentNode, query: any, knex: Knex) => void;
 export {};

@@ -1,8 +1,6 @@
-import knexConstructor from 'knex'
 import { argumentsToObject } from './arguments'
 import { parseDirective } from './directives'
-import { gaQueryBuilder, gaMetricResolvers } from './gql-ga-slicer'
-import { progressiveGet, progressiveSet, replVars } from './progressive'
+import { progressiveSet, replVars } from './progressive'
 import { cloneDeep, omit } from 'lodash'
 import { applyFilters, withFilters } from './filters'
 import { metricResolvers } from './metrics'
@@ -17,7 +15,7 @@ import {
 import type { DocumentNode } from 'graphql'
 import { dimensionResolvers } from './dimensions'
 import { Knex } from 'knex'
-import { Provider, providers } from './providers'
+import { disableOperationFor, Provider, providers } from './providers'
 import gql, {
   enableExperimentalFragmentVariables,
   disableFragmentWarnings,
@@ -30,7 +28,7 @@ enableExperimentalFragmentVariables()
 disableFragmentWarnings()
 
 interface GqlQuery {
-  promise: Knex.QueryBuilder
+  promise: Knex.QueryBuilder | Promise<any>
   name: string
   filters: Array<string>
   table: string
@@ -53,7 +51,7 @@ interface DbHandler {
 }
 
 interface metricResolver {
-  (tree, query, knex): void
+  (tree, query, builder): void
 }
 
 interface metricDataResolver {
@@ -67,7 +65,9 @@ export const gqlToDb = () => {
       queries.map((q) => {
         return q.providers[q.provider].execute(
           q.providers[q.provider].connection,
-          q.promise.toSQL(),
+          q.providers[q.provider].prepare
+            ? q.providers[q.provider].prepare(q, q.promise)
+            : q.promise,
         )
       }),
     )
@@ -82,11 +82,7 @@ export const gqlToDb = () => {
     variables: Record<string, any>,
     provider?: string,
   ): Promise<any> => {
-    const knex = definedProviders[provider || 'pg'].client
-      ? knexConstructor({
-          client: definedProviders[provider || 'pg'].client,
-        })
-      : knexConstructor({})
+    const builder = definedProviders[provider || 'pg'].getQueryBuilder()
 
     try {
       const definitions = cloneDeep(gql(gqlQuery).definitions)
@@ -96,7 +92,7 @@ export const gqlToDb = () => {
         definitions,
         undefined,
         undefined,
-        knex,
+        builder,
         {
           metricResolvers: { ...metricResolvers, ...customMetricResolvers },
           dimensionResolvers: {
@@ -116,14 +112,15 @@ export const gqlToDb = () => {
         .filter((q) => !q.skip)
         .filter((q) => !!q.promise)
         .map((q) => {
-          q.promise = applyFilters(q, q.promise, knex)
+          q.promise = applyFilters(q, q.promise, builder)
 
           return q
         })
 
       const sql = queries
         .filter((q) => !q.isWith)
-        .map((q) => q.promise.toString())
+        .map((q) => (q.provider !== 'ga' ? q.promise.toString() : q.promise))
+
       const preparedGqlQuery = await beforeDbHandler({
         queries: queries.filter((q) => !q.isWith),
         sql,
@@ -186,7 +183,7 @@ function queryBuilder(
   tree,
   queries: Array<any> | undefined = [],
   idx: number | undefined = undefined,
-  knex,
+  builder,
   options: {
     metricResolvers: Record<string, metricResolver>
     dimensionResolvers: Record<string, metricResolver>
@@ -220,7 +217,7 @@ function queryBuilder(
           t,
           queries,
           queries.length ? queries.length - 1 : 0,
-          knex,
+          builder,
           options,
           context,
         ),
@@ -253,30 +250,17 @@ function queryBuilder(
         }
 
         if (tree.operation === 'query' && !!tree.name?.value) {
-          if (
-            tree?.variableDefinitions[0]?.variable?.name?.value === 'source' &&
-            tree?.variableDefinitions[0]?.type?.name?.value === 'GA'
-          ) {
-            return gaQueryBuilder(
-              table,
-              tree,
-              queries,
-              idx,
-              knex,
-              gaMetricResolvers,
-            )
-          } else {
-            tree.variableDefinitions.forEach((def) => {
-              parseVariableDefinition(def, ctx)
-            })
+          tree.variableDefinitions.forEach((def) => {
+            parseVariableDefinition(def, ctx)
+          })
 
-            checkPropTypes(
-              ctx.variablesValidator,
-              ctx.variables,
-              'query',
-              tree.name.value,
-            )
-          }
+          checkPropTypes(
+            ctx.variablesValidator,
+            ctx.variables,
+            'query',
+            tree.name.value,
+          )
+
           table = tree.name?.value
         }
         return tree.selectionSet.selections
@@ -291,7 +275,7 @@ function queryBuilder(
                 t,
                 queries,
                 queries.length,
-                knex,
+                builder,
                 options,
                 ctx,
               ),
@@ -308,16 +292,22 @@ function queryBuilder(
   ) {
     query.name = tree.alias?.value || null
     query.table = table
-    query.promise = knex.select().from(table)
+    query.promise = query.providers[query.provider].getQueryPromise(
+      query,
+      builder,
+    )
     query.joins = []
-    query.filters = parseFilters(tree, query, knex)
-    query.promise = withFilters(query.filters)(query.promise, knex)
+    query.orderBys = []
+    query.filters = parseFilters(tree, query, builder)
+    query.promise = withFilters(query, query.filters)(query.promise, builder)
 
     if (tree.name.value === 'with') {
+      disableOperationFor(query, 'with', 'ga')
       query.isWith = true
     }
 
-    if (query.table === undefined) {
+    // For GA provider we don't need table name
+    if (query.table === undefined && query.provider !== 'ga') {
       throw 'Table name must be specified trought table argument or query name'
     }
 
@@ -354,7 +344,7 @@ function queryBuilder(
       tree.name?.value !== 'with' &&
       !tree.with
     )
-      parseDimension(tree, query, knex)
+      parseDimension(tree, query, builder)
 
     selections.sort((a, b) => {
       if (!b.selectionSet === !a.selectionSet) {
@@ -375,12 +365,20 @@ function queryBuilder(
           idx: newIdx,
         }
 
-        return queryBuilder(table, t, queries, newIdx, knex, options, context)
+        return queryBuilder(
+          table,
+          t,
+          queries,
+          newIdx,
+          builder,
+          options,
+          context,
+        )
       }
-      return queryBuilder(table, t, queries, idx, knex, options, context)
+      return queryBuilder(table, t, queries, idx, builder, options, context)
     }, queries)
   }
-  parseMetric(tree, query, knex)
+  parseMetric(tree, query, builder)
 
   return queries
 }
@@ -565,12 +563,8 @@ function getMergeStrings(
   metricResolversData,
   hashContext = {},
 ) {
-  if (!!~idx && idx !== undefined && !queries[idx])
+  if (idx !== undefined && !!~idx && !queries[idx])
     queries[idx] = { idx, name: undefined }
-  const query = queries[idx]
-  if (query) {
-    query.hashContext = hashContext
-  }
 
   if (
     [
@@ -587,10 +581,22 @@ function getMergeStrings(
   if (Array.isArray(tree)) {
     return tree.reduce(
       (queries, t, i) =>
-        getMergeStrings(t, queries, queries.length - 1, metricResolversData),
+        getMergeStrings(
+          t,
+          queries,
+          queries.length - 1,
+          metricResolversData,
+          !t.alias ? hashContext : {},
+        ),
       queries,
     )
   }
+
+  const query = queries[idx]
+  if (query) {
+    query.hashContext = hashContext
+  }
+
   if (tree.kind === 'OperationDefinition' && !!tree.selectionSet) {
     return tree.selectionSet.selections.reduce((queries, t, i) => {
       queries.push({ idx: queries.length, name: undefined })
@@ -745,39 +751,5 @@ const metricResolversData = {
   groupByEach: (tree, query) => {
     query.getters.push(`groupByEach_max_${tree.alias.value}`)
     query.getters.push(`groupByEach_min_${tree.alias.value}`)
-  },
-  subtract: (tree, query) => {
-    const name = `${tree.name?.value}`
-    if (!query.subtract) query.subtract = {}
-    if (
-      query.path.startsWith(':subtract') ||
-      query.path.startsWith(':subtract.')
-    )
-      query.path = query.path.replace(/:subtract\.?/, '')
-
-    query.subtract[`${query.path}${!!query.path ? '.' : ''}${name}`] = ({
-      value,
-      replacedPath,
-      fullObject,
-    }) => {
-      return value - progressiveGet(fullObject[query.filters.by], replacedPath)
-    }
-  },
-  divideBy: (tree, query) => {
-    const name = `${tree.name?.value}`
-    if (!query.divideBy) query.divideBy = {}
-    if (
-      query.path.startsWith(':divideBy') ||
-      query.path.startsWith(':divideBy.')
-    )
-      query.path = query.path.replace(/:divideBy\.?/, '')
-
-    query.divideBy[`${query.path}${!!query.path ? '.' : ''}${name}`] = ({
-      value,
-      replacedPath,
-      fullObject,
-    }) => {
-      return value / progressiveGet(fullObject[query.filters.by], replacedPath)
-    }
   },
 }

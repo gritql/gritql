@@ -2,7 +2,7 @@ import type { DocumentNode } from 'graphql';
 import { Knex } from 'knex';
 import { Provider } from './providers';
 interface GqlQuery {
-    promise: Knex.QueryBuilder;
+    promise: Knex.QueryBuilder | Promise<any>;
     name: string;
     filters: Array<string>;
     table: string;
@@ -24,7 +24,7 @@ interface DbHandler {
     (QueryObject: gqlBuildObject): Promise<any>;
 }
 interface metricResolver {
-    (tree: any, query: any, knex: any): void;
+    (tree: any, query: any, builder: any): void;
 }
 interface metricDataResolver {
     (tree: any, query: any): void;

@@ -7,6 +7,7 @@ export const combineQuery = (query, clonedQuery) => {
   query.preparedAdvancedFilters = clonedQuery.preparedAdvancedFilters
   query.search = clonedQuery.search
   query.getters = clonedQuery.getters
+  query.orderBys = clonedQuery.orderBys
 
   return query
 }

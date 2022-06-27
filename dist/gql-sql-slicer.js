@@ -27,10 +27,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.merge = exports.gqlToDb = void 0;
-const knex_1 = __importDefault(require("knex"));
 const arguments_1 = require("./arguments");
 const directives_1 = require("./directives");
-const gql_ga_slicer_1 = require("./gql-ga-slicer");
 const progressive_1 = require("./progressive");
 const lodash_1 = require("lodash");
 const filters_1 = require("./filters");
@@ -48,7 +46,9 @@ const gqlToDb = () => {
     let beforeDbHandler = (r) => Promise.resolve(r);
     let dbHandler = ({ queries }) => {
         return Promise.all(queries.map((q) => {
-            return q.providers[q.provider].execute(q.providers[q.provider].connection, q.promise.toSQL());
+            return q.providers[q.provider].execute(q.providers[q.provider].connection, q.providers[q.provider].prepare
+                ? q.providers[q.provider].prepare(q, q.promise)
+                : q.promise);
         }));
     };
     let afterDbHandler = (r) => Promise.resolve(r);
@@ -57,14 +57,10 @@ const gqlToDb = () => {
     let customDimensionResolvers = {};
     let definedProviders = { ...providers_1.providers };
     const gqlFetch = async (gqlQuery, variables, provider) => {
-        const knex = definedProviders[provider || 'pg'].client
-            ? (0, knex_1.default)({
-                client: definedProviders[provider || 'pg'].client,
-            })
-            : (0, knex_1.default)({});
+        const builder = definedProviders[provider || 'pg'].getQueryBuilder();
         try {
             const definitions = (0, lodash_1.cloneDeep)((0, graphql_tag_1.default)(gqlQuery).definitions);
-            const queries = queryBuilder(null, definitions, undefined, undefined, knex, {
+            const queries = queryBuilder(null, definitions, undefined, undefined, builder, {
                 metricResolvers: { ...metrics_1.metricResolvers, ...customMetricResolvers },
                 dimensionResolvers: {
                     ...dimensions_1.dimensionResolvers,
@@ -81,12 +77,12 @@ const gqlToDb = () => {
                 .filter((q) => !q.skip)
                 .filter((q) => !!q.promise)
                 .map((q) => {
-                q.promise = (0, filters_1.applyFilters)(q, q.promise, knex);
+                q.promise = (0, filters_1.applyFilters)(q, q.promise, builder);
                 return q;
             });
             const sql = queries
                 .filter((q) => !q.isWith)
-                .map((q) => q.promise.toString());
+                .map((q) => (q.provider !== 'ga' ? q.promise.toString() : q.promise));
             const preparedGqlQuery = await beforeDbHandler({
                 queries: queries.filter((q) => !q.isWith),
                 sql,
@@ -142,7 +138,7 @@ const gqlToDb = () => {
     return gqlFetch;
 };
 exports.gqlToDb = gqlToDb;
-function queryBuilder(table, tree, queries = [], idx = undefined, knex, options, context = {
+function queryBuilder(table, tree, queries = [], idx = undefined, builder, options, context = {
     fragments: {},
     types: {},
     variablesValidator: {},
@@ -161,7 +157,7 @@ function queryBuilder(table, tree, queries = [], idx = undefined, knex, options,
     const query = queries[idx];
     if (Array.isArray(tree)) {
         //we replace query with next level
-        return tree.reduce((queries, t, i) => queryBuilder(table, t, queries, queries.length ? queries.length - 1 : 0, knex, options, context), queries);
+        return tree.reduce((queries, t, i) => queryBuilder(table, t, queries, queries.length ? queries.length - 1 : 0, builder, options, context), queries);
     }
     switch (tree.kind) {
         case 'EnumTypeDefinition':
@@ -185,16 +181,10 @@ function queryBuilder(table, tree, queries = [], idx = undefined, knex, options,
                     variables: (0, lodash_1.cloneDeep)(context.variables),
                 };
                 if (tree.operation === 'query' && !!tree.name?.value) {
-                    if (tree?.variableDefinitions[0]?.variable?.name?.value === 'source' &&
-                        tree?.variableDefinitions[0]?.type?.name?.value === 'GA') {
-                        return (0, gql_ga_slicer_1.gaQueryBuilder)(table, tree, queries, idx, knex, gql_ga_slicer_1.gaMetricResolvers);
-                    }
-                    else {
-                        tree.variableDefinitions.forEach((def) => {
-                            (0, parser_1.parseVariableDefinition)(def, ctx);
-                        });
-                        (0, types_1.checkPropTypes)(ctx.variablesValidator, ctx.variables, 'query', tree.name.value);
-                    }
+                    tree.variableDefinitions.forEach((def) => {
+                        (0, parser_1.parseVariableDefinition)(def, ctx);
+                    });
+                    (0, types_1.checkPropTypes)(ctx.variablesValidator, ctx.variables, 'query', tree.name.value);
                     table = tree.name?.value;
                 }
                 return tree.selectionSet.selections
@@ -202,7 +192,7 @@ function queryBuilder(table, tree, queries = [], idx = undefined, knex, options,
                     return (0, parser_1.processSelections)(selections, field, { context: ctx }, ctx);
                 }, [])
                     .filter(Boolean)
-                    .reduce((queries, t, i) => queryBuilder(table, t, queries, queries.length, knex, options, ctx), queries);
+                    .reduce((queries, t, i) => queryBuilder(table, t, queries, queries.length, builder, options, ctx), queries);
             }
     }
     if (!query.filters &&
@@ -211,14 +201,17 @@ function queryBuilder(table, tree, queries = [], idx = undefined, knex, options,
             tree.name.value === 'with')) {
         query.name = tree.alias?.value || null;
         query.table = table;
-        query.promise = knex.select().from(table);
+        query.promise = query.providers[query.provider].getQueryPromise(query, builder);
         query.joins = [];
-        query.filters = (0, parser_1.parseFilters)(tree, query, knex);
-        query.promise = (0, filters_1.withFilters)(query.filters)(query.promise, knex);
+        query.orderBys = [];
+        query.filters = (0, parser_1.parseFilters)(tree, query, builder);
+        query.promise = (0, filters_1.withFilters)(query, query.filters)(query.promise, builder);
         if (tree.name.value === 'with') {
+            (0, providers_1.disableOperationFor)(query, 'with', 'ga');
             query.isWith = true;
         }
-        if (query.table === undefined) {
+        // For GA provider we don't need table name
+        if (query.table === undefined && query.provider !== 'ga') {
             throw 'Table name must be specified trought table argument or query name';
         }
         if (!query.isWith) {
@@ -247,7 +240,7 @@ function queryBuilder(table, tree, queries = [], idx = undefined, knex, options,
             tree.name?.value !== 'fetchPlain' &&
             tree.name?.value !== 'with' &&
             !tree.with)
-            (0, parser_1.parseDimension)(tree, query, knex);
+            (0, parser_1.parseDimension)(tree, query, builder);
         selections.sort((a, b) => {
             if (!b.selectionSet === !a.selectionSet) {
                 return 0;
@@ -267,12 +260,12 @@ function queryBuilder(table, tree, queries = [], idx = undefined, knex, options,
                     promise: query.promise.clone(),
                     idx: newIdx,
                 };
-                return queryBuilder(table, t, queries, newIdx, knex, options, context);
+                return queryBuilder(table, t, queries, newIdx, builder, options, context);
             }
-            return queryBuilder(table, t, queries, idx, knex, options, context);
+            return queryBuilder(table, t, queries, idx, builder, options, context);
         }, queries);
     }
-    (0, parser_1.parseMetric)(tree, query, knex);
+    (0, parser_1.parseMetric)(tree, query, builder);
     return queries;
 }
 const merge = (tree, data, metricResolversData) => {
@@ -398,12 +391,8 @@ const merge = (tree, data, metricResolversData) => {
 };
 exports.merge = merge;
 function getMergeStrings(tree, queries = [], idx = undefined, metricResolversData, hashContext = {}) {
-    if (!!~idx && idx !== undefined && !queries[idx])
+    if (idx !== undefined && !!~idx && !queries[idx])
         queries[idx] = { idx, name: undefined };
-    const query = queries[idx];
-    if (query) {
-        query.hashContext = hashContext;
-    }
     if ([
         'EnumTypeDefinition',
         'UnionTypeDefinition',
@@ -414,7 +403,11 @@ function getMergeStrings(tree, queries = [], idx = undefined, metricResolversDat
         return queries;
     }
     if (Array.isArray(tree)) {
-        return tree.reduce((queries, t, i) => getMergeStrings(t, queries, queries.length - 1, metricResolversData), queries);
+        return tree.reduce((queries, t, i) => getMergeStrings(t, queries, queries.length - 1, metricResolversData, !t.alias ? hashContext : {}), queries);
+    }
+    const query = queries[idx];
+    if (query) {
+        query.hashContext = hashContext;
     }
     if (tree.kind === 'OperationDefinition' && !!tree.selectionSet) {
         return tree.selectionSet.selections.reduce((queries, t, i) => {
@@ -548,27 +541,5 @@ const metricResolversData = {
     groupByEach: (tree, query) => {
         query.getters.push(`groupByEach_max_${tree.alias.value}`);
         query.getters.push(`groupByEach_min_${tree.alias.value}`);
-    },
-    subtract: (tree, query) => {
-        const name = `${tree.name?.value}`;
-        if (!query.subtract)
-            query.subtract = {};
-        if (query.path.startsWith(':subtract') ||
-            query.path.startsWith(':subtract.'))
-            query.path = query.path.replace(/:subtract\.?/, '');
-        query.subtract[`${query.path}${!!query.path ? '.' : ''}${name}`] = ({ value, replacedPath, fullObject, }) => {
-            return value - (0, progressive_1.progressiveGet)(fullObject[query.filters.by], replacedPath);
-        };
-    },
-    divideBy: (tree, query) => {
-        const name = `${tree.name?.value}`;
-        if (!query.divideBy)
-            query.divideBy = {};
-        if (query.path.startsWith(':divideBy') ||
-            query.path.startsWith(':divideBy.'))
-            query.path = query.path.replace(/:divideBy\.?/, '');
-        query.divideBy[`${query.path}${!!query.path ? '.' : ''}${name}`] = ({ value, replacedPath, fullObject, }) => {
-            return value / (0, progressive_1.progressiveGet)(fullObject[query.filters.by], replacedPath);
-        };
     },
 };

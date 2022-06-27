@@ -13,11 +13,16 @@ const defaultPropTypes = {
     offset: types_1.PropTypes.oneOfType([types_1.PropTypes.string, types_1.PropTypes.number]),
     type: types_1.PropTypes.oneOf(['Array', 'Map']),
 };
-const dimensionWrapper = (dimension, properties, keywords) => {
+const dimensionWrapper = (dimension, properties, keywords, builder) => {
     return (tree, query, knex) => {
         if (keywords &&
             !keywords.every((keyword) => query.providers[query.provider].keywords.includes(keyword))) {
             throw new Error(`${query.provider} provider doesn't support ${tree.name.value} dimension`);
+        }
+        if (builder) {
+            if (query.providers[query.provider].queryBuilder !== builder) {
+                throw new Error(`${query.provider} provider doesn't support ${tree.name.value} dimension`);
+            }
         }
         let args = tree.arguments
             ? (0, arguments_1.transformLinkedArgs)((0, arguments_1.argumentsToObject)(tree.arguments), query)
@@ -44,14 +49,22 @@ const dimensionWrapper = (dimension, properties, keywords) => {
         }
         query.promise = promise;
         query = (0, query_combiner_1.combineQuery)(query, clonedQuery);
-        if (!!args?.sort_desc)
-            query.promise.orderBy((0, filters_1.buildFullName)(args, query, args?.sort_desc), 'desc');
-        if (!!args?.sort_asc)
-            query.promise.orderBy((0, filters_1.buildFullName)(args, query, args?.sort_asc), 'asc');
-        if (!!args?.limit)
-            query.promise.limit(args?.limit);
-        if (!!args?.offset)
-            query.promise.offset(args?.offset);
+        if (query.providers[query.provider].queryBuilder === 'knex') {
+            if (!!args?.sort_desc)
+                query.promise.orderBy((0, filters_1.buildFullName)(args, query, args?.sort_desc), 'desc');
+            if (!!args?.sort_asc)
+                query.promise.orderBy((0, filters_1.buildFullName)(args, query, args?.sort_asc), 'asc');
+            if (!!args?.limit)
+                query.promise.limit(args?.limit);
+            if (!!args?.offset)
+                query.promise.offset(args?.offset);
+        }
+        else {
+            if (!!args?.sort_desc)
+                query.orderBys = (query.orderBys || []).concat(`-${args?.sort_desc}`);
+            if (!!args?.sort_asc)
+                query.orderBys = (query.orderBys || []).concat(args?.sort_asc);
+        }
         dimensions.push(tree.alias?.value || tree.name.value);
         query.dimensions = dimensions;
         return query;

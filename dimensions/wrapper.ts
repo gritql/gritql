@@ -25,6 +25,7 @@ export const dimensionWrapper = <T = ValidationMap<any>>(
   ) => void,
   properties?: T,
   keywords?: string[],
+  builder?: string,
 ) => {
   return (tree: DocumentNode, query, knex: Knex) => {
     if (
@@ -36,6 +37,14 @@ export const dimensionWrapper = <T = ValidationMap<any>>(
       throw new Error(
         `${query.provider} provider doesn't support ${tree.name.value} dimension`,
       )
+    }
+
+    if (builder) {
+      if (query.providers[query.provider].queryBuilder !== builder) {
+        throw new Error(
+          `${query.provider} provider doesn't support ${tree.name.value} dimension`,
+        )
+      }
     }
 
     let args: InferProps<T> & InferProps<typeof defaultPropTypes> =
@@ -84,13 +93,23 @@ export const dimensionWrapper = <T = ValidationMap<any>>(
 
     query = combineQuery(query, clonedQuery)
 
-    if (!!args?.sort_desc)
-      query.promise.orderBy(buildFullName(args, query, args?.sort_desc), 'desc')
-    if (!!args?.sort_asc)
-      query.promise.orderBy(buildFullName(args, query, args?.sort_asc), 'asc')
+    if (query.providers[query.provider].queryBuilder === 'knex') {
+      if (!!args?.sort_desc)
+        query.promise.orderBy(
+          buildFullName(args, query, args?.sort_desc),
+          'desc',
+        )
+      if (!!args?.sort_asc)
+        query.promise.orderBy(buildFullName(args, query, args?.sort_asc), 'asc')
 
-    if (!!args?.limit) query.promise.limit(args?.limit)
-    if (!!args?.offset) query.promise.offset(args?.offset)
+      if (!!args?.limit) query.promise.limit(args?.limit)
+      if (!!args?.offset) query.promise.offset(args?.offset)
+    } else {
+      if (!!args?.sort_desc)
+        query.orderBys = (query.orderBys || []).concat(`-${args?.sort_desc}`)
+      if (!!args?.sort_asc)
+        query.orderBys = (query.orderBys || []).concat(args?.sort_asc)
+    }
 
     dimensions.push(tree.alias?.value || tree.name.value)
 
