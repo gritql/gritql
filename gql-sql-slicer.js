@@ -1145,7 +1145,7 @@ function getMergeStrings(tree, queries, idx, metricResolversData, hashContext) {
                 queries[newIdx] = __assign(__assign({}, queries[idx]), { metrics: {} });
                 queries[newIdx].path = query.path + '';
                 queries[newIdx].idx = newIdx;
-                return getMergeStrings(t, queries, newIdx, metricResolversData);
+                return getMergeStrings(t, queries, newIdx, metricResolversData, hashContext);
             }
             return getMergeStrings(t, queries, idx, metricResolversData, hashContext);
         }, queries);
