@@ -1429,7 +1429,13 @@ function getMergeStrings(
         queries[newIdx] = { ...queries[idx], metrics: {} }
         queries[newIdx].path = query.path + ''
         queries[newIdx].idx = newIdx
-        return getMergeStrings(t, queries, newIdx, metricResolversData)
+        return getMergeStrings(
+          t,
+          queries,
+          newIdx,
+          metricResolversData,
+          hashContext,
+        )
       }
 
       return getMergeStrings(t, queries, idx, metricResolversData, hashContext)
