@@ -162,7 +162,7 @@ export const providers: Record<string, Provider> = {
     },
     getConnection: (configuration, connector) => {
       // Always connect trought pool, because snowflake has different interfaces for normal and pool connection
-      return connector(
+      return connector.createPool(
         configuration.connection.connectionString
           ? configuration.connection.connectionString
           : {
@@ -178,11 +178,19 @@ export const providers: Record<string, Provider> = {
         )
       }
 
-      return connection.use((client) => {
-        return client.execute({
-          sqlText: sql.toSQL().sql,
-          binds: sql.toSQL().bindings,
-        })
+      return connection.use(async (client) => {
+        return await new Promise((resolve, reject) =>
+          client.execute({
+            sqlText: sql.toSQL().sql,
+            binds: sql.toSQL().bindings,
+            complete(err, stmt, rows) {
+              if (err) {
+                reject(err)
+              }
+              resolve(rows)
+            },
+          }),
+        )
       })
     },
   },

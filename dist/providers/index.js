@@ -131,7 +131,7 @@ exports.providers = {
         },
         getConnection: (configuration, connector) => {
             // Always connect trought pool, because snowflake has different interfaces for normal and pool connection
-            return connector(configuration.connection.connectionString
+            return connector.createPool(configuration.connection.connectionString
                 ? configuration.connection.connectionString
                 : {
                     ...configuration.connection,
@@ -141,11 +141,17 @@ exports.providers = {
             if (!connection) {
                 throw new Error("Provider isn't configured yet, please use #setupProvider() to provide config");
             }
-            return connection.use((client) => {
-                return client.execute({
+            return connection.use(async (client) => {
+                return await new Promise((resolve, reject) => client.execute({
                     sqlText: sql.toSQL().sql,
                     binds: sql.toSQL().bindings,
-                });
+                    complete(err, stmt, rows) {
+                        if (err) {
+                            reject(err);
+                        }
+                        resolve(rows);
+                    },
+                }));
             });
         },
     },
