@@ -1,9 +1,11 @@
 import { Knex } from 'knex'
 import { InferProps } from 'prop-types'
 import type { DocumentNode } from 'graphql'
+
 export declare const partitionByTypes: {
   by: any
 }
+
 export declare function partitionBy(
   args: InferProps<typeof partitionByTypes>,
   query: any,

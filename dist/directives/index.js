@@ -6,7 +6,26 @@ const progressive_1 = require("../progressive");
 const luxon_1 = require("luxon");
 const resolvers = {
     in: (a, b) => {
-        return b.includes(a);
+        if (!Array.isArray(b) && !Array.isArray(a)) {
+            throw new Error('Argument `in` or value must be an array');
+        }
+        if (Array.isArray(b)) {
+            return b.includes(a);
+        }
+        else if (Array.isArray(a)) {
+            return a.includes(b);
+        }
+    },
+    nin: (a, b) => {
+        if (!Array.isArray(b) && !Array.isArray(a)) {
+            throw new Error('Argument `nin` or value must be an array');
+        }
+        if (Array.isArray(b)) {
+            return !b.includes(a);
+        }
+        else if (Array.isArray(a)) {
+            return !a.includes(b);
+        }
     },
     eq: (a, b) => {
         return a == b;
@@ -25,6 +44,80 @@ const resolvers = {
     },
     neq: (a, b) => {
         return a != b;
+    },
+    of: (a, b) => {
+        if (!Array.isArray(a)) {
+            throw new Error('Value must be an array');
+        }
+        if (Array.isArray(b)) {
+            return b.some((bv) => {
+                const bt = typeof bv;
+                return a.every((av) => {
+                    const at = typeof av;
+                    if (at !== bt) {
+                        return false;
+                    }
+                    if (bt === 'object') {
+                        return Object.keys(bv).every((k) => av[k] === bv[k]);
+                    }
+                    else {
+                        return av === bv;
+                    }
+                });
+            });
+        }
+        else {
+            const bt = typeof b;
+            return a.every((av) => {
+                const at = typeof av;
+                if (at !== bt) {
+                    return false;
+                }
+                if (bt === 'object') {
+                    return Object.keys(b).every((k) => av[k] === b[k]);
+                }
+                else {
+                    return av === b;
+                }
+            });
+        }
+    },
+    nof: (a, b) => {
+        if (!Array.isArray(a)) {
+            throw new Error('Value must be an array');
+        }
+        if (Array.isArray(b)) {
+            return !b.some((bv) => {
+                const bt = typeof bv;
+                return a.every((av) => {
+                    const at = typeof av;
+                    if (at !== bt) {
+                        return false;
+                    }
+                    if (bt === 'object') {
+                        return Object.keys(bv).every((k) => av[k] === bv[k]);
+                    }
+                    else {
+                        return av === bv;
+                    }
+                });
+            });
+        }
+        else {
+            const bt = typeof b;
+            return !a.every((av) => {
+                const at = typeof av;
+                if (at !== bt) {
+                    return false;
+                }
+                if (bt === 'object') {
+                    return Object.keys(b).every((k) => av[k] === b[k]);
+                }
+                else {
+                    return av === b;
+                }
+            });
+        }
     },
 };
 function findResolvers(keys, value, args, name) {
@@ -100,7 +193,7 @@ exports.preExecutedDirectives = {
             throw new Error('Compare directive requires `value` argument or result of previous directive');
         }
         if (Object.keys(rest).length === 0) {
-            throw new Error('Compare directive requires at least one argument ([`eq`, `in`, `neq`, `lt`, `gt`, `lte`, `gte`]) to compare with value');
+            throw new Error('Compare directive requires at least one argument ([`eq`, `in`, `neq`, `lt`, `gt`, `lte`, `gte`, `of`, `nof`]) to compare with value');
         }
         value = Object.keys(rest).reduce((value, key) => {
             if (resolvers[key] && value !== false) {
@@ -259,12 +352,14 @@ exports.postExecutedDirectives = {
     // [[`${metricName}_lte`]]: any
     // [[`${metricName}_in`]]: any
     // For metrics
-    // in: any
+    // in: any[]
     // lte: any
     // lt: any
     // gte: any
     // eq: any
     // gt: any
+    // of: any[] | any
+    // nof: any[] | any
     filter: (context) => {
         if (!context.tree.arguments) {
             throw 'Filter directive requires arguments';
