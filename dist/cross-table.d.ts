@@ -1,4 +1,4 @@
-import type { DocumentNode } from 'graphql'
+import { DocumentNode } from 'graphql'
 
 export declare enum JoinType {
   DEFAULT = 'join',

@@ -73,6 +73,7 @@ const gqlToDb = () => {
                 fragments: {},
                 variablesValidator: {},
                 variables,
+                typeDefinitions: {},
             })
                 .filter((q) => !q.skip)
                 .filter((q) => !!q.promise)
@@ -143,6 +144,7 @@ function queryBuilder(table, tree, queries = [], idx = undefined, builder, optio
     types: {},
     variablesValidator: {},
     variables: {},
+    typeDefinitions: {},
 }) {
     if (!!~idx && idx !== undefined && !queries[idx])
         queries[idx] = {
@@ -155,6 +157,23 @@ function queryBuilder(table, tree, queries = [], idx = undefined, builder, optio
             context,
         };
     const query = queries[idx];
+    switch (tree.kind) {
+        case 'EnumTypeDefinition':
+        case 'UnionTypeDefinition':
+        case 'InputObjectTypeDefinition':
+        case 'ObjectTypeDefinition':
+        case 'TupleTypeDefinition':
+            context.typeDefinitions[tree.name.value] = tree;
+            tree = (0, directives_1.parseTypeDirective)(tree, context);
+            if (Array.isArray(tree)) {
+                tree.forEach((tree) => {
+                    context.typeDefinitions[tree.name.value] = tree;
+                });
+            }
+            else {
+                context.typeDefinitions[tree.name.value] = tree;
+            }
+    }
     if (Array.isArray(tree)) {
         //we replace query with next level
         return tree.reduce((queries, t, i) => queryBuilder(table, t, queries, queries.length ? queries.length - 1 : 0, builder, options, context), queries);
@@ -164,6 +183,7 @@ function queryBuilder(table, tree, queries = [], idx = undefined, builder, optio
         case 'UnionTypeDefinition':
         case 'InputObjectTypeDefinition':
         case 'ObjectTypeDefinition':
+        case 'TupleTypeDefinition':
             (0, parser_1.parseType)(tree, context);
             return queries.filter((query) => query.idx === idx);
         case 'FragmentDefinition':

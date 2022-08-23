@@ -46,13 +46,31 @@ function parseType(type, context) {
             }
         }));
     }
+    else if (type.kind === 'TupleTypeDefinition') {
+        context.types[type.name.value] = types_1.PropTypes.tuple(...type.elements.map((element) => {
+            const isRequired = element.kind === 'NonNullType';
+            element = element.type || element;
+            if (context.types[element.name.value]) {
+                let type = context.types[element.name.value];
+                if (isRequired) {
+                    type = type.isRequired;
+                }
+                return type;
+            }
+            else {
+                throw new Error(`${element.name.value} is not declared type`);
+            }
+        }));
+    }
     else if (type.kind === 'EnumTypeDefinition') {
         context.types[type.name.value] = types_1.PropTypes.oneOf(type.values.map((t) => t.name.value));
     }
     else if (type.kind === 'InputObjectTypeDefinition' ||
         type.kind === 'ObjectTypeDefinition') {
         const isInput = type.kind.startsWith('Input');
-        context.types[type.name.value] = types_1.PropTypes[isInput ? 'shape' : 'exact'](type.fields.reduce((acc, field) => {
+        const shape = type.fields
+            .filter(({ kind }) => kind !== directives_1.$typeSymbol)
+            .reduce((acc, field) => {
             const isRequired = field.type.kind === 'NonNullType';
             if (isRequired) {
                 field.type = field.type.type;
@@ -83,7 +101,17 @@ function parseType(type, context) {
                 acc[field.name.value] = acc[field.name.value].isRequired;
             }
             return acc;
-        }, {}));
+        }, {});
+        const symbolField = type.fields.filter(({ kind }) => kind === directives_1.$typeSymbol)[0];
+        if (type.options?.isMapped && !context.types[symbolField.type.name.value]) {
+            throw new Error(`${symbolField.type.name.value} is not declared type`);
+        }
+        if (type.name.value === 'BrandFilter') {
+            console.log(shape, JSON.stringify(type));
+        }
+        context.types[type.name.value] = type.options?.isMapped
+            ? types_1.PropTypes.map(shape, types_1.PropTypes[symbolField.key.name.value.toLowerCase()].isRequired, context.types[symbolField.type.name.value])
+            : types_1.PropTypes[isInput ? 'shape' : 'exact'](shape);
     }
     return context;
 }

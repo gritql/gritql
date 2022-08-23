@@ -160,6 +160,73 @@ describe('SQL', () => {
       )
     })
 
+    test('Custom types directives', () => {
+      const querier = gqlToDb().beforeDbFetch(({ sql }) => {
+        expect(sql).toMatchSnapshot()
+      })
+
+      return querier(
+        `
+      type YearDate {
+        year: Number!
+      }
+
+      type MonthDate @inherits(name: YearDate) {
+        month: Number!
+      }
+
+      type DayDate @inherits(name: MonthDate) {
+        day: Number!
+      }
+
+      type TupleDate @tuple(definitions: [DayDate, DayDate], isRequired: true)
+
+      enum Operators {
+        eq
+        ilike
+        like
+      }
+
+      enum NumOperators {
+        lt
+        gt
+        gte
+        lte
+      }
+
+      type BrandOps @map(key: Operators, value: String) @map(key: NumOperators, value: Number)
+
+      type BrandFilter @inherits(name: BrandOps) @map(key: String, value: BrandOps)
+
+      type BrandFilters {
+        or: [BrandFilter!]
+      }
+  
+      type Filters {
+        brand: BrandFilters!
+        country: String!
+        date: TupleDate
+      }
+  
+      query table($filters: Filters) {
+        fetch(filters: $filters) {
+          value: sum(a:pageviews)
+        }
+      }
+    `,
+        {
+          filters: {
+            brand: { or: [{ eq: 'Adidas', price: { lt: 2 } }] },
+            date: [
+              { year: 2021, month: 12, day: 31 },
+              { year: 2022, month: 9, day: 1 },
+            ],
+            country: 'US',
+          },
+        },
+      )
+    })
+
     describe('Pre executive @directives', () => {
       test('@compare', () => {
         const table = [

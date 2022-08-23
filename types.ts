@@ -21,6 +21,8 @@ export const PropTypes = {
   oneOfType: createUnionTypeChecker,
   shape: createShapeTypeChecker,
   exact: createStrictShapeTypeChecker,
+  tuple: createTupleTypeChecker,
+  map: createMapTypeChecker,
 }
 
 class PropTypeError extends Error {
@@ -435,6 +437,116 @@ function createStrictShapeTypeChecker(shapeTypes) {
   }
 
   return createChainableTypeChecker(validate)
+}
+
+function createMapTypeChecker(shapeTypes, keyTypeChecker, valueTypeChecker) {
+  function validate(props, propName, componentName, location, propFullName) {
+    const propValue = props[propName]
+    const propType = getPropType(propValue)
+    if (propType !== 'object') {
+      return new PropTypeError(
+        'Invalid ' +
+          location +
+          ' `' +
+          propFullName +
+          '` of type `' +
+          propType +
+          '` ' +
+          ('supplied to `' + componentName + '`, expected `object`.'),
+      )
+    }
+    const allKeys = { ...props[propName], ...shapeTypes }
+    for (const key in allKeys) {
+      const checker = shapeTypes[key]
+      if (has(shapeTypes, key) && typeof checker !== 'function') {
+        return invalidValidatorError(
+          componentName,
+          location,
+          propFullName,
+          key,
+          getPreciseType(checker),
+        )
+      }
+      if (!checker) {
+        const keyError = keyTypeChecker(
+          key,
+          propName,
+          componentName,
+          location,
+          propFullName + '.' + key,
+        )
+
+        if (keyError) {
+          return keyError
+        }
+
+        const valueError = valueTypeChecker(
+          propValue,
+          key,
+          componentName,
+          location,
+          propFullName + '.' + key,
+        )
+
+        if (valueError) {
+          return valueError
+        }
+      } else {
+        const error = checker(
+          propValue,
+          key,
+          componentName,
+          location,
+          propFullName + '.' + key,
+        )
+        if (error) {
+          return error
+        }
+      }
+    }
+    return null
+  }
+
+  return createChainableTypeChecker(validate)
+}
+
+function createTupleTypeChecker(...types) {
+  return createChainableTypeChecker(
+    (props, propName, componentName, location, propFullName) => {
+      const value = props[propName]
+      if (!location) {
+        location = 'prop'
+      }
+      if (!propFullName) {
+        propFullName = propName
+      }
+
+      if (!Array.isArray(value)) {
+        return new PropTypeError(
+          `Invalid ${location} \`${propFullName}\` supplied to \`${componentName}\`, expected ${types.length}-element array`,
+        )
+      }
+      if (value.length !== types.length) {
+        return new PropTypeError(
+          `Invalid ${location} \`${propFullName}\` supplied to \`${componentName}\`, expected ${types.length}-element array, got array of length ${value.length}`,
+        )
+      }
+      for (let i = 0; i < value.length; ++i) {
+        const error = types[i](
+          value,
+          i,
+          componentName,
+          'element',
+          `${propFullName}[${i}]`,
+        )
+        if (error) {
+          return error
+        }
+      }
+
+      return null
+    },
+  )
 }
 
 function getPropType(propValue) {

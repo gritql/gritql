@@ -1,5 +1,5 @@
 import { argumentsToObject } from './arguments'
-import { parseDirective } from './directives'
+import { parseDirective, parseTypeDirective } from './directives'
 import { progressiveSet, replVars } from './progressive'
 import { cloneDeep, omit } from 'lodash'
 import { applyFilters, withFilters } from './filters'
@@ -107,6 +107,7 @@ export const gqlToDb = () => {
           fragments: {},
           variablesValidator: {},
           variables,
+          typeDefinitions: {},
         },
       )
         .filter((q) => !q.skip)
@@ -195,6 +196,7 @@ function queryBuilder(
     types: {},
     variablesValidator: {},
     variables: {},
+    typeDefinitions: {},
   },
 ) {
   if (!!~idx && idx !== undefined && !queries[idx])
@@ -208,6 +210,24 @@ function queryBuilder(
       context,
     }
   const query = queries[idx]
+
+  switch (tree.kind) {
+    case 'EnumTypeDefinition':
+    case 'UnionTypeDefinition':
+    case 'InputObjectTypeDefinition':
+    case 'ObjectTypeDefinition':
+    case 'TupleTypeDefinition':
+      context.typeDefinitions[tree.name.value] = tree
+      tree = parseTypeDirective(tree, context)
+      if (Array.isArray(tree)) {
+        tree.forEach((tree) => {
+          context.typeDefinitions[tree.name.value] = tree
+        })
+      } else {
+        context.typeDefinitions[tree.name.value] = tree
+      }
+  }
+
   if (Array.isArray(tree)) {
     //we replace query with next level
     return tree.reduce(
@@ -230,6 +250,7 @@ function queryBuilder(
     case 'UnionTypeDefinition':
     case 'InputObjectTypeDefinition':
     case 'ObjectTypeDefinition':
+    case 'TupleTypeDefinition':
       parseType(tree, context)
 
       return queries.filter((query) => query.idx === idx)

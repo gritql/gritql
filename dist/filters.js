@@ -21,7 +21,8 @@ const filterOperators = [
     'nor',
     'not',
     'or',
-    'regex',
+    'ilike',
+    'like',
     'search',
     'from',
     'inherited',
@@ -132,8 +133,10 @@ function buildFilter(query, context, prefix = '') {
                 return runDefaultRunner(context, '<>', field, subQuery);
             case ops.not:
                 return runOrSkip(context, () => `NOT (${buildFilter(subQuery, context, prefix)})`, '', '', subQuery);
-            case ops.regex:
+            case ops.like:
                 return runDefaultRunner(context, 'LIKE', field, subQuery);
+            case ops.ilike:
+                return runDefaultRunner(context, 'ILIKE', field, subQuery);
             case ops.search:
                 if (lodash_1.default.isObject(subQuery)) {
                     if (lodash_1.default.every(subQuery, isOp)) {

@@ -166,10 +166,284 @@ function filterPropertyKey(keys, key) {
     .map((k) => k.split('_').slice(-1)[0])
 }
 
+export const $typeSymbol = Symbol('Type field definition')
+
+export const typeDirectives = {
+  inherits: (type: DocumentNode, args: any, context: any): DocumentNode => {
+    if (!args || !args.name) {
+      throw new Error('Inherits directive requires `name` argument')
+    }
+
+    if (!context.typeDefinitions[args.name]) {
+      throw new Error(`Type "${args.name}" is not defined`)
+    }
+
+    if (type.kind !== context.typeDefinitions[args.name].kind) {
+      throw new Error(
+        `Can't inherits ${type.kind} from ${
+          context.typeDefinitions[args.name].kind
+        }`,
+      )
+    }
+
+    if (
+      type.kind === 'ObjectTypeDefinition' ||
+      type.kind === 'InputObjectTypeDefinition'
+    ) {
+      console.log(
+        JSON.stringify({
+          ...type,
+          directives: type.directives.slice(1),
+          fields: [
+            ...context.typeDefinitions[args.name].fields,
+            ...type.fields,
+          ],
+        }),
+      )
+
+      return {
+        ...type,
+        directives: type.directives.slice(1),
+        fields: [...context.typeDefinitions[args.name].fields, ...type.fields],
+      }
+    } else if (type.kind === 'UnionTypeDefinition') {
+      return {
+        ...type,
+        directives: type.directives.slice(1),
+        types: [...context.typeDefinitions[args.name].types, ...type.types],
+      }
+    } else {
+      return {
+        ...type,
+        directives: type.directives.slice(1),
+        values: [...context.typeDefinitions[args.name].values, ...type.values],
+      }
+    }
+  },
+  map: (type: DocumentNode, args: any, context: any): DocumentNode => {
+    if (!args) {
+      throw new Error('Map directive requires arguments')
+    }
+
+    if (!args.key) {
+      throw new Error('Map directive requires `key` type')
+    }
+
+    if (!args.value) {
+      throw new Error('Map directive requires `value` type')
+    }
+
+    if (
+      (!['String', 'Number'].includes(args.key) &&
+        !context.typeDefinitions[args.key]) ||
+      (!['String', 'Number'].includes(args.value) &&
+        !context.typeDefinitions[args.value])
+    ) {
+      throw new Error(`Type "${args.key}" or "${args.value}" is not defined`)
+    }
+
+    if (
+      type.kind !== 'ObjectTypeDefinition' &&
+      type.kind !== 'InputObjectTypeDefinition'
+    ) {
+      throw new Error('Map can be applied only to `type` or `input` definition')
+    }
+
+    let fields = []
+
+    if (['String', 'Number'].includes(args.key)) {
+      fields.push({
+        kind: $typeSymbol,
+        key: {
+          kind: 'NamedType',
+          name: {
+            kind: 'Name',
+            value: args.key,
+          },
+        },
+        type: {
+          kind: 'NamedType',
+          name: {
+            kind: 'Name',
+            value: args.value,
+          },
+        },
+      })
+    } else if (
+      context.typeDefinitions[args.key].kind === 'EnumTypeDefinition'
+    ) {
+      fields = context.typeDefinitions[args.key].values.map((enumValue) => {
+        let type: DocumentNode = {
+          kind: 'NamedType',
+          name: {
+            kind: 'Name',
+            value: args.value,
+          },
+        }
+
+        if (args.isRequired) {
+          const newType = {
+            kind: 'NonNullType',
+            type,
+          }
+
+          type = newType
+        }
+
+        return {
+          kind: 'FieldDefinition',
+          name: enumValue.name,
+          type,
+        }
+      })
+    } else {
+      throw new Error(
+        `${context.typeDefinitions[args.key].kind} can't be used as "key" type`,
+      )
+    }
+
+    console.log(JSON.stringify(type))
+
+    return {
+      ...type,
+      directives: type.directives.slice(1),
+      options: {
+        ...type.options,
+        isMapped:
+          type.options?.isMapped || ['String', 'Number'].includes(args.key),
+      },
+      fields: [...fields, ...type.fields],
+    }
+  },
+  tuple: (type: DocumentNode, args: any, context: any): DocumentNode => {
+    if (!args) {
+      throw new Error('Tuple directive requires arguments')
+    }
+
+    if (!args.len && !args.definitions) {
+      throw new Error(
+        'Tuple directive requires `len` or `definitions` argument',
+      )
+    }
+
+    if (args.len && args.definitions) {
+      throw new Error(
+        'Tuple can parse only one argument at one time (`len` or `definitions`)',
+      )
+    }
+
+    if (args.definitions && !Array.isArray(args.definitions)) {
+      throw new Error(
+        'Tuple directive requires argument `definitions` to be an array',
+      )
+    }
+
+    if (
+      type.kind !== 'ObjectTypeDefinition' &&
+      type.kind !== 'InputObjectTypeDefinition'
+    ) {
+      throw new Error(
+        'Tuple can be applied only to `type` or `input` definition',
+      )
+    }
+
+    if (type.fields.length && args.definitions) {
+      throw new Error(
+        "Object type can't be combined with tuple with definitions",
+      )
+    }
+
+    return [
+      !!args.len && {
+        ...type,
+        directives: [],
+        name: {
+          ...type.name,
+          value: `TupleElementFor${type.name.value}`,
+        },
+      },
+      {
+        kind: 'TupleTypeDefinition',
+        name: {
+          kind: 'Name',
+          value: type.name.value,
+        },
+        directives: type.directives.slice(1),
+        elements: args.definitions
+          ? args.definitions.map((definition) => {
+              if (typeof definition === 'string') {
+                return args.isRequired
+                  ? {
+                      kind: 'NonNullType',
+                      type: {
+                        kind: 'NamedType',
+                        name: {
+                          kind: 'Name',
+                          value: definition,
+                        },
+                      },
+                    }
+                  : {
+                      kind: 'NamedType',
+                      name: {
+                        kind: 'Name',
+                        value: definition,
+                      },
+                    }
+              } else if (typeof definition === 'object') {
+                return args.isRequired || definition.isRequired
+                  ? {
+                      kind: 'NonNullType',
+                      type: {
+                        kind: 'NamedType',
+                        name: {
+                          kind: 'Name',
+                          value: definition.name,
+                        },
+                      },
+                    }
+                  : {
+                      kind: 'NamedType',
+                      name: {
+                        kind: 'Name',
+                        value: definition.name,
+                      },
+                    }
+              } else {
+                throw new Error(
+                  'Tuple directive requiers `definitions` argument to be an array of strings or definition object',
+                )
+              }
+            })
+          : Array(args.len).map(() =>
+              args.isRequired
+                ? {
+                    kind: 'NonNullType',
+                    type: {
+                      kind: 'NamedType',
+                      name: {
+                        kind: 'Name',
+                        value: `TupleElementFor${type.name.value}`,
+                      },
+                    },
+                  }
+                : {
+                    kind: 'NamedType',
+                    name: {
+                      kind: 'Name',
+                      value: `TupleElementFor${type.name.value}`,
+                    },
+                  },
+            ),
+      },
+    ].filter(Boolean)
+  },
+}
+
 export const preExecutedDirectives = {
   // if: Boolean to compare
   // Skips metric/dimension when 'if' argument is false
-  include: (context: PreExecutedContext) => {
+  include: (context: PreExecutedContext): DocumentNode => {
     if (context.caller?.data?.value !== undefined) {
       if (!context.caller.data.value) {
         return null
@@ -198,7 +472,7 @@ export const preExecutedDirectives = {
   },
   // if: Boolean to compare
   // Skips metric/dimension when 'if' argument is true
-  skip: (context: PreExecutedContext) => {
+  skip: (context: PreExecutedContext): DocumentNode => {
     if (context.caller?.data?.value !== undefined) {
       if (context.caller.data.value) {
         return null
@@ -225,7 +499,7 @@ export const preExecutedDirectives = {
       return null
     }
   },
-  compare: (context: PreExecutedContext) => {
+  compare: (context: PreExecutedContext): DocumentNode => {
     if (!context.tree.arguments) {
       throw new Error('Compare directive requires arguments')
     }
@@ -821,4 +1095,18 @@ export function parseDirective(
   }
 
   return tree
+}
+
+export function parseTypeDirective(tree: DocumentNode, context): DocumentNode {
+  return tree.directives
+    ? tree.directives.reduce((tree, directive) => {
+        return typeDirectives[directive.name.value]
+          ? typeDirectives[directive.name.value](
+              Array.isArray(tree) ? tree[tree.length - 1] : tree,
+              argumentsToObject(directive.arguments),
+              context,
+            )
+          : tree
+      }, tree)
+    : tree
 }

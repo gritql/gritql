@@ -38,7 +38,8 @@ const filterOperators: Array<
   'nor',
   'not',
   'or',
-  'regex',
+  'ilike',
+  'like',
   'search',
   'from',
   'inherited',
@@ -288,8 +289,10 @@ export function buildFilter(
           subQuery,
         )
 
-      case ops.regex:
+      case ops.like:
         return runDefaultRunner(context, 'LIKE', field, subQuery)
+      case ops.ilike:
+        return runDefaultRunner(context, 'ILIKE', field, subQuery)
 
       case ops.search:
         if (_.isObject(subQuery)) {

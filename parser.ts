@@ -1,5 +1,5 @@
 import { argumentsToObject } from './arguments'
-import { parseDirective } from './directives'
+import { $typeSymbol, parseDirective } from './directives'
 import { transformFilters } from './filters'
 import { checkPropTypes, PropTypes } from './types'
 
@@ -47,6 +47,25 @@ export function parseType(type, context) {
         }
       }),
     )
+  } else if (type.kind === 'TupleTypeDefinition') {
+    context.types[type.name.value] = PropTypes.tuple(
+      ...type.elements.map((element) => {
+        const isRequired = element.kind === 'NonNullType'
+        element = element.type || element
+
+        if (context.types[element.name.value]) {
+          let type = context.types[element.name.value]
+
+          if (isRequired) {
+            type = type.isRequired
+          }
+
+          return type
+        } else {
+          throw new Error(`${element.name.value} is not declared type`)
+        }
+      }),
+    )
   } else if (type.kind === 'EnumTypeDefinition') {
     context.types[type.name.value] = PropTypes.oneOf(
       type.values.map((t) => t.name.value),
@@ -57,8 +76,9 @@ export function parseType(type, context) {
   ) {
     const isInput = type.kind.startsWith('Input')
 
-    context.types[type.name.value] = PropTypes[isInput ? 'shape' : 'exact'](
-      type.fields.reduce((acc, field) => {
+    const shape = type.fields
+      .filter(({ kind }) => kind !== $typeSymbol)
+      .reduce((acc, field) => {
         const isRequired = field.type.kind === 'NonNullType'
 
         if (isRequired) {
@@ -99,8 +119,27 @@ export function parseType(type, context) {
         }
 
         return acc
-      }, {}),
-    )
+      }, {})
+
+    const symbolField = type.fields.filter(
+      ({ kind }) => kind === $typeSymbol,
+    )[0]
+
+    if (type.options?.isMapped && !context.types[symbolField.type.name.value]) {
+      throw new Error(`${symbolField.type.name.value} is not declared type`)
+    }
+
+    if (type.name.value === 'BrandFilter') {
+      console.log(shape, JSON.stringify(type))
+    }
+
+    context.types[type.name.value] = type.options?.isMapped
+      ? PropTypes.map(
+          shape,
+          PropTypes[symbolField.key.name.value.toLowerCase()].isRequired,
+          context.types[symbolField.type.name.value],
+        )
+      : PropTypes[isInput ? 'shape' : 'exact'](shape)
   }
 
   return context

@@ -808,6 +808,12 @@ Object {
 }
 `;
 
+exports[`SQL variables && types Custom types directives 1`] = `
+Array [
+  "select sum(\\"pageviews\\") as \\"value\\" from \\"table\\"",
+]
+`;
+
 exports[`SQL variables && types Pre executive @directives @compare 1`] = `
 Array [
   "select \\"date\\", \\"device\\", \\"no_baskets\\" from \\"table\\" group by \\"date\\", \\"device\\" limit 2",
