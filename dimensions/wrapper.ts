@@ -13,6 +13,7 @@ const defaultPropTypes = {
   limit: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
   offset: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
   type: PropTypes.oneOf(['Array', 'Map']),
+  from: PropTypes.string,
 }
 
 export const dimensionWrapper = <T = ValidationMap<any>>(
@@ -56,7 +57,8 @@ export const dimensionWrapper = <T = ValidationMap<any>>(
       throw new Error(`${tree.name.value} dimension requires arguments`)
     }
 
-    if (properties) {
+    if (args) {
+      properties = { ...defaultPropTypes, ...properties }
       checkPropTypes(properties, args, 'arguments', tree.name.value)
     }
 

@@ -41,7 +41,6 @@ export const metricResolvers = {
     {
       a: PropTypes.string.isRequired,
       factor: PropTypes.number,
-      from: PropTypes.string,
     },
     ['PERCENTILE_CONT', 'WITHIN GROUP'],
     'knex',
@@ -56,7 +55,6 @@ export const metricResolvers = {
       )
     },
     {
-      from: PropTypes.string,
       a: PropTypes.string.isRequired,
       by: PropTypes.string,
     },
@@ -71,7 +69,6 @@ export const metricResolvers = {
     },
     {
       a: PropTypes.string,
-      from: PropTypes.string,
     },
     ['SUM'],
     'knex',
@@ -84,7 +81,6 @@ export const metricResolvers = {
     },
     {
       a: PropTypes.string.isRequired,
-      from: PropTypes.string,
     },
     ['MIN'],
     'knex',
@@ -97,7 +93,6 @@ export const metricResolvers = {
     },
     {
       a: PropTypes.string.isRequired,
-      from: PropTypes.string,
     },
     ['MAX'],
     'knex',
@@ -112,7 +107,6 @@ export const metricResolvers = {
     },
     {
       a: PropTypes.string,
-      from: PropTypes.string,
     },
     ['COUNT'],
     'knex',
@@ -125,7 +119,6 @@ export const metricResolvers = {
     },
     {
       a: PropTypes.string.isRequired,
-      from: PropTypes.string,
     },
     ['COUNT', 'DISTINCT'],
     'knex',
@@ -187,7 +180,6 @@ export const metricResolvers = {
       a: PropTypes.string.isRequired,
       by: PropTypes.string,
       alg: PropTypes.oneOf(['denseRank', 'rank', 'rowNumber']),
-      from: PropTypes.string,
       tableAlias: PropTypes.string,
     },
     ['DENSE_RANK', 'RANK', 'ROW_NUMBER', 'OVER', 'PARTITION BY'],
@@ -212,7 +204,7 @@ export const metricResolvers = {
         ),
       )
     },
-    { a: PropTypes.string.isRequired, from: PropTypes.string },
+    { a: PropTypes.string.isRequired },
     ['PLAINTO_TSQUERY', 'TO_TSVECTOR', 'TS_RANK'],
     'knex',
   ),
@@ -237,7 +229,6 @@ export const metricResolvers = {
     },
     {
       a: PropTypes.string.isRequired,
-      from: PropTypes.string,
     },
     ['PLAINTO_TSQUERY', 'TS_HEADLINE'],
     'knex',
@@ -250,7 +241,6 @@ export const metricResolvers = {
     },
     {
       a: PropTypes.string,
-      from: PropTypes.string,
     },
     ['GROUP BY'],
     'knex',
@@ -280,7 +270,6 @@ export const metricResolvers = {
     {
       a: PropTypes.string.isRequired,
       by: PropTypes.string,
-      from: PropTypes.string,
     },
     ['AVG', 'PARTITION BY'],
     'knex',
@@ -298,7 +287,6 @@ export const metricResolvers = {
     {
       a: PropTypes.string.isRequired,
       per: PropTypes.string.isRequired,
-      from: PropTypes.string,
     },
     ['SUM', 'COUNT', 'DISTINCT'],
     'knex',
@@ -323,7 +311,6 @@ export const metricResolvers = {
     {
       a: PropTypes.string.isRequired,
       by: PropTypes.string,
-      from: PropTypes.string,
     },
     ['SUM', 'NULLIF', 'OVER', 'PARTITION BY'],
     'knex',
@@ -348,7 +335,6 @@ export const metricResolvers = {
     {
       a: PropTypes.string.isRequired,
       by: PropTypes.string,
-      from: PropTypes.string,
     },
     ['MAX', 'SUM', 'NULLIF', 'OVER', 'PARTITION BY'],
     'knex',
@@ -383,7 +369,6 @@ export const metricResolvers = {
     {
       a: PropTypes.string.isRequired,
       by: PropTypes.string.isRequired,
-      from: PropTypes.string,
     },
     ['CAST', 'NULLIF'],
     'knex',
@@ -425,7 +410,6 @@ export const metricResolvers = {
     {
       to: PropTypes.string.isRequired,
       by: PropTypes.string.isRequired,
-      from: PropTypes.string,
     },
     ['SUM', 'MAX', 'GROUP BY'],
     'knex',
@@ -459,7 +443,6 @@ export const metricResolvers = {
     {
       a: PropTypes.string.isRequired,
       by: PropTypes.string.isRequired,
-      from: PropTypes.string,
     },
     ['SUM', 'GROUP BY'],
     'knex',
@@ -468,9 +451,7 @@ export const metricResolvers = {
     (alias, args, query) => {
       return query.promise.distinct(buildFullName(args, query, alias, false))
     },
-    {
-      from: PropTypes.string,
-    },
+    {},
     ['DISTINCT'],
     'knex',
   ),

@@ -11,6 +11,7 @@ const defaultPropTypes = {
   sort: PropTypes.oneOf(['asc', 'desc']),
   limit: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
   offset: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  from: PropTypes.string,
 }
 
 export const metricWrapper = <T = ValidationMap<any>>(
@@ -55,7 +56,8 @@ export const metricWrapper = <T = ValidationMap<any>>(
       throw new Error(`${tree.name.value} metric requires arguments`)
     }
 
-    if (properties) {
+    if (args) {
+      properties = { ...defaultPropTypes, ...properties }
       checkPropTypes(properties, args, 'arguments', tree.name.value)
     }
 

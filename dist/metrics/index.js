@@ -30,7 +30,6 @@ exports.metricResolvers = {
     }, {
         a: types_1.PropTypes.string.isRequired,
         factor: types_1.PropTypes.number,
-        from: types_1.PropTypes.string,
     }, ['PERCENTILE_CONT', 'WITHIN GROUP'], 'knex'),
     median: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
         return query.promise.select(knex.raw(`MEDIAN(??) OVER (${partitionBy(args, query, knex)}) AS ??`, [
@@ -38,7 +37,6 @@ exports.metricResolvers = {
             alias,
         ]));
     }, {
-        from: types_1.PropTypes.string,
         a: types_1.PropTypes.string.isRequired,
         by: types_1.PropTypes.string,
     }, ['MEDIAN', 'PARTITION BY', 'ORDER BY'], 'knex'),
@@ -46,19 +44,16 @@ exports.metricResolvers = {
         return query.promise.sum(`${(0, filters_1.buildFullName)(args, query, args.a, false)} as ${alias}`);
     }, {
         a: types_1.PropTypes.string,
-        from: types_1.PropTypes.string,
     }, ['SUM'], 'knex'),
     min: (0, wrapper_1.metricWrapper)((alias, args, query) => {
         return query.promise.min(`${(0, filters_1.buildFullName)(args, query, args.a, false)} as ${alias}`);
     }, {
         a: types_1.PropTypes.string.isRequired,
-        from: types_1.PropTypes.string,
     }, ['MIN'], 'knex'),
     max: (0, wrapper_1.metricWrapper)((alias, args, query) => {
         return query.promise.max(`${(0, filters_1.buildFullName)(args, query, args.a, false)} as ${alias}`);
     }, {
         a: types_1.PropTypes.string.isRequired,
-        from: types_1.PropTypes.string,
     }, ['MAX'], 'knex'),
     count: (0, wrapper_1.metricWrapper)((alias, args, query) => {
         return query.promise.count(args.a
@@ -66,13 +61,11 @@ exports.metricResolvers = {
             : '1');
     }, {
         a: types_1.PropTypes.string,
-        from: types_1.PropTypes.string,
     }, ['COUNT'], 'knex'),
     countDistinct: (0, wrapper_1.metricWrapper)((alias, args, query) => {
         return query.promise.countDistinct(`${(0, filters_1.buildFullName)(args, query, args.a, false)} as ${alias}`);
     }, {
         a: types_1.PropTypes.string.isRequired,
-        from: types_1.PropTypes.string,
     }, ['COUNT', 'DISTINCT'], 'knex'),
     join: (0, cross_table_1.join)(cross_table_1.JoinType.DEFAULT),
     leftJoin: (0, cross_table_1.join)(cross_table_1.JoinType.LEFT),
@@ -108,7 +101,6 @@ exports.metricResolvers = {
         a: types_1.PropTypes.string.isRequired,
         by: types_1.PropTypes.string,
         alg: types_1.PropTypes.oneOf(['denseRank', 'rank', 'rowNumber']),
-        from: types_1.PropTypes.string,
         tableAlias: types_1.PropTypes.string,
     }, ['DENSE_RANK', 'RANK', 'ROW_NUMBER', 'OVER', 'PARTITION BY'], 'knex'),
     searchRanking: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
@@ -116,7 +108,7 @@ exports.metricResolvers = {
         if (!query.search[key])
             throw `SearchRanking requires search query for ${key} field`;
         return query.promise.select(knex.raw("ts_rank(to_tsvector('simple', ??), (plainto_tsquery('simple', ?)::text || ':*')::tsquery) as ??", [key, query.search[key], alias]));
-    }, { a: types_1.PropTypes.string.isRequired, from: types_1.PropTypes.string }, ['PLAINTO_TSQUERY', 'TO_TSVECTOR', 'TS_RANK'], 'knex'),
+    }, { a: types_1.PropTypes.string.isRequired }, ['PLAINTO_TSQUERY', 'TO_TSVECTOR', 'TS_RANK'], 'knex'),
     searchHeadline: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
         const key = (0, filters_1.buildFullName)({ from: args.from || query.table }, query, args.a, false);
         if (!query.search[key])
@@ -124,14 +116,12 @@ exports.metricResolvers = {
         return query.promise.select(knex.raw("ts_headline('simple', ??, (plainto_tsquery('simple', ?)::text || ':*')::tsquery) as ??", [key, query.search[key], alias]));
     }, {
         a: types_1.PropTypes.string.isRequired,
-        from: types_1.PropTypes.string,
     }, ['PLAINTO_TSQUERY', 'TS_HEADLINE'], 'knex'),
     unique: (0, wrapper_1.metricWrapper)((alias, args, query) => {
         const field = (0, filters_1.buildFullName)(args, query, args?.a || alias, false);
         return query.promise.select(`${field} as ${alias}`).groupBy(field);
     }, {
         a: types_1.PropTypes.string,
-        from: types_1.PropTypes.string,
     }, ['GROUP BY'], 'knex'),
     from: (0, wrapper_1.metricWrapper)((alias, args, query) => {
         const field = (0, filters_1.buildFullName)(args, query, args?.a || alias, false);
@@ -145,7 +135,6 @@ exports.metricResolvers = {
     }, {
         a: types_1.PropTypes.string.isRequired,
         by: types_1.PropTypes.string,
-        from: types_1.PropTypes.string,
     }, ['AVG', 'PARTITION BY'], 'knex'),
     avgPerDimension: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
         return query.promise.select(knex.raw(`sum(??)::float/COUNT(DISTINCT ??)::float4 as ??`, [
@@ -156,7 +145,6 @@ exports.metricResolvers = {
     }, {
         a: types_1.PropTypes.string.isRequired,
         per: types_1.PropTypes.string.isRequired,
-        from: types_1.PropTypes.string,
     }, ['SUM', 'COUNT', 'DISTINCT'], 'knex'),
     share: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
         return query.promise.select(knex.raw(`sum(??)/NULLIF(sum(sum(??)) over (${partitionBy(args, query, knex)}), 0)::float4 as ??`, [
@@ -167,7 +155,6 @@ exports.metricResolvers = {
     }, {
         a: types_1.PropTypes.string.isRequired,
         by: types_1.PropTypes.string,
-        from: types_1.PropTypes.string,
     }, ['SUM', 'NULLIF', 'OVER', 'PARTITION BY'], 'knex'),
     indexed: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
         return query.promise.select(knex.raw(`sum(??)/NULLIF(max(sum(??)::float) over (${partitionBy(args, query, knex)}), 0)::float4 as ??`, [
@@ -178,7 +165,6 @@ exports.metricResolvers = {
     }, {
         a: types_1.PropTypes.string.isRequired,
         by: types_1.PropTypes.string,
-        from: types_1.PropTypes.string,
     }, ['MAX', 'SUM', 'NULLIF', 'OVER', 'PARTITION BY'], 'knex'),
     divide: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
         const functions = Object.keys(args).reduce((r, k) => {
@@ -199,7 +185,6 @@ exports.metricResolvers = {
     }, {
         a: types_1.PropTypes.string.isRequired,
         by: types_1.PropTypes.string.isRequired,
-        from: types_1.PropTypes.string,
     }, ['CAST', 'NULLIF'], 'knex'),
     aggrAverage: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
         let internal = query.promise
@@ -224,7 +209,6 @@ exports.metricResolvers = {
     }, {
         to: types_1.PropTypes.string.isRequired,
         by: types_1.PropTypes.string.isRequired,
-        from: types_1.PropTypes.string,
     }, ['SUM', 'MAX', 'GROUP BY'], 'knex'),
     weightAvg: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
         let internal = query.promise
@@ -247,13 +231,10 @@ exports.metricResolvers = {
     }, {
         a: types_1.PropTypes.string.isRequired,
         by: types_1.PropTypes.string.isRequired,
-        from: types_1.PropTypes.string,
     }, ['SUM', 'GROUP BY'], 'knex'),
     distinct: (0, wrapper_1.metricWrapper)((alias, args, query) => {
         return query.promise.distinct((0, filters_1.buildFullName)(args, query, alias, false));
-    }, {
-        from: types_1.PropTypes.string,
-    }, ['DISTINCT'], 'knex'),
+    }, {}, ['DISTINCT'], 'knex'),
     default: (0, wrapper_1.metricWrapper)((alias, args, query, _, { tree }) => {
         // Getters are needed only for additionaly selected fields by some specific functions
         // example: price(groupByEach: 50) -> price: 0-50 -> groupByEach_min_price: 0 -> groupByEach_max_price: 50

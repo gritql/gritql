@@ -12,6 +12,7 @@ const defaultPropTypes = {
     limit: types_1.PropTypes.oneOfType([types_1.PropTypes.string, types_1.PropTypes.number]),
     offset: types_1.PropTypes.oneOfType([types_1.PropTypes.string, types_1.PropTypes.number]),
     type: types_1.PropTypes.oneOf(['Array', 'Map']),
+    from: types_1.PropTypes.string,
 };
 const dimensionWrapper = (dimension, properties, keywords, builder) => {
     return (tree, query, knex) => {
@@ -30,7 +31,8 @@ const dimensionWrapper = (dimension, properties, keywords, builder) => {
         if (properties && !args) {
             throw new Error(`${tree.name.value} dimension requires arguments`);
         }
-        if (properties) {
+        if (args) {
+            properties = { ...defaultPropTypes, ...properties };
             (0, types_1.checkPropTypes)(properties, args, 'arguments', tree.name.value);
         }
         const { dimensions = [] } = query;

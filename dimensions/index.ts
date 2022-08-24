@@ -77,7 +77,6 @@ export const dimensionResolvers = {
         'century',
         'millennium',
       ]),
-      from: PropTypes.string,
       alias: PropTypes.string,
     },
     ['DATE_TRUNC', 'GROUP BY'],
@@ -131,7 +130,6 @@ export const dimensionResolvers = {
     },
     {
       field: PropTypes.string.isRequired,
-      from: PropTypes.string,
       each: PropTypes.number,
     },
     ['CAST', 'FLOOR', 'CEIL', 'GROUP BY'],
@@ -190,7 +188,6 @@ export const dimensionResolvers = {
       return query.promise
     },
     {
-      from: PropTypes.string,
       fields: PropTypes.arrayOf(
         PropTypes.oneOfType([
           PropTypes.string,
@@ -205,23 +202,17 @@ export const dimensionResolvers = {
     [],
     'knex',
   ),
-  default: dimensionWrapper(
-    (alias, args, query, knex, { tree }) => {
-      if (query.provider !== 'ga') {
-        const fullName = buildFullName(args, query, tree.name.value, false)
+  default: dimensionWrapper((alias, args, query, knex, { tree }) => {
+    if (query.provider !== 'ga') {
+      const fullName = buildFullName(args, query, tree.name.value, false)
 
-        return query.promise
-          .select(alias ? knex.raw(`?? AS ??`, [fullName, alias]) : fullName)
-          .groupBy(fullName)
-      } else {
-        return query.promise
-      }
-    },
-    {
-      from: PropTypes.string,
-    },
-    [],
-  ),
+      return query.promise
+        .select(alias ? knex.raw(`?? AS ??`, [fullName, alias]) : fullName)
+        .groupBy(fullName)
+    } else {
+      return query.promise
+    }
+  }, []),
   join: join(JoinType.DEFAULT, Kind.DIMENSION),
   leftJoin: join(JoinType.LEFT, Kind.DIMENSION),
   rightJoin: join(JoinType.RIGHT, Kind.DIMENSION),

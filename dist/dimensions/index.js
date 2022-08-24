@@ -54,7 +54,6 @@ exports.dimensionResolvers = {
             'century',
             'millennium',
         ]),
-        from: types_1.PropTypes.string,
         alias: types_1.PropTypes.string,
     }, ['DATE_TRUNC', 'GROUP BY'], 'knex'),
     groupByEach: (0, wrapper_1.dimensionWrapper)((alias, args, query, knex) => {
@@ -91,7 +90,6 @@ exports.dimensionResolvers = {
         return query.promise;
     }, {
         field: types_1.PropTypes.string.isRequired,
-        from: types_1.PropTypes.string,
         each: types_1.PropTypes.number,
     }, ['CAST', 'FLOOR', 'CEIL', 'GROUP BY'], 'knex'),
     combine: (0, wrapper_1.dimensionWrapper)((_, args, query, knex) => {
@@ -132,7 +130,6 @@ exports.dimensionResolvers = {
         });
         return query.promise;
     }, {
-        from: types_1.PropTypes.string,
         fields: types_1.PropTypes.arrayOf(types_1.PropTypes.oneOfType([
             types_1.PropTypes.string,
             types_1.PropTypes.shape({
@@ -152,8 +149,6 @@ exports.dimensionResolvers = {
         else {
             return query.promise;
         }
-    }, {
-        from: types_1.PropTypes.string,
     }, []),
     join: (0, cross_table_1.join)(cross_table_1.JoinType.DEFAULT, cross_table_1.Kind.DIMENSION),
     leftJoin: (0, cross_table_1.join)(cross_table_1.JoinType.LEFT, cross_table_1.Kind.DIMENSION),

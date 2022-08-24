@@ -10,6 +10,7 @@ const defaultPropTypes = {
     sort: types_1.PropTypes.oneOf(['asc', 'desc']),
     limit: types_1.PropTypes.oneOfType([types_1.PropTypes.string, types_1.PropTypes.number]),
     offset: types_1.PropTypes.oneOfType([types_1.PropTypes.string, types_1.PropTypes.number]),
+    from: types_1.PropTypes.string,
 };
 const metricWrapper = (metric, properties, keywords, builder) => {
     return (tree, query, knex) => {
@@ -28,7 +29,8 @@ const metricWrapper = (metric, properties, keywords, builder) => {
         if (properties && !args) {
             throw new Error(`${tree.name.value} metric requires arguments`);
         }
-        if (properties) {
+        if (args) {
+            properties = { ...defaultPropTypes, ...properties };
             (0, types_1.checkPropTypes)(properties, args, 'arguments', tree.name.value);
         }
         const alias = tree.alias?.value;
