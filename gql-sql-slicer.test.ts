@@ -198,14 +198,14 @@ describe('SQL', () => {
 
       type BrandFilter @inherits(name: BrandOps) @map(key: String, value: BrandOps)
 
-      type BrandFilters {
-        or: [BrandFilter!]
+      input DateEqFilter {
+        eq: TupleDate
       }
   
       type Filters {
-        brand: BrandFilters!
+        or: [BrandFilter!]!
         country: String!
-        date: TupleDate
+        date: DateEqFilter
       }
   
       query table($filters: Filters) {
@@ -216,11 +216,13 @@ describe('SQL', () => {
     `,
         {
           filters: {
-            brand: { or: [{ eq: 'Adidas', price: { lt: 2 } }] },
-            date: [
-              { year: 2021, month: 12, day: 31 },
-              { year: 2022, month: 9, day: 1 },
-            ],
+            or: [{ brand: { eq: 'Adidas' }, price: { lt: 2 } }],
+            date: {
+              eq: [
+                { year: 2021, month: 12, day: 31 },
+                { year: 2022, month: 9, day: 1 },
+              ],
+            },
             country: 'US',
           },
         },

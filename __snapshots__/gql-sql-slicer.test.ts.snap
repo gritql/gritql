@@ -29,7 +29,7 @@ Array [
 exports[`SQL builder for mulyquery requests complex queries using with example works 1`] = `
 Array [
   "with \\"productQuery\\" as (select \\"table\\".\\"product\\", sum(\\"value\\") as \\"value\\", \\"table_catalog\\".\\"price\\" as \\"price\\", \\"table_catalog\\".\\"brand\\" as \\"brand\\" from \\"table\\" JOIN \\"table_catalog\\" ON (\\"table_catalog\\".\\"product\\" = \\"table\\".\\"product\\") AND (\\"table_catalog\\".\\"country\\" = \\"table\\".\\"country\\") where ((\\"table\\".\\"date\\" >= '2021-12-13') AND (\\"table\\".\\"date\\" <= '2022-01-09')) AND ((\\"table\\".\\"price\\" >= 10)) AND (\\"table\\".\\"country\\" = 'DE') AND ((\\"table\\".\\"category\\" IN ('Clothes','Fashion')) AND (\\"table\\".\\"category\\" NOT IN('Bags'))) group by \\"table\\".\\"product\\", \\"table_catalog\\".\\"price\\", \\"table_catalog\\".\\"brand\\" order by \\"value\\" desc) select count(distinct \\"brand\\") as \\"count\\" from \\"productQuery\\"",
-  "with \\"productQuery\\" as (select \\"table\\".\\"product\\", sum(\\"value\\") as \\"value\\", \\"table_catalog\\".\\"price\\" as \\"price\\", \\"table_catalog\\".\\"brand\\" as \\"brand\\" from \\"table\\" JOIN \\"table_catalog\\" ON (\\"table_catalog\\".\\"product\\" = \\"table\\".\\"product\\") AND (\\"table_catalog\\".\\"country\\" = \\"table\\".\\"country\\") where ((\\"table\\".\\"date\\" >= '2021-12-13') AND (\\"table\\".\\"date\\" <= '2022-01-09')) AND ((\\"table\\".\\"price\\" >= 10)) AND (\\"table\\".\\"country\\" = 'DE') AND ((\\"table\\".\\"category\\" IN ('Clothes','Fashion')) AND (\\"table\\".\\"category\\" NOT IN('Bags'))) group by \\"table\\".\\"product\\", \\"table_catalog\\".\\"price\\", \\"table_catalog\\".\\"brand\\" order by \\"value\\" desc) select \\"brand\\", PERCENTILE_CONT(0.5) WITHIN GROUP(ORDER BY \\"price\\") AS \\"price\\", \\"brand\\", sum(\\"value\\")/NULLIF(sum(sum(\\"value\\")) over (), 0)::float4 as \\"marketShare\\" from \\"productQuery\\" group by \\"brand\\" order by \\"marketShare\\" desc limit 10",
+  "with \\"productQuery\\" as (select \\"table\\".\\"product\\", sum(\\"value\\") as \\"value\\", \\"table_catalog\\".\\"price\\" as \\"price\\", \\"table_catalog\\".\\"brand\\" as \\"brand\\" from \\"table\\" JOIN \\"table_catalog\\" ON (\\"table_catalog\\".\\"product\\" = \\"table\\".\\"product\\") AND (\\"table_catalog\\".\\"country\\" = \\"table\\".\\"country\\") where ((\\"table\\".\\"date\\" >= '2021-12-13') AND (\\"table\\".\\"date\\" <= '2022-01-09')) AND ((\\"table\\".\\"price\\" >= 10)) AND (\\"table\\".\\"country\\" = 'DE') AND ((\\"table\\".\\"category\\" IN ('Clothes','Fashion')) AND (\\"table\\".\\"category\\" NOT IN('Bags'))) group by \\"table\\".\\"product\\", \\"table_catalog\\".\\"price\\", \\"table_catalog\\".\\"brand\\" order by \\"value\\" desc) select \\"brand\\", PERCENTILE_CONT(0.5) WITHIN GROUP(ORDER BY \\"price\\") AS \\"price\\", sum(\\"value\\")/NULLIF(sum(sum(\\"value\\")) , 0)::float4 as \\"marketShare\\" from \\"productQuery\\" group by \\"brand\\" order by \\"marketShare\\" desc limit 10",
 ]
 `;
 
@@ -111,13 +111,13 @@ Object {
 
 exports[`SQL fragments Fragment with arguments 1`] = `
 Array [
-  "select \\"date\\", sum(\\"pageviews\\") as \\"value\\", sum(\\"pageviews\\")/NULLIF(sum(sum(\\"pageviews\\")) over (), 0)::float4 as \\"share\\" from \\"table\\" group by \\"date\\"",
+  "select \\"date\\", sum(\\"pageviews\\") as \\"value\\", sum(\\"pageviews\\")/NULLIF(sum(sum(\\"pageviews\\")) , 0)::float4 as \\"share\\" from \\"table\\" where (\\"table\\".\\"brand\\" = 'Adidas') AND ((\\"table\\".\\"date\\" > '2021-01-01') AND (\\"table\\".\\"date\\" < '2022-01-01')) AND (\\"table\\".\\"country\\" = 'US') group by \\"date\\"",
 ]
 `;
 
 exports[`SQL fragments Simple fragment 1`] = `
 Array [
-  "select \\"date\\", sum(\\"pageviews\\") as \\"value\\", sum(\\"pageviews\\")/NULLIF(sum(sum(\\"pageviews\\")) over (), 0)::float4 as \\"share\\" from \\"table\\" group by \\"date\\"",
+  "select \\"date\\", sum(\\"pageviews\\") as \\"value\\", sum(\\"pageviews\\")/NULLIF(sum(sum(\\"pageviews\\")) , 0)::float4 as \\"share\\" from \\"table\\" where (\\"table\\".\\"brand\\" = 'Adidas') AND ((\\"table\\".\\"date\\" > '2021-01-01') AND (\\"table\\".\\"date\\" < '2022-01-01')) AND (\\"table\\".\\"country\\" = 'US') group by \\"date\\"",
 ]
 `;
 
@@ -494,7 +494,7 @@ Object {
 
 exports[`SQL gqlBuilder function avg 1`] = `
 Array [
-  "select \\"channels\\", avg(\\"sessions\\") over ()::float4 as \\"avg\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"date\\" = '2020-11-27' and \\"ecom_benchmarking\\".\\"category\\" = 'Finance/Investing' group by \\"channels\\"",
+  "select \\"channels\\", avg(\\"sessions\\")  as \\"avg\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"date\\" = '2020-11-27' and \\"ecom_benchmarking\\".\\"category\\" = 'Finance/Investing' group by \\"channels\\"",
 ]
 `;
 
@@ -518,7 +518,7 @@ Array [
 
 exports[`SQL gqlBuilder function indexed 1`] = `
 Array [
-  "select \\"channels\\", sum(\\"sessions\\")/NULLIF(max(sum(\\"sessions\\")::float) over (), 0)::float4 as \\"value\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"date\\" = '2020-11-27' and \\"ecom_benchmarking\\".\\"category\\" = 'Finance/Investing' group by \\"channels\\"",
+  "select \\"channels\\", sum(\\"sessions\\")/NULLIF(max(sum(\\"sessions\\")::float) , 0)::float4 as \\"value\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"date\\" = '2020-11-27' and \\"ecom_benchmarking\\".\\"category\\" = 'Finance/Investing' group by \\"channels\\"",
 ]
 `;
 
@@ -536,49 +536,49 @@ Array [
 
 exports[`SQL gqlBuilder function share 1`] = `
 Array [
-  "select \\"channels\\", sum(\\"sessions\\")/NULLIF(sum(sum(\\"sessions\\")) over (), 0)::float4 as \\"share\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"date\\" = '2020-11-27' and \\"ecom_benchmarking\\".\\"category\\" = 'Finance/Investing' group by \\"channels\\"",
+  "select \\"channels\\", sum(\\"sessions\\")/NULLIF(sum(sum(\\"sessions\\")) , 0)::float4 as \\"share\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"date\\" = '2020-11-27' and \\"ecom_benchmarking\\".\\"category\\" = 'Finance/Investing' group by \\"channels\\"",
 ]
 `;
 
 exports[`SQL gqlBuilder function share with by argument 1`] = `
 Array [
-  "select \\"channels\\", sum(\\"sessions\\")/NULLIF(sum(sum(\\"sessions\\")) over (PARTITION BY \\"channels\\"), 0)::float4 as \\"share\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"date\\" = '2020-11-27' and \\"ecom_benchmarking\\".\\"category\\" = 'Finance/Investing' group by \\"channels\\"",
+  "select \\"channels\\", sum(\\"sessions\\")/NULLIF(sum(sum(\\"sessions\\")) OVER(PARTITION BY \\"channels\\"), 0)::float4 as \\"share\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"date\\" = '2020-11-27' and \\"ecom_benchmarking\\".\\"category\\" = 'Finance/Investing' group by \\"channels\\"",
 ]
 `;
 
 exports[`SQL gqlBuilder request tuning all together 1`] = `
 Array [
-  "select \\"channels\\", sum(\\"sessions\\")/NULLIF(sum(sum(\\"sessions\\")) over (), 0)::float4 as \\"share\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Travel_and_Tourism' and \\"ecom_benchmarking\\".\\"country\\" = 'US' and \\"ecom_benchmarking\\".\\"date\\" > '2020-10-13' and \\"ecom_benchmarking\\".\\"date\\" < '2021-04-13' group by \\"channels\\" order by \\"share\\" desc limit 5 offset 3",
+  "select \\"channels\\", sum(\\"sessions\\")/NULLIF(sum(sum(\\"sessions\\")) , 0)::float4 as \\"share\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Travel_and_Tourism' and \\"ecom_benchmarking\\".\\"country\\" = 'US' and \\"ecom_benchmarking\\".\\"date\\" > '2020-10-13' and \\"ecom_benchmarking\\".\\"date\\" < '2021-04-13' group by \\"channels\\" order by \\"share\\" desc limit 5 offset 3",
 ]
 `;
 
 exports[`SQL gqlBuilder request tuning groupByEach 1`] = `
 Array [
-  "select (CAST(FLOOR(CEIL(\\"price\\")/50) AS INT)*50 || '-' || CAST(FLOOR(CEIL(\\"price\\")/50) AS INT)*50+49) AS \\"price\\", (CAST(FLOOR(CEIL(\\"price\\")/50) AS INT)*50) AS \\"groupByEach_min_price\\", (CAST(FLOOR(CEIL(\\"price\\")/50) AS INT)*50+49) AS \\"groupByEach_max_price\\", sum(\\"sessions\\")/NULLIF(sum(sum(\\"sessions\\")) over (), 0)::float4 as \\"share\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Travel_and_Tourism' and \\"ecom_benchmarking\\".\\"country\\" = 'US' and \\"ecom_benchmarking\\".\\"date\\" > '2020-10-13' and \\"ecom_benchmarking\\".\\"date\\" < '2021-04-13' group by CAST(FLOOR(CEIL(\\"price\\")/50) AS INT) order by \\"share\\" asc",
+  "select (CAST(FLOOR(CEIL(\\"price\\")/50) AS INT)*50 || '-' || CAST(FLOOR(CEIL(\\"price\\")/50) AS INT)*50+49) AS \\"price\\", (CAST(FLOOR(CEIL(\\"price\\")/50) AS INT)*50) AS \\"groupByEach_min_price\\", (CAST(FLOOR(CEIL(\\"price\\")/50) AS INT)*50+49) AS \\"groupByEach_max_price\\", sum(\\"sessions\\")/NULLIF(sum(sum(\\"sessions\\")) , 0)::float4 as \\"share\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Travel_and_Tourism' and \\"ecom_benchmarking\\".\\"country\\" = 'US' and \\"ecom_benchmarking\\".\\"date\\" > '2020-10-13' and \\"ecom_benchmarking\\".\\"date\\" < '2021-04-13' group by CAST(FLOOR(CEIL(\\"price\\")/50) AS INT) order by \\"share\\" asc",
 ]
 `;
 
 exports[`SQL gqlBuilder request tuning limit 1`] = `
 Array [
-  "select \\"channels\\", sum(\\"sessions\\")/NULLIF(sum(sum(\\"sessions\\")) over (), 0)::float4 as \\"share\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Travel_and_Tourism' and \\"ecom_benchmarking\\".\\"country\\" = 'US' and \\"ecom_benchmarking\\".\\"date\\" > '2020-10-13' and \\"ecom_benchmarking\\".\\"date\\" < '2021-04-13' group by \\"channels\\" limit 3",
+  "select \\"channels\\", sum(\\"sessions\\")/NULLIF(sum(sum(\\"sessions\\")) , 0)::float4 as \\"share\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Travel_and_Tourism' and \\"ecom_benchmarking\\".\\"country\\" = 'US' and \\"ecom_benchmarking\\".\\"date\\" > '2020-10-13' and \\"ecom_benchmarking\\".\\"date\\" < '2021-04-13' group by \\"channels\\" limit 3",
 ]
 `;
 
 exports[`SQL gqlBuilder request tuning offset 1`] = `
 Array [
-  "select \\"channels\\", sum(\\"sessions\\")/NULLIF(sum(sum(\\"sessions\\")) over (), 0)::float4 as \\"share\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Travel_and_Tourism' and \\"ecom_benchmarking\\".\\"country\\" = 'US' and \\"ecom_benchmarking\\".\\"date\\" > '2020-10-13' and \\"ecom_benchmarking\\".\\"date\\" < '2021-04-13' group by \\"channels\\" offset 5",
+  "select \\"channels\\", sum(\\"sessions\\")/NULLIF(sum(sum(\\"sessions\\")) , 0)::float4 as \\"share\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Travel_and_Tourism' and \\"ecom_benchmarking\\".\\"country\\" = 'US' and \\"ecom_benchmarking\\".\\"date\\" > '2020-10-13' and \\"ecom_benchmarking\\".\\"date\\" < '2021-04-13' group by \\"channels\\" offset 5",
 ]
 `;
 
 exports[`SQL gqlBuilder request tuning sort_asc 1`] = `
 Array [
-  "select \\"channels\\", sum(\\"sessions\\")/NULLIF(sum(sum(\\"sessions\\")) over (), 0)::float4 as \\"share\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Travel_and_Tourism' and \\"ecom_benchmarking\\".\\"country\\" = 'US' and \\"ecom_benchmarking\\".\\"date\\" > '2020-10-13' and \\"ecom_benchmarking\\".\\"date\\" < '2021-04-13' group by \\"channels\\" order by \\"share\\" asc",
+  "select \\"channels\\", sum(\\"sessions\\")/NULLIF(sum(sum(\\"sessions\\")) , 0)::float4 as \\"share\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Travel_and_Tourism' and \\"ecom_benchmarking\\".\\"country\\" = 'US' and \\"ecom_benchmarking\\".\\"date\\" > '2020-10-13' and \\"ecom_benchmarking\\".\\"date\\" < '2021-04-13' group by \\"channels\\" order by \\"share\\" asc",
 ]
 `;
 
 exports[`SQL gqlBuilder request tuning sort_desc 1`] = `
 Array [
-  "select \\"channels\\", sum(\\"sessions\\")/NULLIF(sum(sum(\\"sessions\\")) over (), 0)::float4 as \\"share\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Travel_and_Tourism' and \\"ecom_benchmarking\\".\\"country\\" = 'US' and \\"ecom_benchmarking\\".\\"date\\" > '2020-10-13' and \\"ecom_benchmarking\\".\\"date\\" < '2021-04-13' group by \\"channels\\" order by \\"share\\" desc",
+  "select \\"channels\\", sum(\\"sessions\\")/NULLIF(sum(sum(\\"sessions\\")) , 0)::float4 as \\"share\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Travel_and_Tourism' and \\"ecom_benchmarking\\".\\"country\\" = 'US' and \\"ecom_benchmarking\\".\\"date\\" > '2020-10-13' and \\"ecom_benchmarking\\".\\"date\\" < '2021-04-13' group by \\"channels\\" order by \\"share\\" desc",
 ]
 `;
 
@@ -643,7 +643,7 @@ Array [
 
 exports[`SQL gqlBuilder single query median 1`] = `
 Array [
-  "select MEDIAN(\\"price\\") OVER () AS \\"median\\" from \\"table\\"",
+  "select MEDIAN(\\"price\\")  AS \\"median\\" from \\"table\\"",
 ]
 `;
 
@@ -663,7 +663,7 @@ exports[`SQL gqlBuilder single query percentile shouldn't run without "a" parame
 
 exports[`SQL gqlBuilder single query ranking 1`] = `
 Array [
-  "select \\"table\\".\\"rank\\" from (select *, DENSE_RANK() over ( ORDER BY \\"price\\" desc) as \\"rank\\" from \\"table\\") as \\"table\\" group by \\"table\\".\\"rank\\"",
+  "select \\"table\\".\\"rank\\" from (select *, DENSE_RANK() OVER(ORDER BY \\"price\\" DESC) as \\"rank\\" from \\"table\\") as \\"table\\" group by \\"table\\".\\"rank\\"",
 ]
 `;
 
@@ -810,7 +810,7 @@ Object {
 
 exports[`SQL variables && types Custom types directives 1`] = `
 Array [
-  "select sum(\\"pageviews\\") as \\"value\\" from \\"table\\"",
+  "select sum(\\"pageviews\\") as \\"value\\" from \\"table\\" where (((((\\"table\\".\\"brand\\" = 'Adidas')) AND ((\\"table\\".\\"price\\" < 2))))) AND ((\\"table\\".\\"date\\" = E'{\\"{\\\\\\\\\\"year\\\\\\\\\\":2021,\\\\\\\\\\"month\\\\\\\\\\":12,\\\\\\\\\\"day\\\\\\\\\\":31}\\",\\"{\\\\\\\\\\"year\\\\\\\\\\":2022,\\\\\\\\\\"month\\\\\\\\\\":9,\\\\\\\\\\"day\\\\\\\\\\":1}\\"}')) AND (\\"table\\".\\"country\\" = 'US')",
 ]
 `;
 
@@ -930,24 +930,24 @@ Array [
 
 exports[`SQL variables && types Union type 1`] = `
 Array [
-  "select sum(\\"pageviews\\") as \\"value\\" from \\"table\\"",
+  "select sum(\\"pageviews\\") as \\"value\\" from \\"table\\" where (\\"table\\".\\"brand\\" = 'Adidas') AND ((\\"table\\".\\"date\\" > '2021-01-01') AND (\\"table\\".\\"date\\" < '2022-01-01')) AND (\\"table\\".\\"country\\" = 'US')",
 ]
 `;
 
 exports[`SQL variables && types input type must be traited as exact object type 1`] = `
 Array [
-  "select sum(\\"pageviews\\") as \\"value\\" from \\"table\\"",
+  "select sum(\\"pageviews\\") as \\"value\\" from \\"table\\" where (\\"table\\".\\"brand\\" = 'Adidas') AND ((\\"table\\".\\"date\\" > '2021-01-01') AND (\\"table\\".\\"date\\" < '2022-01-01')) AND (\\"table\\".\\"country\\" = 'US')",
 ]
 `;
 
 exports[`SQL variables && types list type must be traited as array type 1`] = `
 Array [
-  "select sum(\\"pageviews\\") as \\"value\\" from \\"table\\"",
+  "select sum(\\"pageviews\\") as \\"value\\" from \\"table\\" where (\\"table\\".\\"brand\\" = 'Adidas') AND ((\\"table\\".\\"date\\" > '2021-01-01') AND (\\"table\\".\\"date\\" < '2022-01-01')) AND (\\"table\\".\\"country\\" = 'US') AND ((\\"table\\".\\"categories\\" = 1) AND (\\"table\\".\\"categories\\" = 11) AND (\\"table\\".\\"categories\\" = 6))",
 ]
 `;
 
 exports[`SQL variables && types type must be traited as shape object type 1`] = `
 Array [
-  "select sum(\\"pageviews\\") as \\"value\\" from \\"table\\"",
+  "select sum(\\"pageviews\\") as \\"value\\" from \\"table\\" where (\\"table\\".\\"brand\\" = 'Adidas') AND ((\\"table\\".\\"date\\" > '2021-01-01') AND (\\"table\\".\\"date\\" < '2022-01-01')) AND (\\"table\\".\\"country\\" = 'US')",
 ]
 `;

@@ -74,11 +74,10 @@ const resolvers = {
     }
 
     if (Array.isArray(b)) {
-      return b.some((bv) => {
-        const bt = typeof bv
-        return a.every((av) => {
-          const at = typeof av
-
+      return a.every((av) => {
+        const at = typeof av
+        return b.some((bv) => {
+          const bt = typeof bv
           if (at !== bt) {
             return false
           }
@@ -113,10 +112,10 @@ const resolvers = {
     }
 
     if (Array.isArray(b)) {
-      return !b.some((bv) => {
-        const bt = typeof bv
-        return a.every((av) => {
-          const at = typeof av
+      return !a.every((av) => {
+        const at = typeof av
+        return b.some((bv) => {
+          const bt = typeof bv
 
           if (at !== bt) {
             return false
@@ -132,6 +131,83 @@ const resolvers = {
     } else {
       const bt = typeof b
       return !a.every((av) => {
+        const at = typeof av
+
+        if (at !== bt) {
+          return false
+        }
+
+        if (bt === 'object') {
+          return Object.keys(b).every((k) => av[k] === b[k])
+        } else {
+          return av === b
+        }
+      })
+    }
+  },
+  contains: (a: any[], b: any | any[]) => {
+    if (!Array.isArray(a)) {
+      throw new Error('Value must be an array')
+    }
+
+    if (Array.isArray(b)) {
+      return a.some((av) => {
+        const at = typeof av
+        return b.some((bv) => {
+          const bt = typeof bv
+          if (at !== bt) {
+            return false
+          }
+
+          if (bt === 'object') {
+            return Object.keys(bv).every((k) => av[k] === bv[k])
+          } else {
+            return av === bv
+          }
+        })
+      })
+    } else {
+      const bt = typeof b
+      return a.some((av) => {
+        const at = typeof av
+
+        if (at !== bt) {
+          return false
+        }
+
+        if (bt === 'object') {
+          return Object.keys(b).every((k) => av[k] === b[k])
+        } else {
+          return av === b
+        }
+      })
+    }
+  },
+  ncontains: (a: any[], b: any | any[]) => {
+    if (!Array.isArray(a)) {
+      throw new Error('Value must be an array')
+    }
+
+    if (Array.isArray(b)) {
+      return !a.some((av) => {
+        const at = typeof av
+        return b.some((bv) => {
+          const bt = typeof bv
+
+          if (at !== bt) {
+            return false
+          }
+
+          if (bt === 'object') {
+            return Object.keys(bv).every((k) => av[k] === bv[k])
+          } else {
+            return av === bv
+          }
+        })
+      })
+    } else {
+      const bt = typeof b
+      return !a.some((av) => {
         const at = typeof av
 
         if (at !== bt) {
@@ -190,17 +266,6 @@ export const typeDirectives = {
       type.kind === 'ObjectTypeDefinition' ||
       type.kind === 'InputObjectTypeDefinition'
     ) {
-      console.log(
-        JSON.stringify({
-          ...type,
-          directives: type.directives.slice(1),
-          fields: [
-            ...context.typeDefinitions[args.name].fields,
-            ...type.fields,
-          ],
-        }),
-      )
-
       return {
         ...type,
         directives: type.directives.slice(1),
@@ -301,8 +366,6 @@ export const typeDirectives = {
         `${context.typeDefinitions[args.key].kind} can't be used as "key" type`,
       )
     }
-
-    console.log(JSON.stringify(type))
 
     return {
       ...type,

@@ -1,7 +1,7 @@
 import { argumentsToObject } from './arguments'
 import { parseDirective, parseTypeDirective } from './directives'
 import { progressiveSet, replVars } from './progressive'
-import { cloneDeep, omit } from 'lodash'
+import { cloneDeep, isEqual, omit, uniqWith } from 'lodash'
 import { applyFilters, withFilters } from './filters'
 import { metricResolvers } from './metrics'
 import {
@@ -26,7 +26,6 @@ import { defaultTypes } from './parser'
 
 enableExperimentalFragmentVariables()
 disableFragmentWarnings()
-
 interface GqlQuery {
   promise: Knex.QueryBuilder | Promise<any>
   name: string
@@ -120,6 +119,10 @@ export const gqlToDb = () => {
 
       const sql = queries
         .filter((q) => !q.isWith)
+        .map((q) => {
+          q.promise._statements = uniqWith(q.promise._statements, isEqual)
+          return q
+        })
         .map((q) => (q.provider !== 'ga' ? q.promise.toString() : q.promise))
 
       const preparedGqlQuery = await beforeDbHandler({
@@ -137,6 +140,7 @@ export const gqlToDb = () => {
       })
     } catch (e) {
       console.log(e)
+      console.log(e.stack)
       throw Error(e)
     }
   }
@@ -681,96 +685,146 @@ function getMergeStrings(
   return queries
 }
 
+function getDefaultPath(name: string, path: string, isArray: boolean) {
+  if (isArray) {
+    return `${path}${!!path ? '.' : ''}[@${name}=:${name}]`
+  } else {
+    return `${path}${!!path ? '.' : ''}:${name}`
+  }
+}
+
+function getDefaultMetricPath(name: string, path: string) {
+  return `${path}${!!path ? '.' : ''}${name}`
+}
+
+function getDefaultFullPath(
+  name: string,
+  path: string,
+  isArray: boolean,
+  on: 'metric' | 'dimension',
+) {
+  path =
+    isArray || on === 'dimension' ? getDefaultPath(name, path, isArray) : path
+
+  return {
+    path,
+    metricPath: getDefaultMetricPath(name, path),
+  }
+}
+
 function mergeMetric(tree, query) {
   let name = tree.alias?.value || tree.name.value
-  const fieldName = tree.name.value
-  const isInGetters = query.getters?.find((name) => name === fieldName)
+  const isInGetters = query.getters?.find((name) => name === tree.name.value)
+  const fieldName = isInGetters ? tree.name.value : name
   const args = argumentsToObject(tree.arguments)
-  if (args?.type === 'Array') {
-    query.path += `${!!query.path ? '.' : ''}[@${name}=:${name}]`
-    query.metrics[`${isInGetters ? fieldName : name}`] = `${query.path}${
-      !!query.path ? '.' : ''
-    }${name}`
-    return parseDirective(tree, query, 'metric', query.metrics[`${name}`])
-  } else {
-    if (metricResolversData[tree.name?.value])
-      return metricResolversData[tree.name?.value](tree, query)
-    query.metrics[`${isInGetters ? fieldName : name}`] = `${query.path}${
-      !!query.path ? '.' : ''
-    }${name}`
-    return parseDirective(tree, query, 'metric', query.metrics[`${name}`])
+
+  if (metricResolversData[tree.name?.value])
+    metricResolversData[tree.name?.value](tree, query, {
+      on: 'metric',
+      isInGetters,
+      fieldName,
+      name,
+      getDefault: getDefaultFullPath,
+    })
+  else {
+    if (args?.type === 'Array') {
+      query.path = getDefaultPath(name, query.path, true)
+    }
+
+    query.metrics[fieldName] = getDefaultMetricPath(name, query.path)
   }
+
+  return parseDirective(tree, query, 'metric', query.metrics[fieldName])
 }
 
 function mergeDimension(tree, query) {
   const args = argumentsToObject(tree.arguments)
+  let name = tree.alias?.value || tree.name.value
   query.getters = query.getters || []
 
-  let name = tree.alias?.value || tree.name.value
-  if (args?.type === 'Array') {
-    const names: string[] = []
-    let pathPrefix = ''
-
-    if (tree.name.value === 'combine') {
-      if (tree.alias?.value) {
-        pathPrefix = `${tree.alias.value}.`
-      }
-      args.fields.forEach((field) => {
-        if (field === 'string') {
-          names.push(field)
-        } else {
-          names.push(field.alias || field.name)
-        }
-      })
-    } else {
-      names.push(name)
-    }
-
-    query.path += `${!!query.path ? '.' : ''}${pathPrefix}[@${names
-      .map((name) => `${name}=:${name}`)
-      .join(';')}]`
-    return parseDirective(tree, query, 'dimension')
-  } else {
-    const names: string[] = []
-    let pathPrefix = ''
-
-    if (tree.name.value === 'combine') {
-      if (tree.alias?.value) {
-        pathPrefix = `${tree.alias.value}.`
-      }
-      args.fields.forEach((field) => {
-        if (field === 'string') {
-          names.push(field)
-        } else {
-          names.push(field.alias || field.name)
-        }
-      })
-    } else {
-      names.push(name)
-    }
-
-    query.path += `${!!query.path ? '.' : ''}${pathPrefix}${names
-      .map((name) => `:${name}`)
-      .join(';')}`
-    return parseDirective(tree, query, 'dimension')
+  if (metricResolversData[tree.name?.value])
+    metricResolversData[tree.name?.value](tree, query, {
+      on: 'dimension',
+      isInGetters: false,
+      fieldName: name,
+      name,
+      getDefault: getDefaultFullPath,
+    })
+  else {
+    query.path = getDefaultPath(name, query.path, args?.type === 'Array')
   }
+
+  return parseDirective(tree, query, 'dimension')
+}
+
+interface metricResolversDataOptions {
+  on: 'metric' | 'dimension'
+  name: string
+  fieldName: string
+  isInGetters: boolean
+  getDefault: (
+    name: string,
+    path: string,
+    isArray: boolean,
+    on: 'metric' | 'dimension',
+  ) => { path: string; metricPath: string }
 }
 
 const metricResolversData = {
-  aggrAverage: (tree, query) => {
+  aggrAverage: (tree, query, options: metricResolversDataOptions) => {
     const name = `${tree.alias?.value}_aggrAverage`
-    query.metrics[`${name}`] = `${query.path}${!!query.path ? '.' : ''}${name}`
+    query.metrics[name] = getDefaultMetricPath(name, query.path)
   },
-  weightAvg: (tree, query) => {
+  weightAvg: (tree, query, options: metricResolversDataOptions) => {
     const name = `${tree.alias?.value}`
-    query.metrics[`${name}`] = `${query.path}${!!query.path ? '.' : ''}${name}`
+    query.metrics[name] = getDefaultMetricPath(name, query.path)
   },
-  join: (tree, query) => {
-    const name = `${tree.alias?.value || tree.name.value}`
-    query.metrics[name] = query.metrics[name].replace(/:join\./g, '')
+  join: (tree, query, options: metricResolversDataOptions) => {
+    query.metrics[options.name] = getDefaultMetricPath(
+      options.name,
+      query.path,
+    ).replace(/:join\./g, '')
   },
-  groupByEach: (tree, query) => {
+  groupByEach: (tree, query, options: metricResolversDataOptions) => {
+    const args = argumentsToObject(tree.arguments)
     query.getters.push(`groupByEach_max_${tree.alias.value}`)
     query.getters.push(`groupByEach_min_${tree.alias.value}`)
+    const defaultState = options.getDefault(
+      options.name,
+      query.path,
+      args?.type === 'Array',
+      options.on,
+    )
+
+    query.path = defaultState.path
+    query.metrics[options.name] = defaultState.metricPath
+  },
+  combine: (tree, query, options: metricResolversDataOptions) => {
+    const args = argumentsToObject(tree.arguments)
+
+    const names: string[] = []
+    let pathPrefix = ''
+
+    if (tree.alias?.value) {
+      pathPrefix = `${tree.alias.value}.`
+    }
+
+    args?.fields.forEach((field) => {
+      if (typeof field === 'string') {
+        names.push(field)
+      } else {
+        names.push(field.alias || field.name)
+      }
+    })
+
+    if (args?.type === 'Array') {
+      query.path += `${!!query.path ? '.' : ''}${pathPrefix}[@${names
+        .map((name) => `${name}=:${name}`)
+        .join(';')}]`
+    } else {
+      query.path += `${!!query.path ? '.' : ''}${pathPrefix}${names
+        .map((name) => `:${name}`)
+        .join(';')}`
+    }
   },
 }

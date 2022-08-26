@@ -129,10 +129,6 @@ export function parseType(type, context) {
       throw new Error(`${symbolField.type.name.value} is not declared type`)
     }
 
-    if (type.name.value === 'BrandFilter') {
-      console.log(shape, JSON.stringify(type))
-    }
-
     context.types[type.name.value] = type.options?.isMapped
       ? PropTypes.map(
           shape,
@@ -224,10 +220,31 @@ export function processArguments(args, context) {
 }
 
 export function processSelections(selections, field, query, context) {
+  if (field?.directives) {
+    field.directives = field.directives.map((directive) => {
+      if (directive.arguments) {
+        directive.arguments = processArguments(directive.arguments, context)
+      }
+
+      return directive
+    })
+
+    field = parseDirective(field, null, 'field')
+  }
+
+  if (field?.arguments) {
+    field.arguments = processArguments(field.arguments, context)
+  }
+
   if (field?.kind === 'FragmentSpread') {
     if (context.fragments[field.name.value]) {
       selections = selections.concat(
-        compileFragment(context.fragments[field.name.value], query, []),
+        compileFragment(
+          context.fragments[field.name.value],
+          context,
+          query,
+          [],
+        ),
       )
 
       return selections
@@ -247,6 +264,7 @@ export function processSelections(selections, field, query, context) {
         selections = selections.concat(
           compileFragment(
             context.fragments[fragment[0].value.value],
+            context,
             query,
             args,
           ),
@@ -261,22 +279,6 @@ export function processSelections(selections, field, query, context) {
         `use requires fragment arguments with name of fragment which you want to compile`,
       )
     }
-  }
-
-  if (field?.directives) {
-    field.directives = field.directives.map((directive) => {
-      if (directive.arguments) {
-        directive.arguments = processArguments(directive.arguments, context)
-      }
-
-      return directive
-    })
-
-    field = parseDirective(field, null, 'field')
-  }
-
-  if (field?.arguments) {
-    field.arguments = processArguments(field.arguments, context)
   }
 
   if (field?.selectionSet) {
@@ -296,13 +298,13 @@ export function processSelections(selections, field, query, context) {
   return selections
 }
 
-export function compileFragment(fragment, query, arglist: any) {
-  const args = argumentsToObject(arglist)
+export function compileFragment(fragment, context, query, arglist: any) {
+  const args = argumentsToObject(processArguments(arglist, context))
 
-  const context = {
-    types: query.context.types,
+  context = {
+    types: context.types,
     variables: {
-      ...query.context.variables,
+      ...context.variables,
       ...args,
     },
     variablesValidator: {},

@@ -212,7 +212,7 @@ export const dimensionResolvers = {
     } else {
       return query.promise
     }
-  }, []),
+  }),
   join: join(JoinType.DEFAULT, Kind.DIMENSION),
   leftJoin: join(JoinType.LEFT, Kind.DIMENSION),
   rightJoin: join(JoinType.RIGHT, Kind.DIMENSION),

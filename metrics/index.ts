@@ -27,6 +27,33 @@ export function partitionBy(
   return partition || ''
 }
 
+export function getOverClosure(
+  args: InferProps<typeof partitionByTypes>,
+  query,
+  knex: Knex,
+  options?: {
+    orderBy?: { by: string; dir?: 'ASC' | 'DESC' }
+    cast?: String
+  },
+) {
+  const partition = partitionBy(args, query, knex)
+  const isAnyValidOptionAvailable = options && options.orderBy
+
+  if (!isAnyValidOptionAvailable && !partition) {
+    return ''
+  }
+
+  return knex.raw(
+    `OVER(${partition}${
+      options?.orderBy
+        ? knex.raw(`ORDER BY ?? ${options.orderBy.dir || 'DESC'}`, [
+            options.orderBy.by,
+          ])
+        : ''
+    })${options?.cast ? `::${options.cast}` : ''}`,
+  )
+}
+
 export const metricResolvers = {
   percentile: metricWrapper(
     (alias, args, query, knex) => {
@@ -48,7 +75,7 @@ export const metricResolvers = {
   median: metricWrapper(
     (alias, args, query, knex) => {
       return query.promise.select(
-        knex.raw(`MEDIAN(??) OVER (${partitionBy(args, query, knex)}) AS ??`, [
+        knex.raw(`MEDIAN(??) ${getOverClosure(args, query, knex)} AS ??`, [
           args.a,
           alias,
         ]),
@@ -150,12 +177,10 @@ export const metricResolvers = {
             .select('*')
             .select(
               knex.raw(
-                `${alg}() over (${partitionBy(
-                  args,
-                  query,
-                  knex,
-                )} ORDER BY ?? desc) as ??`,
-                [buildFullName(args, query, args.a, false), alias],
+                `${alg}() ${getOverClosure(args, query, knex, {
+                  orderBy: { by: buildFullName(args, query, args.a, false) },
+                })} as ??`,
+                [alias],
               ),
             )
             .from(query.table || args.from),
@@ -262,7 +287,9 @@ export const metricResolvers = {
     (alias, args, query, knex) => {
       return query.promise.select(
         knex.raw(
-          `avg(??) over (${partitionBy(args, query, knex)})::float4 as ??`,
+          `avg(??) ${getOverClosure(args, query, knex, {
+            cast: 'float4',
+          })} as ??`,
           [buildFullName(args, query, args.a, false), alias],
         ),
       )
@@ -295,11 +322,11 @@ export const metricResolvers = {
     (alias, args, query, knex) => {
       return query.promise.select(
         knex.raw(
-          `sum(??)/NULLIF(sum(sum(??)) over (${partitionBy(
+          `sum(??)/NULLIF(sum(sum(??)) ${getOverClosure(
             args,
             query,
             knex,
-          )}), 0)::float4 as ??`,
+          )}, 0)::float4 as ??`,
           [
             buildFullName(args, query, args.a, false),
             buildFullName(args, query, args.a, false),
@@ -319,11 +346,11 @@ export const metricResolvers = {
     (alias, args, query, knex) => {
       return query.promise.select(
         knex.raw(
-          `sum(??)/NULLIF(max(sum(??)::float) over (${partitionBy(
+          `sum(??)/NULLIF(max(sum(??)::float) ${getOverClosure(
             args,
             query,
             knex,
-          )}), 0)::float4 as ??`,
+          )}, 0)::float4 as ??`,
           [
             buildFullName(args, query, args.a, false),
             buildFullName(args, query, args.a, false),

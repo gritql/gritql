@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.metricResolvers = exports.partitionBy = exports.partitionByTypes = void 0;
+exports.metricResolvers = exports.getOverClosure = exports.partitionBy = exports.partitionByTypes = void 0;
 const cross_table_1 = require("../cross-table");
 const filters_1 = require("../filters");
 const types_1 = require("../types");
@@ -20,6 +20,19 @@ function partitionBy(args, query, knex) {
     return partition || '';
 }
 exports.partitionBy = partitionBy;
+function getOverClosure(args, query, knex, options) {
+    const partition = partitionBy(args, query, knex);
+    const isAnyValidOptionAvailable = options && options.orderBy;
+    if (!isAnyValidOptionAvailable && !partition) {
+        return '';
+    }
+    return knex.raw(`OVER(${partition}${options?.orderBy
+        ? knex.raw(`ORDER BY ?? ${options.orderBy.dir || 'DESC'}`, [
+            options.orderBy.by,
+        ])
+        : ''})${options?.cast ? `::${options.cast}` : ''}`);
+}
+exports.getOverClosure = getOverClosure;
 exports.metricResolvers = {
     percentile: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
         return query.promise.select(knex.raw(`PERCENTILE_CONT(??) WITHIN GROUP(ORDER BY ??) AS ??`, [
@@ -32,7 +45,7 @@ exports.metricResolvers = {
         factor: types_1.PropTypes.number,
     }, ['PERCENTILE_CONT', 'WITHIN GROUP'], 'knex'),
     median: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
-        return query.promise.select(knex.raw(`MEDIAN(??) OVER (${partitionBy(args, query, knex)}) AS ??`, [
+        return query.promise.select(knex.raw(`MEDIAN(??) ${getOverClosure(args, query, knex)} AS ??`, [
             args.a,
             alias,
         ]));
@@ -88,7 +101,9 @@ exports.metricResolvers = {
         }
         const promise = (0, filters_1.applyFilters)(query, (0, filters_1.withFilters)(query, query.filters)(knex
             .select('*')
-            .select(knex.raw(`${alg}() over (${partitionBy(args, query, knex)} ORDER BY ?? desc) as ??`, [(0, filters_1.buildFullName)(args, query, args.a, false), alias]))
+            .select(knex.raw(`${alg}() ${getOverClosure(args, query, knex, {
+            orderBy: { by: (0, filters_1.buildFullName)(args, query, args.a, false) },
+        })} as ??`, [alias]))
             .from(query.table || args.from), knex), knex);
         const table = args.tableAlias || args.from || query.table;
         const finalPromise = query.promise
@@ -131,7 +146,9 @@ exports.metricResolvers = {
         from: types_1.PropTypes.string.isRequired,
     }, [], 'knex'),
     avg: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
-        return query.promise.select(knex.raw(`avg(??) over (${partitionBy(args, query, knex)})::float4 as ??`, [(0, filters_1.buildFullName)(args, query, args.a, false), alias]));
+        return query.promise.select(knex.raw(`avg(??) ${getOverClosure(args, query, knex, {
+            cast: 'float4',
+        })} as ??`, [(0, filters_1.buildFullName)(args, query, args.a, false), alias]));
     }, {
         a: types_1.PropTypes.string.isRequired,
         by: types_1.PropTypes.string,
@@ -147,7 +164,7 @@ exports.metricResolvers = {
         per: types_1.PropTypes.string.isRequired,
     }, ['SUM', 'COUNT', 'DISTINCT'], 'knex'),
     share: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
-        return query.promise.select(knex.raw(`sum(??)/NULLIF(sum(sum(??)) over (${partitionBy(args, query, knex)}), 0)::float4 as ??`, [
+        return query.promise.select(knex.raw(`sum(??)/NULLIF(sum(sum(??)) ${getOverClosure(args, query, knex)}, 0)::float4 as ??`, [
             (0, filters_1.buildFullName)(args, query, args.a, false),
             (0, filters_1.buildFullName)(args, query, args.a, false),
             alias,
@@ -157,7 +174,7 @@ exports.metricResolvers = {
         by: types_1.PropTypes.string,
     }, ['SUM', 'NULLIF', 'OVER', 'PARTITION BY'], 'knex'),
     indexed: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
-        return query.promise.select(knex.raw(`sum(??)/NULLIF(max(sum(??)::float) over (${partitionBy(args, query, knex)}), 0)::float4 as ??`, [
+        return query.promise.select(knex.raw(`sum(??)/NULLIF(max(sum(??)::float) ${getOverClosure(args, query, knex)}, 0)::float4 as ??`, [
             (0, filters_1.buildFullName)(args, query, args.a, false),
             (0, filters_1.buildFullName)(args, query, args.a, false),
             alias,

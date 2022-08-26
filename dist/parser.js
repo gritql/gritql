@@ -106,9 +106,6 @@ function parseType(type, context) {
         if (type.options?.isMapped && !context.types[symbolField.type.name.value]) {
             throw new Error(`${symbolField.type.name.value} is not declared type`);
         }
-        if (type.name.value === 'BrandFilter') {
-            console.log(shape, JSON.stringify(type));
-        }
         context.types[type.name.value] = type.options?.isMapped
             ? types_1.PropTypes.map(shape, types_1.PropTypes[symbolField.key.name.value.toLowerCase()].isRequired, context.types[symbolField.type.name.value])
             : types_1.PropTypes[isInput ? 'shape' : 'exact'](shape);
@@ -188,9 +185,21 @@ function processArguments(args, context) {
 }
 exports.processArguments = processArguments;
 function processSelections(selections, field, query, context) {
+    if (field?.directives) {
+        field.directives = field.directives.map((directive) => {
+            if (directive.arguments) {
+                directive.arguments = processArguments(directive.arguments, context);
+            }
+            return directive;
+        });
+        field = (0, directives_1.parseDirective)(field, null, 'field');
+    }
+    if (field?.arguments) {
+        field.arguments = processArguments(field.arguments, context);
+    }
     if (field?.kind === 'FragmentSpread') {
         if (context.fragments[field.name.value]) {
-            selections = selections.concat(compileFragment(context.fragments[field.name.value], query, []));
+            selections = selections.concat(compileFragment(context.fragments[field.name.value], context, query, []));
             return selections;
         }
         else {
@@ -204,7 +213,7 @@ function processSelections(selections, field, query, context) {
         };
         if (fragment.length) {
             if (context.fragments[fragment[0].value.value]) {
-                selections = selections.concat(compileFragment(context.fragments[fragment[0].value.value], query, args));
+                selections = selections.concat(compileFragment(context.fragments[fragment[0].value.value], context, query, args));
                 return selections;
             }
             else {
@@ -214,18 +223,6 @@ function processSelections(selections, field, query, context) {
         else {
             throw new Error(`use requires fragment arguments with name of fragment which you want to compile`);
         }
-    }
-    if (field?.directives) {
-        field.directives = field.directives.map((directive) => {
-            if (directive.arguments) {
-                directive.arguments = processArguments(directive.arguments, context);
-            }
-            return directive;
-        });
-        field = (0, directives_1.parseDirective)(field, null, 'field');
-    }
-    if (field?.arguments) {
-        field.arguments = processArguments(field.arguments, context);
     }
     if (field?.selectionSet) {
         field.selectionSet.selections = field.selectionSet.selections
@@ -238,12 +235,12 @@ function processSelections(selections, field, query, context) {
     return selections;
 }
 exports.processSelections = processSelections;
-function compileFragment(fragment, query, arglist) {
-    const args = (0, arguments_1.argumentsToObject)(arglist);
-    const context = {
-        types: query.context.types,
+function compileFragment(fragment, context, query, arglist) {
+    const args = (0, arguments_1.argumentsToObject)(processArguments(arglist, context));
+    context = {
+        types: context.types,
         variables: {
-            ...query.context.variables,
+            ...context.variables,
             ...args,
         },
         variablesValidator: {},

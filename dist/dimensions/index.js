@@ -149,7 +149,7 @@ exports.dimensionResolvers = {
         else {
             return query.promise;
         }
-    }, []),
+    }),
     join: (0, cross_table_1.join)(cross_table_1.JoinType.DEFAULT, cross_table_1.Kind.DIMENSION),
     leftJoin: (0, cross_table_1.join)(cross_table_1.JoinType.LEFT, cross_table_1.Kind.DIMENSION),
     rightJoin: (0, cross_table_1.join)(cross_table_1.JoinType.RIGHT, cross_table_1.Kind.DIMENSION),

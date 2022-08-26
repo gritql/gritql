@@ -11,6 +11,8 @@ const combineQuery = (query, clonedQuery) => {
     query.search = clonedQuery.search;
     query.getters = clonedQuery.getters;
     query.orderBys = clonedQuery.orderBys;
+    query.dimensions = clonedQuery.dimensions;
+    query.metrics = clonedQuery.metrics;
     return query;
 };
 exports.combineQuery = combineQuery;

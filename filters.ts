@@ -397,6 +397,8 @@ export function buildFilter(
       const field = isOp(key) ? null : key
       const op = isOp(key) ? key : null
 
+      console.log(key, subQuery, field)
+
       return runOrSkip(
         context,
         ({ context }) =>
@@ -423,6 +425,8 @@ export function parseAdvancedFilters(
     where: '',
     having: '',
   }
+
+  console.log(filters)
 
   if (filters) {
     let where = _.omit(filters, ['having'])
@@ -557,7 +561,11 @@ export function transformFilters(args, query?, builder?) {
 
       if (arg.name.value === 'filters') {
         disableArgumentFor(query, 'filters', 'ga')
-        query.advancedFilters = argumentsToObject(arg.value.fields)
+        if (arg.value.kind === 'JSONValue') {
+          query.advancedFilters = argumentsToObject(arg.value.value)
+        } else {
+          query.advancedFilters = argumentsToObject(arg.value.fields)
+        }
         query.preparedAdvancedFilters = parseAdvancedFilters(
           query,
           builder,

@@ -13,4 +13,4 @@ export declare function parseType(type: any, context: any): any;
 export declare function parseVariableDefinition(def: any, context: any): any;
 export declare function processArguments(args: any, context: any): any;
 export declare function processSelections(selections: any, field: any, query: any, context: any): any;
-export declare function compileFragment(fragment: any, query: any, arglist: any): any;
+export declare function compileFragment(fragment: any, context: any, query: any, arglist: any): any;

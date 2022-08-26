@@ -1,6 +1,7 @@
 import { Knex } from 'knex'
 import { InferProps } from 'prop-types'
 import { DocumentNode } from 'graphql'
+
 export declare const partitionByTypes: {
   by: any
 }
@@ -8,6 +9,18 @@ export declare function partitionBy(
   args: InferProps<typeof partitionByTypes>,
   query: any,
   knex: Knex,
+): '' | Knex.Raw<any>
+export declare function getOverClosure(
+  args: InferProps<typeof partitionByTypes>,
+  query: any,
+  knex: Knex,
+  options?: {
+    orderBy?: {
+      by: string
+      dir?: 'ASC' | 'DESC'
+    }
+    cast?: String
+  },
 ): '' | Knex.Raw<any>
 export declare const metricResolvers: {
   percentile: (tree: DocumentNode, query: any, knex: Knex<any, any[]>) => void

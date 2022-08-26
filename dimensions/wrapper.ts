@@ -58,8 +58,8 @@ export const dimensionWrapper = <T = ValidationMap<any>>(
     }
 
     if (args) {
-      properties = { ...defaultPropTypes, ...properties }
-      checkPropTypes(properties, args, 'arguments', tree.name.value)
+      const props = { ...defaultPropTypes, ...properties }
+      checkPropTypes(props, args, 'arguments', tree.name.value)
     }
 
     const { dimensions = [] } = query

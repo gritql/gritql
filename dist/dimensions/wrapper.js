@@ -32,8 +32,8 @@ const dimensionWrapper = (dimension, properties, keywords, builder) => {
             throw new Error(`${tree.name.value} dimension requires arguments`);
         }
         if (args) {
-            properties = { ...defaultPropTypes, ...properties };
-            (0, types_1.checkPropTypes)(properties, args, 'arguments', tree.name.value);
+            const props = { ...defaultPropTypes, ...properties };
+            (0, types_1.checkPropTypes)(props, args, 'arguments', tree.name.value);
         }
         const { dimensions = [] } = query;
         if (!query.groupIndex)
