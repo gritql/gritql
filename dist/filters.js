@@ -181,7 +181,6 @@ function buildFilter(query, context, prefix = '') {
     return lodash_1.default.reduce(query, (accum, subQuery, key) => {
         const field = isOp(key) ? null : key;
         const op = isOp(key) ? key : null;
-        console.log(key, subQuery, field);
         return runOrSkip(context, ({ context }) => getCombineRunner(accum, () => sub(subQuery, op, field, { ...context })), key, accum, subQuery);
     }, '');
 }
@@ -191,7 +190,6 @@ function parseAdvancedFilters(query, builder, filters, onlyInherited, from) {
         where: '',
         having: '',
     };
-    console.log(filters);
     if (filters) {
         let where = lodash_1.default.omit(filters, ['having']);
         if (from) {

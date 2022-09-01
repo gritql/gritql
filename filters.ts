@@ -397,8 +397,6 @@ export function buildFilter(
       const field = isOp(key) ? null : key
       const op = isOp(key) ? key : null
 
-      console.log(key, subQuery, field)
-
       return runOrSkip(
         context,
         ({ context }) =>
@@ -425,8 +423,6 @@ export function parseAdvancedFilters(
     where: '',
     having: '',
   }
-
-  console.log(filters)
 
   if (filters) {
     let where = _.omit(filters, ['having'])

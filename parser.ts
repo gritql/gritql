@@ -212,6 +212,15 @@ export function processArguments(args, context) {
         argument.value.fields = processArguments(argument.value.fields, context)
       } else if (argument.value?.kind === 'ListValue') {
         argument.value.values = processArguments(argument.value.values, context)
+      } else if (argument.kind === 'Variable') {
+        if (context.variables[argument.name.value] !== undefined) {
+          return {
+            kind: 'JSONValue',
+            value: context.variables[argument.name.value],
+          }
+        } else {
+          return null
+        }
       }
 
       return argument
