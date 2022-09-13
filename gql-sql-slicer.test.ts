@@ -1051,6 +1051,56 @@ describe('SQL', () => {
       })
     })
 
+    test('@diff directive with aliases', () => {
+      const tables = [
+        [
+          {
+            channels: 'Social',
+            value: 1,
+            valueGrowth: 1,
+          },
+          {
+            channels: 'Organic',
+            value: 3,
+            valueGrowth: 3,
+          },
+        ],
+        [
+          {
+            channels: 'Social',
+            value: 2,
+            valueGrowth: 2,
+          },
+          {
+            channels: 'Organic',
+            value: 5,
+            valueGrowth: 5,
+          },
+        ],
+      ]
+      const querier = gqlToDb().dbFetch(({ sql }) => {
+        expect(sql).toMatchSnapshot()
+        return tables
+      })
+      querier(`query ecom_benchmarking {
+      series: fetch(category:"Adult", country:"DE") {
+              channels {
+                  value: sum(a: sessions)
+                  valueGrowth: value @diff(by: prevSeries)
+              }
+      }
+      prevSeries: fetch(category:"Adult", country:"DE") {
+            channels {
+                value: sum(a: sessions)
+                valueGrowth: value @diff(by: series)
+            }
+        
+       }
+    }`).then((result) => {
+        expect(result).toMatchSnapshot()
+      })
+    })
+
     test('@indexed directive', () => {
       const tables = [
         [

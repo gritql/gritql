@@ -1441,103 +1441,10 @@ function getMergeStrings(
       return getMergeStrings(t, queries, idx, metricResolversData, hashContext)
     }, queries)
   }
-  mergeMetric(tree, query, metricResolversData)
+  mergeMetric(tree, query)
   return queries
 }
 
-function mergeMetric(tree, query, metricResolversData) {
-  let name = tree.alias?.value || tree.name.value
-  const fieldName = tree.name.value
-  const isInGetters = query.getters?.find((name) => name === fieldName)
-  const args = argumentsToObject(tree.arguments)
-  if (args?.type === 'Array') {
-    query.path += `${!!query.path ? '.' : ''}[@${name}=:${name}]`
-    query.metrics[`${isInGetters ? fieldName : name}`] = `${query.path}${
-      !!query.path ? '.' : ''
-    }${name}`
-    return parseDirective(tree, query, 'metric', query.metrics[`${name}`])
-  } else {
-    if (!!query.mutation)
-      return metricResolversData[query.mutationFunction](tree, query)
-    if (tree.alias && metricResolversData[tree.name?.value])
-      return metricResolversData[tree.name?.value](tree, query)
-    query.metrics[`${isInGetters ? fieldName : name}`] = `${query.path}${
-      !!query.path ? '.' : ''
-    }${name}`
-    return parseDirective(tree, query, 'metric', query.metrics[`${name}`])
-  }
-}
-
-function mergeDimension(tree, query) {
-  const args = argumentsToObject(tree.arguments)
-  query.getters = query.getters || []
-
-  if (args?.groupByEach) {
-    query.getters.push(
-      `groupByEach_max_${tree.alias?.value || tree.name.value}`,
-    )
-    query.getters.push(
-      `groupByEach_min_${tree.alias?.value || tree.name.value}`,
-    )
-  }
-
-  let name = !!query.mutation
-    ? tree.name.value
-    : tree.alias?.value || tree.name.value
-  if (args?.type === 'Array') {
-    if (!!args?.cutoff) {
-      query.cutoff = `${query.path}${
-        !!query.path ? '.' : ''
-      }[@${name}=:${name}]`
-    }
-
-    const names: string[] = []
-    let pathPrefix = ''
-
-    if (tree.name.value === 'combine') {
-      if (tree.alias?.value) {
-        pathPrefix = `${tree.alias.value}.`
-      }
-      args.fields.forEach((field) => {
-        if (field === 'string') {
-          names.push(field)
-        } else {
-          names.push(field.alias || field.name)
-        }
-      })
-    } else {
-      names.push(name)
-    }
-
-    query.path += `${!!query.path ? '.' : ''}${pathPrefix}[@${names
-      .map((name) => `${name}=:${name}`)
-      .join(';')}]`
-    return parseDirective(tree, query, 'dimension')
-  } else {
-    const names: string[] = []
-    let pathPrefix = ''
-
-    if (tree.name.value === 'combine') {
-      if (tree.alias?.value) {
-        pathPrefix = `${tree.alias.value}.`
-      }
-      args.fields.forEach((field) => {
-        if (field === 'string') {
-          names.push(field)
-        } else {
-          names.push(field.alias || field.name)
-        }
-      })
-    } else {
-      names.push(name)
-    }
-
-    query.path += `${!!query.path ? '.' : ''}${pathPrefix}${names
-      .map((name) => `:${name}`)
-      .join(';')}`
-    return parseDirective(tree, query, 'dimension')
-  }
-}
 const comparisonFunction = {
   gt: (v) => (x) => +x > +v,
   lt: (v) => (x) => +x < +v,
@@ -1546,52 +1453,201 @@ const comparisonFunction = {
   eq: (v) => (x) => x == v,
 }
 
-const metricResolversData = {
-  aggrAverage: (tree, query) => {
-    const name = `${tree.alias?.value}_aggrAverage`
-    query.metrics[`${name}`] = `${query.path}${!!query.path ? '.' : ''}${name}`
-  },
-  weightAvg: (tree, query) => {
-    const name = `${tree.alias?.value}`
-    query.metrics[`${name}`] = `${query.path}${!!query.path ? '.' : ''}${name}`
-  },
-  pick: (tree, query) => {
-    const name = `${tree.name?.value}`
-    const args = argumentsToObject(tree.arguments)
-    if (!query.skip) query.skip = {}
-    if (query.path === ':pick') query.path = ''
-    Object.keys(args).map((key) => {
-      const [keyName, operator] = key.split('_')
-      query.skip[`${query.path}${!!query.path ? '.' : ''}:${name}.${keyName}`] =
-        comparisonFunction[operator || 'eq'](args[key])
-    })
-  },
-  diff: (tree, query) => {
-    const name = `${tree.name?.value}`
-    if (!query.diff) query.diff = {}
-    if (query.path.startsWith(':diff') || query.path.startsWith(':diff.'))
-      query.path = query.path.replace(/:diff\.?/, '')
+function getDefaultPath(name: string, path: string, isArray: boolean) {
+  if (isArray) {
+    return `${path}${!!path ? '.' : ''}[@${name}=:${name}]`
+  } else {
+    return `${path}${!!path ? '.' : ''}:${name}`
+  }
+}
 
-    query.diff[`${query.path}${!!query.path ? '.' : ''}${name}`] = ({
-      value,
-      replacedPath,
-      fullObject,
-    }) => {
-      return (
-        value / progressiveGet(fullObject[query.filters.by], replacedPath) - 1
-      )
+function getDefaultMetricPath(name: string, path: string) {
+  return `${path}${!!path ? '.' : ''}${name}`
+}
+
+function getDefaultFullPath(
+  name: string,
+  path: string,
+  isArray: boolean,
+  on: 'metric' | 'dimension',
+) {
+  path =
+    isArray || on === 'dimension' ? getDefaultPath(name, path, isArray) : path
+
+  return {
+    path,
+    metricPath: getDefaultMetricPath(name, path),
+  }
+}
+
+function mergeMetric(tree, query) {
+  let name = tree.alias?.value || tree.name.value
+  const isInGetters = query.getters?.find((name) => name === tree.name.value)
+  const fieldName = isInGetters ? tree.name.value : name
+  const args = argumentsToObject(tree.arguments)
+
+  if (metricResolversData[query.mutationFunction || tree.name?.value])
+    metricResolversData[query.mutationFunction || tree.name?.value](
+      tree,
+      query,
+      {
+        on: 'metric',
+        isInGetters,
+        fieldName,
+        name,
+        getDefault: getDefaultFullPath,
+      },
+    )
+  else {
+    if (args?.type === 'Array') {
+      query.path = getDefaultPath(name, query.path, true)
+    }
+
+    query.metrics[fieldName] = getDefaultMetricPath(name, query.path)
+  }
+
+  return parseDirective(tree, query, 'metric', query.metrics[fieldName])
+}
+
+function mergeDimension(tree, query) {
+  const args = argumentsToObject(tree.arguments)
+  let name = tree.alias?.value || tree.name.value
+  query.getters = query.getters || []
+
+  if (metricResolversData[query.mutationFunction || tree.name?.value])
+    metricResolversData[query.mutationFunction || tree.name?.value](
+      tree,
+      query,
+      {
+        on: 'dimension',
+        isInGetters: false,
+        fieldName: name,
+        name,
+        getDefault: getDefaultFullPath,
+      },
+    )
+  else {
+    query.path = getDefaultPath(name, query.path, args?.type === 'Array')
+  }
+
+  return parseDirective(tree, query, 'dimension')
+}
+
+interface metricResolversDataOptions {
+  on: 'metric' | 'dimension'
+  name: string
+  fieldName: string
+  isInGetters: boolean
+  getDefault: (
+    name: string,
+    path: string,
+    isArray: boolean,
+    on: 'metric' | 'dimension',
+  ) => { path: string; metricPath: string }
+}
+
+const metricResolversData = {
+  aggrAverage: (tree, query, options: metricResolversDataOptions) => {
+    const name = `${tree.alias?.value}_aggrAverage`
+    query.metrics[name] = getDefaultMetricPath(name, query.path)
+  },
+  weightAvg: (tree, query, options: metricResolversDataOptions) => {
+    const name = `${tree.alias?.value}`
+    query.metrics[name] = getDefaultMetricPath(name, query.path)
+  },
+  join: (tree, query, options: metricResolversDataOptions) => {
+    query.metrics[options.name] = getDefaultMetricPath(
+      options.name,
+      query.path,
+    ).replace(/:join\./g, '')
+  },
+  groupByEach: (tree, query, options: metricResolversDataOptions) => {
+    const args = argumentsToObject(tree.arguments)
+    query.getters.push(`groupByEach_max_${tree.alias.value}`)
+    query.getters.push(`groupByEach_min_${tree.alias.value}`)
+    const defaultState = options.getDefault(
+      options.name,
+      query.path,
+      args?.type === 'Array',
+      options.on,
+    )
+
+    query.path = defaultState.path
+    query.metrics[options.name] = defaultState.metricPath
+  },
+  combine: (tree, query, options: metricResolversDataOptions) => {
+    const args = argumentsToObject(tree.arguments)
+
+    const names: string[] = []
+    let pathPrefix = ''
+
+    if (tree.alias?.value) {
+      pathPrefix = `${tree.alias.value}.`
+    }
+
+    args?.fields.forEach((field) => {
+      if (typeof field === 'string') {
+        names.push(field)
+      } else {
+        names.push(field.alias || field.name)
+      }
+    })
+
+    if (args?.type === 'Array') {
+      query.path += `${!!query.path ? '.' : ''}${pathPrefix}[@${names
+        .map((name) => `${name}=:${name}`)
+        .join(';')}]`
+    } else {
+      query.path += `${!!query.path ? '.' : ''}${pathPrefix}${names
+        .map((name) => `:${name}`)
+        .join(';')}`
     }
   },
-  subtract: (tree, query) => {
-    const name = `${tree.name?.value}`
-    if (!query.subtract) query.subtract = {}
-    if (
-      query.path.startsWith(':subtract') ||
-      query.path.startsWith(':subtract.')
+  pick: (tree, query, options: metricResolversDataOptions) => {
+    const args = argumentsToObject(tree.arguments)
+    const defaultState = options.getDefault(
+      tree.name.value,
+      query.path,
+      args?.type === 'Array',
+      options.on,
     )
+    query.path = defaultState.path.replace(/:pick\.?/, '')
+    const metricPath = getDefaultPath(tree.name.value, query.path, false)
+    if (!query.skip) query.skip = {}
+    Object.keys(args).map((key) => {
+      const [keyName, operator] = key.split('_')
+
+      if (keyName !== 'from' && keyName !== 'by')
+        query.skip[getDefaultMetricPath(keyName, metricPath)] =
+          comparisonFunction[operator || 'eq'](args[key])
+    })
+  },
+  diff: (tree, query, options) => {
+    const args = argumentsToObject(tree.arguments)
+    const defaultState = options.getDefault(
+      tree.name.value,
+      query.path,
+      args?.type === 'Array',
+      options.on,
+    )
+    query.path = defaultState.path.replace(/:diff\.?/, '')
+    const metricPath = getDefaultMetricPath(tree.name.value, query.path)
+    if (!query.diff) query.diff = {}
+
+    if (options.on === 'metric') {
+      query.diff[metricPath] = ({ value, replacedPath, fullObject }) => {
+        return (
+          value / progressiveGet(fullObject[query.filters.by], replacedPath) - 1
+        )
+      }
+    }
+  },
+  subtract: (tree, query, options) => {
+    if (!query.subtract) query.subtract = {}
+    if (query.path.startsWith(':subtract'))
       query.path = query.path.replace(/:subtract\.?/, '')
 
-    query.subtract[`${query.path}${!!query.path ? '.' : ''}${name}`] = ({
+    query.subtract[getDefaultMetricPath(tree.name.value, query.path)] = ({
       value,
       replacedPath,
       fullObject,
@@ -1599,16 +1655,12 @@ const metricResolversData = {
       return value - progressiveGet(fullObject[query.filters.by], replacedPath)
     }
   },
-  divideBy: (tree, query) => {
-    const name = `${tree.name?.value}`
+  divideBy: (tree, query, options) => {
     if (!query.divideBy) query.divideBy = {}
-    if (
-      query.path.startsWith(':divideBy') ||
-      query.path.startsWith(':divideBy.')
-    )
+    if (query.path.startsWith(':divideBy'))
       query.path = query.path.replace(/:divideBy\.?/, '')
 
-    query.divideBy[`${query.path}${!!query.path ? '.' : ''}${name}`] = ({
+    query.divideBy[getDefaultMetricPath(tree.name.value, query.path)] = ({
       value,
       replacedPath,
       fullObject,
@@ -1616,13 +1668,11 @@ const metricResolversData = {
       return value / progressiveGet(fullObject[query.filters.by], replacedPath)
     }
   },
-  blank: (tree, query) => {
-    const name = `${tree.name?.value} `
+  blank: (tree, query, options) => {
     if (!query.skip) query.skip = {}
-    if (query.path.startsWith(':blank.') || query.path.startsWith(':blank'))
+    if (query.path.startsWith(':blank'))
       query.path = query.path.replace(/:blank\.?/, '')
-    query.skip[`${query.path} ${!!query.path ? '.' : ''}: ${name} `] = (x) =>
-      false
+    query.skip[getDefaultMetricPath(tree.name.value, query.path)] = (x) => false
   },
 }
 

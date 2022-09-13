@@ -1150,91 +1150,8 @@ function getMergeStrings(tree, queries, idx, metricResolversData, hashContext) {
             return getMergeStrings(t, queries, idx, metricResolversData, hashContext);
         }, queries);
     }
-    mergeMetric(tree, query, metricResolversData);
+    mergeMetric(tree, query);
     return queries;
-}
-function mergeMetric(tree, query, metricResolversData) {
-    var _a, _b, _c, _d;
-    var name = ((_a = tree.alias) === null || _a === void 0 ? void 0 : _a.value) || tree.name.value;
-    var fieldName = tree.name.value;
-    var isInGetters = (_b = query.getters) === null || _b === void 0 ? void 0 : _b.find(function (name) { return name === fieldName; });
-    var args = arguments_1.argumentsToObject(tree.arguments);
-    if ((args === null || args === void 0 ? void 0 : args.type) === 'Array') {
-        query.path += (!!query.path ? '.' : '') + "[@" + name + "=:" + name + "]";
-        query.metrics["" + (isInGetters ? fieldName : name)] = "" + query.path + (!!query.path ? '.' : '') + name;
-        return directives_1.parseDirective(tree, query, 'metric', query.metrics["" + name]);
-    }
-    else {
-        if (!!query.mutation)
-            return metricResolversData[query.mutationFunction](tree, query);
-        if (tree.alias && metricResolversData[(_c = tree.name) === null || _c === void 0 ? void 0 : _c.value])
-            return metricResolversData[(_d = tree.name) === null || _d === void 0 ? void 0 : _d.value](tree, query);
-        query.metrics["" + (isInGetters ? fieldName : name)] = "" + query.path + (!!query.path ? '.' : '') + name;
-        return directives_1.parseDirective(tree, query, 'metric', query.metrics["" + name]);
-    }
-}
-function mergeDimension(tree, query) {
-    var _a, _b, _c, _d, _e;
-    var args = arguments_1.argumentsToObject(tree.arguments);
-    query.getters = query.getters || [];
-    if (args === null || args === void 0 ? void 0 : args.groupByEach) {
-        query.getters.push("groupByEach_max_" + (((_a = tree.alias) === null || _a === void 0 ? void 0 : _a.value) || tree.name.value));
-        query.getters.push("groupByEach_min_" + (((_b = tree.alias) === null || _b === void 0 ? void 0 : _b.value) || tree.name.value));
-    }
-    var name = !!query.mutation
-        ? tree.name.value
-        : ((_c = tree.alias) === null || _c === void 0 ? void 0 : _c.value) || tree.name.value;
-    if ((args === null || args === void 0 ? void 0 : args.type) === 'Array') {
-        if (!!(args === null || args === void 0 ? void 0 : args.cutoff)) {
-            query.cutoff = "" + query.path + (!!query.path ? '.' : '') + "[@" + name + "=:" + name + "]";
-        }
-        var names_1 = [];
-        var pathPrefix = '';
-        if (tree.name.value === 'combine') {
-            if ((_d = tree.alias) === null || _d === void 0 ? void 0 : _d.value) {
-                pathPrefix = tree.alias.value + ".";
-            }
-            args.fields.forEach(function (field) {
-                if (field === 'string') {
-                    names_1.push(field);
-                }
-                else {
-                    names_1.push(field.alias || field.name);
-                }
-            });
-        }
-        else {
-            names_1.push(name);
-        }
-        query.path += "" + (!!query.path ? '.' : '') + pathPrefix + "[@" + names_1
-            .map(function (name) { return name + "=:" + name; })
-            .join(';') + "]";
-        return directives_1.parseDirective(tree, query, 'dimension');
-    }
-    else {
-        var names_2 = [];
-        var pathPrefix = '';
-        if (tree.name.value === 'combine') {
-            if ((_e = tree.alias) === null || _e === void 0 ? void 0 : _e.value) {
-                pathPrefix = tree.alias.value + ".";
-            }
-            args.fields.forEach(function (field) {
-                if (field === 'string') {
-                    names_2.push(field);
-                }
-                else {
-                    names_2.push(field.alias || field.name);
-                }
-            });
-        }
-        else {
-            names_2.push(name);
-        }
-        query.path += "" + (!!query.path ? '.' : '') + pathPrefix + names_2
-            .map(function (name) { return ":" + name; })
-            .join(';');
-        return directives_1.parseDirective(tree, query, 'dimension');
-    }
 }
 var comparisonFunction = {
     gt: function (v) { return function (x) { return +x > +v; }; },
@@ -1243,79 +1160,168 @@ var comparisonFunction = {
     lte: function (v) { return function (x) { return +x <= +v; }; },
     eq: function (v) { return function (x) { return x == v; }; }
 };
+function getDefaultPath(name, path, isArray) {
+    if (isArray) {
+        return "" + path + (!!path ? '.' : '') + "[@" + name + "=:" + name + "]";
+    }
+    else {
+        return "" + path + (!!path ? '.' : '') + ":" + name;
+    }
+}
+function getDefaultMetricPath(name, path) {
+    return "" + path + (!!path ? '.' : '') + name;
+}
+function getDefaultFullPath(name, path, isArray, on) {
+    path =
+        isArray || on === 'dimension' ? getDefaultPath(name, path, isArray) : path;
+    return {
+        path: path,
+        metricPath: getDefaultMetricPath(name, path)
+    };
+}
+function mergeMetric(tree, query) {
+    var _a, _b, _c, _d;
+    var name = ((_a = tree.alias) === null || _a === void 0 ? void 0 : _a.value) || tree.name.value;
+    var isInGetters = (_b = query.getters) === null || _b === void 0 ? void 0 : _b.find(function (name) { return name === tree.name.value; });
+    var fieldName = isInGetters ? tree.name.value : name;
+    var args = arguments_1.argumentsToObject(tree.arguments);
+    if (metricResolversData[query.mutationFunction || ((_c = tree.name) === null || _c === void 0 ? void 0 : _c.value)])
+        metricResolversData[query.mutationFunction || ((_d = tree.name) === null || _d === void 0 ? void 0 : _d.value)](tree, query, {
+            on: 'metric',
+            isInGetters: isInGetters,
+            fieldName: fieldName,
+            name: name,
+            getDefault: getDefaultFullPath
+        });
+    else {
+        if ((args === null || args === void 0 ? void 0 : args.type) === 'Array') {
+            query.path = getDefaultPath(name, query.path, true);
+        }
+        query.metrics[fieldName] = getDefaultMetricPath(name, query.path);
+    }
+    return directives_1.parseDirective(tree, query, 'metric', query.metrics[fieldName]);
+}
+function mergeDimension(tree, query) {
+    var _a, _b, _c;
+    var args = arguments_1.argumentsToObject(tree.arguments);
+    var name = ((_a = tree.alias) === null || _a === void 0 ? void 0 : _a.value) || tree.name.value;
+    query.getters = query.getters || [];
+    if (metricResolversData[query.mutationFunction || ((_b = tree.name) === null || _b === void 0 ? void 0 : _b.value)])
+        metricResolversData[query.mutationFunction || ((_c = tree.name) === null || _c === void 0 ? void 0 : _c.value)](tree, query, {
+            on: 'dimension',
+            isInGetters: false,
+            fieldName: name,
+            name: name,
+            getDefault: getDefaultFullPath
+        });
+    else {
+        query.path = getDefaultPath(name, query.path, (args === null || args === void 0 ? void 0 : args.type) === 'Array');
+    }
+    return directives_1.parseDirective(tree, query, 'dimension');
+}
 var metricResolversData = {
-    aggrAverage: function (tree, query) {
+    aggrAverage: function (tree, query, options) {
         var _a;
         var name = ((_a = tree.alias) === null || _a === void 0 ? void 0 : _a.value) + "_aggrAverage";
-        query.metrics["" + name] = "" + query.path + (!!query.path ? '.' : '') + name;
+        query.metrics[name] = getDefaultMetricPath(name, query.path);
     },
-    weightAvg: function (tree, query) {
+    weightAvg: function (tree, query, options) {
         var _a;
         var name = "" + ((_a = tree.alias) === null || _a === void 0 ? void 0 : _a.value);
-        query.metrics["" + name] = "" + query.path + (!!query.path ? '.' : '') + name;
+        query.metrics[name] = getDefaultMetricPath(name, query.path);
     },
-    pick: function (tree, query) {
-        var _a;
-        var name = "" + ((_a = tree.name) === null || _a === void 0 ? void 0 : _a.value);
+    join: function (tree, query, options) {
+        query.metrics[options.name] = getDefaultMetricPath(options.name, query.path).replace(/:join\./g, '');
+    },
+    groupByEach: function (tree, query, options) {
         var args = arguments_1.argumentsToObject(tree.arguments);
+        query.getters.push("groupByEach_max_" + tree.alias.value);
+        query.getters.push("groupByEach_min_" + tree.alias.value);
+        var defaultState = options.getDefault(options.name, query.path, (args === null || args === void 0 ? void 0 : args.type) === 'Array', options.on);
+        query.path = defaultState.path;
+        query.metrics[options.name] = defaultState.metricPath;
+    },
+    combine: function (tree, query, options) {
+        var _a;
+        var args = arguments_1.argumentsToObject(tree.arguments);
+        var names = [];
+        var pathPrefix = '';
+        if ((_a = tree.alias) === null || _a === void 0 ? void 0 : _a.value) {
+            pathPrefix = tree.alias.value + ".";
+        }
+        args === null || args === void 0 ? void 0 : args.fields.forEach(function (field) {
+            if (typeof field === 'string') {
+                names.push(field);
+            }
+            else {
+                names.push(field.alias || field.name);
+            }
+        });
+        if ((args === null || args === void 0 ? void 0 : args.type) === 'Array') {
+            query.path += "" + (!!query.path ? '.' : '') + pathPrefix + "[@" + names
+                .map(function (name) { return name + "=:" + name; })
+                .join(';') + "]";
+        }
+        else {
+            query.path += "" + (!!query.path ? '.' : '') + pathPrefix + names
+                .map(function (name) { return ":" + name; })
+                .join(';');
+        }
+    },
+    pick: function (tree, query, options) {
+        var args = arguments_1.argumentsToObject(tree.arguments);
+        var defaultState = options.getDefault(tree.name.value, query.path, (args === null || args === void 0 ? void 0 : args.type) === 'Array', options.on);
+        query.path = defaultState.path.replace(/:pick\.?/, '');
+        var metricPath = getDefaultPath(tree.name.value, query.path, false);
         if (!query.skip)
             query.skip = {};
-        if (query.path === ':pick')
-            query.path = '';
         Object.keys(args).map(function (key) {
             var _a = key.split('_'), keyName = _a[0], operator = _a[1];
-            query.skip["" + query.path + (!!query.path ? '.' : '') + ":" + name + "." + keyName] =
-                comparisonFunction[operator || 'eq'](args[key]);
+            if (keyName !== 'from' && keyName !== 'by')
+                query.skip[getDefaultMetricPath(keyName, metricPath)] =
+                    comparisonFunction[operator || 'eq'](args[key]);
         });
     },
-    diff: function (tree, query) {
-        var _a;
-        var name = "" + ((_a = tree.name) === null || _a === void 0 ? void 0 : _a.value);
+    diff: function (tree, query, options) {
+        var args = arguments_1.argumentsToObject(tree.arguments);
+        var defaultState = options.getDefault(tree.name.value, query.path, (args === null || args === void 0 ? void 0 : args.type) === 'Array', options.on);
+        query.path = defaultState.path.replace(/:diff\.?/, '');
+        var metricPath = getDefaultMetricPath(tree.name.value, query.path);
         if (!query.diff)
             query.diff = {};
-        if (query.path.startsWith(':diff') || query.path.startsWith(':diff.'))
-            query.path = query.path.replace(/:diff\.?/, '');
-        query.diff["" + query.path + (!!query.path ? '.' : '') + name] = function (_a) {
-            var value = _a.value, replacedPath = _a.replacedPath, fullObject = _a.fullObject;
-            return (value / progressive_1.progressiveGet(fullObject[query.filters.by], replacedPath) - 1);
-        };
+        if (options.on === 'metric') {
+            query.diff[metricPath] = function (_a) {
+                var value = _a.value, replacedPath = _a.replacedPath, fullObject = _a.fullObject;
+                return (value / progressive_1.progressiveGet(fullObject[query.filters.by], replacedPath) - 1);
+            };
+        }
     },
-    subtract: function (tree, query) {
-        var _a;
-        var name = "" + ((_a = tree.name) === null || _a === void 0 ? void 0 : _a.value);
+    subtract: function (tree, query, options) {
         if (!query.subtract)
             query.subtract = {};
-        if (query.path.startsWith(':subtract') ||
-            query.path.startsWith(':subtract.'))
+        if (query.path.startsWith(':subtract'))
             query.path = query.path.replace(/:subtract\.?/, '');
-        query.subtract["" + query.path + (!!query.path ? '.' : '') + name] = function (_a) {
+        query.subtract[getDefaultMetricPath(tree.name.value, query.path)] = function (_a) {
             var value = _a.value, replacedPath = _a.replacedPath, fullObject = _a.fullObject;
             return value - progressive_1.progressiveGet(fullObject[query.filters.by], replacedPath);
         };
     },
-    divideBy: function (tree, query) {
-        var _a;
-        var name = "" + ((_a = tree.name) === null || _a === void 0 ? void 0 : _a.value);
+    divideBy: function (tree, query, options) {
         if (!query.divideBy)
             query.divideBy = {};
-        if (query.path.startsWith(':divideBy') ||
-            query.path.startsWith(':divideBy.'))
+        if (query.path.startsWith(':divideBy'))
             query.path = query.path.replace(/:divideBy\.?/, '');
-        query.divideBy["" + query.path + (!!query.path ? '.' : '') + name] = function (_a) {
+        query.divideBy[getDefaultMetricPath(tree.name.value, query.path)] = function (_a) {
             var value = _a.value, replacedPath = _a.replacedPath, fullObject = _a.fullObject;
             return value / progressive_1.progressiveGet(fullObject[query.filters.by], replacedPath);
         };
     },
-    blank: function (tree, query) {
-        var _a;
-        var name = ((_a = tree.name) === null || _a === void 0 ? void 0 : _a.value) + " ";
+    blank: function (tree, query, options) {
         if (!query.skip)
             query.skip = {};
-        if (query.path.startsWith(':blank.') || query.path.startsWith(':blank'))
+        if (query.path.startsWith(':blank'))
             query.path = query.path.replace(/:blank\.?/, '');
-        query.skip[query.path + " " + (!!query.path ? '.' : '') + ": " + name + " "] = function (x) {
-            return false;
-        };
+        query.skip[getDefaultMetricPath(tree.name.value, query.path)] = function (x) { return false; };
     }
 };
 function withFilters(filters) {

@@ -177,6 +177,38 @@ Object {
 }
 `;
 
+exports[`SQL gql directives @diff directive with aliases 1`] = `
+Array [
+  "select \\"channels\\", sum(\\"sessions\\") as \\"value\\", \\"value\\" as \\"valueGrowth\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Adult' and \\"ecom_benchmarking\\".\\"country\\" = 'DE' group by \\"channels\\"",
+  "select \\"channels\\", sum(\\"sessions\\") as \\"value\\", \\"value\\" as \\"valueGrowth\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Adult' and \\"ecom_benchmarking\\".\\"country\\" = 'DE' group by \\"channels\\"",
+]
+`;
+
+exports[`SQL gql directives @diff directive with aliases 2`] = `
+Object {
+  "prevSeries": Object {
+    "Organic": Object {
+      "value": 5,
+      "valueGrowth": 0.6666666666666667,
+    },
+    "Social": Object {
+      "value": 2,
+      "valueGrowth": 1,
+    },
+  },
+  "series": Object {
+    "Organic": Object {
+      "value": 3,
+      "valueGrowth": -0.4,
+    },
+    "Social": Object {
+      "value": 1,
+      "valueGrowth": -0.5,
+    },
+  },
+}
+`;
+
 exports[`SQL gql directives @filter directive 1`] = `
 Array [
   "select \\"channels\\", sum(\\"sessions\\") as \\"value\\" from \\"ecom_benchmarking\\" where \\"ecom_benchmarking\\".\\"category\\" = 'Adult' and \\"ecom_benchmarking\\".\\"country\\" = 'DE' group by \\"channels\\"",
