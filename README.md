@@ -1,4 +1,4 @@
-# gql-sql-slicer | A query library for your SQL ddatabase.
+# gritql | A query library for your SQL database.
 The library is built to query simple dimension/metric based tables. It allows to fetch data in the form you want it.
 ### example
 Query:
