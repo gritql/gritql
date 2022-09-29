@@ -23,6 +23,7 @@ import gql, {
 import { checkPropTypes } from './types'
 import mergeDeep from 'deepmerge'
 import { defaultTypes } from './parser'
+import { TinyEmitter } from 'tiny-emitter'
 
 enableExperimentalFragmentVariables()
 disableFragmentWarnings()
@@ -76,11 +77,13 @@ export const gqlToDb = () => {
   let customMetricDataResolvers = {}
   let customDimensionResolvers = {}
   let definedProviders = { ...providers }
+  const emitter = new TinyEmitter()
   const gqlFetch = async (
     gqlQuery: string,
     variables: Record<string, any>,
     provider?: string,
   ): Promise<any> => {
+    emitter.emit('parseStart')
     const builder = definedProviders[provider || 'pg'].getQueryBuilder()
 
     try {
@@ -124,20 +127,30 @@ export const gqlToDb = () => {
           return q
         })
         .map((q) => (q.provider !== 'ga' ? q.promise.toString() : q.promise))
+      emitter.emit('parseFinished')
 
+      emitter.emit('prepareDBStart')
       const preparedGqlQuery = await beforeDbHandler({
         queries: queries.filter((q) => !q.isWith),
         sql,
         definitions,
       })
+      emitter.emit('prepareDBFinished')
       if (!preparedGqlQuery) return null
+      emitter.emit('fetchStart')
       const resultFromDb = await dbHandler(preparedGqlQuery)
+      emitter.emit('fetchFinished')
       if (!resultFromDb) return null
+      emitter.emit('postDBStart')
       afterDbHandler(definitions, resultFromDb)
-      return await merge(definitions, resultFromDb, {
+      emitter.emit('postDBFinished')
+      emitter.emit('mergeStart')
+      const data = await merge(definitions, resultFromDb, {
         ...metricResolversData,
         ...customMetricDataResolvers,
       })
+      emitter.emit('mergeFinished')
+      return data
     } catch (e) {
       console.log(e)
       console.log(e.stack)
@@ -179,6 +192,7 @@ export const gqlToDb = () => {
       ),
     }
   }
+  gqlFetch.emitter = emitter
 
   return gqlFetch
 }

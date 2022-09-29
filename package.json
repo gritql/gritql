@@ -22,7 +22,8 @@
     "lodash": "^4.17.21",
     "luxon": "^2.0.2",
     "postgres": "^3.2.4",
-    "snowflake-sdk": "^1.6.10"
+    "snowflake-sdk": "^1.6.10",
+    "tiny-emitter": "^2.1.0"
   },
   "prettier": {
     "semi": false,
