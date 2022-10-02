@@ -1,0 +1,11 @@
+{
+  "extends": ["next", "prettier"],
+  "rules": {
+    "jsx-quotes": [1, "prefer-double"],
+    "no-console": "off",
+    "no-debugger": 2,
+    "unused-imports/no-unused-imports-ts": 2
+  },
+  "parser": "@typescript-eslint/parser",
+  "plugins": ["@typescript-eslint", "unused-imports", "prettier"]
+}
