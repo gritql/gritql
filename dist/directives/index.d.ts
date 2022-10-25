@@ -149,6 +149,14 @@ export declare const postExecutedDirectives: {
         };
         context: PostExecutedContext;
     };
+    parse: (context: PostExecutedContext) => {
+        ({ value }: {
+            value: any;
+        }): {
+            value: any;
+        };
+        context: PostExecutedContext;
+    };
 };
 export declare function parseDirective(tree: DocumentNode, query: any, on: string, path?: string): any;
 export declare function parseTypeDirective(tree: DocumentNode, context: any): DocumentNode;

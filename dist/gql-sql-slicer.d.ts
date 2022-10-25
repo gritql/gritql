@@ -1,6 +1,7 @@
 import type { DocumentNode } from 'graphql';
 import { Knex } from 'knex';
 import { Provider } from './providers';
+import { TinyEmitter } from 'tiny-emitter';
 interface GqlQuery {
     promise: Knex.QueryBuilder | Promise<any>;
     name: string;
@@ -39,6 +40,7 @@ export declare const gqlToDb: () => {
     useProvider(name: string, provider: Provider): void;
     useDataResolver(name: string, fn: metricDataResolver): void;
     setupProvider(name: string, configuration: any): void;
+    emitter: TinyEmitter;
 };
 export declare const merge: (tree: Array<DocumentNode>, data: Array<any>, metricResolversData: any) => any;
 export {};
