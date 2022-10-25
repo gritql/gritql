@@ -4,7 +4,7 @@ exports.getBatchContext = exports.replVars = exports.iterateProgressive = export
 function unshieldSeparator(str) {
     if (typeof str !== 'string')
         return str;
-    return str.replace(/\$#@#/, '.');
+    return str.replace(/\$#@#/g, '.');
 }
 function getIndex(steps, values) {
     const indexStep = steps.map(([step]) => `$${step}`).join(';');

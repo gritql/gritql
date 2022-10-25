@@ -40,6 +40,7 @@ const graphql_tag_1 = __importStar(require("graphql-tag"));
 const types_1 = require("./types");
 const deepmerge_1 = __importDefault(require("deepmerge"));
 const parser_2 = require("./parser");
+const tiny_emitter_1 = require("tiny-emitter");
 (0, graphql_tag_1.enableExperimentalFragmentVariables)();
 (0, graphql_tag_1.disableFragmentWarnings)();
 const gqlToDb = () => {
@@ -56,7 +57,9 @@ const gqlToDb = () => {
     let customMetricDataResolvers = {};
     let customDimensionResolvers = {};
     let definedProviders = { ...providers_1.providers };
+    const emitter = new tiny_emitter_1.TinyEmitter();
     const gqlFetch = async (gqlQuery, variables, provider) => {
+        emitter.emit('parseStart');
         const builder = definedProviders[provider || 'pg'].getQueryBuilder();
         try {
             const definitions = (0, lodash_1.cloneDeep)((0, graphql_tag_1.default)(gqlQuery).definitions);
@@ -88,21 +91,31 @@ const gqlToDb = () => {
                 return q;
             })
                 .map((q) => (q.provider !== 'ga' ? q.promise.toString() : q.promise));
+            emitter.emit('parseFinished');
+            emitter.emit('prepareDBStart');
             const preparedGqlQuery = await beforeDbHandler({
                 queries: queries.filter((q) => !q.isWith),
                 sql,
                 definitions,
             });
+            emitter.emit('prepareDBFinished');
             if (!preparedGqlQuery)
                 return null;
+            emitter.emit('fetchStart');
             const resultFromDb = await dbHandler(preparedGqlQuery);
+            emitter.emit('fetchFinished');
             if (!resultFromDb)
                 return null;
+            emitter.emit('postDBStart');
             afterDbHandler(definitions, resultFromDb);
-            return await (0, exports.merge)(definitions, resultFromDb, {
+            emitter.emit('postDBFinished');
+            emitter.emit('mergeStart');
+            const data = await (0, exports.merge)(definitions, resultFromDb, {
                 ...metricResolversData,
                 ...customMetricDataResolvers,
             });
+            emitter.emit('mergeFinished');
+            return data;
         }
         catch (e) {
             console.log(e);
@@ -141,6 +154,7 @@ const gqlToDb = () => {
             connection: definedProviders[name].getConnection(configuration, definedProviders[name].getConnector()),
         };
     };
+    gqlFetch.emitter = emitter;
     return gqlFetch;
 };
 exports.gqlToDb = gqlToDb;

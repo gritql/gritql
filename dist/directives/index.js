@@ -846,6 +846,46 @@ exports.postExecutedDirectives = {
         transformer.context = context;
         return transformer;
     },
+    parse: (context) => {
+        if (!context.tree.arguments) {
+            throw 'Parse directive requires arguments';
+        }
+        const args = (0, arguments_1.argumentsToObject)(context.tree.arguments);
+        if (!args.as) {
+            throw 'Parse directive requires `as` argument';
+        }
+        let transformer;
+        const [as, desc, semi, subsemi] = args.as.split(':');
+        const dateTransformers = {
+            'iso': (value) => luxon_1.DateTime.fromSQL(value).toISO(),
+            'iso-date': (value) => luxon_1.DateTime.fromSQL(value).toISODate(),
+            'iso-week-date': (value) => luxon_1.DateTime.fromSQL(value).toISOWeekDate(),
+            'iso-time': (value) => luxon_1.DateTime.fromSQL(value).toISOTime(),
+            'rfc2822': (value) => luxon_1.DateTime.fromSQL(value).toRFC2822(),
+            'http': (value) => luxon_1.DateTime.fromSQL(value).toHTTP(),
+            'locale': (value) => semi ? luxon_1.DateTime.fromSQL(value).setLocale(semi).toLocalString() : luxon_1.DateTime.fromSQL(value).toLocalString(),
+            'locale-preset': (value) => semi && subsemi ? luxon_1.DateTime.fromSQL(value).setLocale(semi).toLocalString(luxon_1.DateTime[subsemi]) : luxon_1.DateTime.fromSQL(value).toLocalString(semi),
+            'format': (value) => semi && subsemi ? luxon_1.DateTime.fromSQL(value).setLocale(semi).toFormat(subsemi) : luxon_1.DateTime.fromSQL(value).toFormat(semi),
+        };
+        if (as === 'float') {
+            if (desc) {
+                transformer = (value) => parseFloat(value).toFixed(desc);
+            }
+        }
+        else if (as === 'int') {
+            transformer = (value) => parseInt(value, desc);
+        }
+        else if (as === 'date') {
+            transformer = dateTransformers[desc || 'iso'];
+        }
+        const T = ({ value }) => {
+            return {
+                value: transformer(value)
+            };
+        };
+        T.context = context;
+        return T;
+    }
 };
 function parseDirective(tree, query, on, path) {
     if (query && !query.directives)

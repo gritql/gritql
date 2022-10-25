@@ -1,5 +1,4 @@
 import { DocumentNode } from 'graphql'
-
 export declare enum JoinType {
   DEFAULT = 'join',
   LEFT = 'leftJoin',

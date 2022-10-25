@@ -1111,6 +1111,53 @@ export const postExecutedDirectives = {
 
     return transformer
   },
+  parse: (context: PostExecutedContext) => {
+    if (!context.tree.arguments) {
+      throw 'Parse directive requires arguments'
+    }
+
+    const args = argumentsToObject(context.tree.arguments)
+
+    if (!args.as) {
+      throw 'Parse directive requires `as` argument'
+    }
+
+    let transformer: (value: string) => any;
+
+    const [as, desc, semi, subsemi] = args.as.split(':')
+
+    const dateTransformers = {
+      'iso': (value: string) => DateTime.fromSQL(value).toISO(),
+      'iso-date': (value: string) => DateTime.fromSQL(value).toISODate(),
+      'iso-week-date': (value: string) => DateTime.fromSQL(value).toISOWeekDate(),
+      'iso-time': (value: string) => DateTime.fromSQL(value).toISOTime(),
+      'rfc2822': (value: string) => DateTime.fromSQL(value).toRFC2822(),
+      'http': (value: string) => DateTime.fromSQL(value).toHTTP(),
+      'locale': (value: string) => semi ? DateTime.fromSQL(value).setLocale(semi).toLocalString() : DateTime.fromSQL(value).toLocalString(),
+      'locale-preset': (value: string) => semi && subsemi ? DateTime.fromSQL(value).setLocale(semi).toLocalString(DateTime[subsemi]) : DateTime.fromSQL(value).toLocalString(semi),
+      'format': (value: string) => semi && subsemi ? DateTime.fromSQL(value).setLocale(semi).toFormat(subsemi) : DateTime.fromSQL(value).toFormat(semi),
+    }
+
+    if (as === 'float') {
+      if (desc) {
+        transformer = (value: string) => parseFloat(value).toFixed(desc)
+      }
+    } else if (as === 'int') {
+      transformer = (value: string) => parseInt(value, desc )
+    } else if (as === 'date') {
+      transformer = dateTransformers[desc || 'iso']
+    }
+
+    const T = ({ value }) => {
+      return {
+        value: transformer(value)
+      }
+    }
+
+    T.context = context;
+
+    return T;
+  }
 }
 
 export function parseDirective(
