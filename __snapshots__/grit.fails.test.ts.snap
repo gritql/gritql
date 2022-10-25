@@ -1,0 +1,30 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`SQL variables && types input type must be traited as exact object type 1`] = `
+Array [
+  "select \\"domain\\", sum(\\"transactionrevenue\\") as \\"value\\" from \\"ii_transactional\\" where (\\"ii_transactional\\".\\"country\\" = 'US') AND ((\\"ii_transactional\\".\\"domain\\" IN ('test.com','test2.com'))) AND ((\\"ii_transactional\\".\\"date\\" >= '2022-01-05') AND (\\"ii_transactional\\".\\"date\\" <= '2022-01-08')) group by \\"domain\\" order by \\"revenue\\" desc limit 10",
+]
+`;
+
+exports[`SQL variables && types input type must be traited as exact object type 2`] = `
+Object {
+  "matrix": Array [
+    Object {
+      "domain": "test.com",
+      "value": "101",
+    },
+    Object {
+      "domain": "test2.com",
+      "value": "107",
+    },
+    Object {
+      "domain": "test.com.us",
+      "value": "201",
+    },
+    Object {
+      "domain": "test.com.ua",
+      "value": "207",
+    },
+  ],
+}
+`;

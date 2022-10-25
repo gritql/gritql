@@ -1,6 +1,6 @@
 function unshieldSeparator(str) {
   if (typeof str !== 'string') return str
-  return str.replace(/\$#@#/, '.')
+  return str.replace(/\$#@#/g, '.')
 }
 
 function getIndex(steps: [string, string][], values?: any) {
