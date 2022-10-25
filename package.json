@@ -1,9 +1,9 @@
 {
-  "name": "gql-sql-slicer",
+  "name": "gritql",
   "version": "3.0.0-beta.5",
   "types": "dist/index.d.ts",
-  "repository": "git@github.com:edjafarov/gql-sql-slicer.git",
-  "author": "Eldar Djafarov <djkojb@gmail.com>",
+  "repository": "git@github.com:gritql/gritql.git",
+  "author": "Eldar Dzhafarov <djkojb@gmail.com>",
   "license": "MIT",
   "main": "dist/index.js",
   "scripts": {
