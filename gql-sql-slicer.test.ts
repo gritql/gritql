@@ -1,3 +1,4 @@
+//@ts-ignore
 const { gqlToDb, gqlBuild } = require('./gql-sql-slicer')
 
 describe('SQL', () => {
