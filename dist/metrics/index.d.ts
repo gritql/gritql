@@ -20,7 +20,7 @@ export declare function getOverClosure(
     }
     cast?: String
   },
-): '' | Knex.Raw<any>
+): Knex.Raw<any> | 'OVER()'
 export declare const metricResolvers: {
   percentile: (tree: DocumentNode, query: any, knex: Knex<any, any[]>) => void
   median: (tree: DocumentNode, query: any, knex: Knex<any, any[]>) => void

@@ -24,7 +24,7 @@ function getOverClosure(args, query, knex, options) {
     const partition = partitionBy(args, query, knex);
     const isAnyValidOptionAvailable = options && options.orderBy;
     if (!isAnyValidOptionAvailable && !partition) {
-        return '';
+        return 'OVER()';
     }
     return knex.raw(`OVER(${partition}${options?.orderBy
         ? knex.raw(`ORDER BY ?? ${options.orderBy.dir || 'DESC'}`, [

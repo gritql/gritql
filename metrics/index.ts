@@ -40,7 +40,7 @@ export function getOverClosure(
   const isAnyValidOptionAvailable = options && options.orderBy
 
   if (!isAnyValidOptionAvailable && !partition) {
-    return ''
+    return 'OVER()'
   }
 
   return knex.raw(

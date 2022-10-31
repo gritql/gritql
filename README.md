@@ -1,7 +1,11 @@
-# gql-sql-slicer | A query library for your SQL ddatabase.
+# gritql | A query library for your SQL ddatabase.
+
 The library is built to query simple dimension/metric based tables. It allows to fetch data in the form you want it.
+
 ### example
+
 Query:
+
 ```
 query customers{
   fetch(country: US){
@@ -11,7 +15,9 @@ query customers{
   }
 }
 ```
+
 Response:
+
 ```
 {
   free: {
@@ -28,6 +34,7 @@ Response:
   }
 }
 ```
+
 Table Schema:
 Customer Name, plan, planPrice
 
@@ -38,14 +45,19 @@ Customer Name, plan, planPrice
 ## multiple queries
 
 ## fetch an Array
+
 ### sort
+
 ## dates
+
 ### group
 
 ## aggregation functions
 
 ### sum
+
 ### divide
+
 ### share
 
 ### distinct
