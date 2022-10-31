@@ -3,16 +3,12 @@ import { ResultProcessor } from './ResultProcessor'
 
 export class ResultTransformer {
   resultProcessors: ResultProcessor[]
-  merger: Merger
 
   constructor() {
     this.resultProcessors = []
   }
 
-  use(processor: ResultProcessor | Merger) {
-    if (processor instanceof Merger) {
-      this.merger = processor
-    }
+  use(processor: ResultProcessor) {
     this.resultProcessors.push(processor)
   }
 }

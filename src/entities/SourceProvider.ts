@@ -1,11 +1,11 @@
 import knexConstructor, { Knex } from 'knex'
 
 export interface SourceProvider {
+  connector: any
   keywords: string[]
   queryBuilder: string
   getQueryBuilder: () => any
   getQueryPromise: (query, builder) => Knex.QueryBuilder | Promise<any>
-  getConnector: () => any
   getConnection: (conf, connector) => any
   execute: (connection, sql) => any
   postTransform?: (data) => any

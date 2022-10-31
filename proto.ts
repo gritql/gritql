@@ -14,8 +14,7 @@
   resultProcessor.use(merger)
 
   return gritql
-}*/
-/*
+}
 async function server(req, res) {
   const { runner, queryParser, resultProcessor } = await qritQLEngine()
 
