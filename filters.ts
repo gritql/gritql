@@ -43,6 +43,7 @@ const filterOperators: Array<
   'search',
   'from',
   'inherited',
+  'isNULL'
 ]
 
 export function buildFullName(
@@ -145,6 +146,23 @@ export function buildFilter(
 
   const sub = (subQuery, op, field, context: BuilderContext) => {
     switch (op) {
+      case ops.isNULL:
+          return runOrSkip(
+            context,
+            ({ key, value, context }) =>
+                  context.builder.raw(value ? `?? IS NULL` : `?? IS NOT NULL`, [
+                    key
+                  ]),
+            ({ context }) =>
+              buildFullName(
+                { ...context, from: context.from || context.query.table },
+                context.query,
+                field,
+                false,
+              ),
+            '',
+            context.valueTransformer(context, field, subQuery),
+          )
       case ops.and:
         return runOrSkip(
           context,

@@ -1,4 +1,5 @@
 import { DocumentNode } from 'graphql'
+
 export declare const dimensionResolvers: {
   groupBy: (
     tree: DocumentNode,
