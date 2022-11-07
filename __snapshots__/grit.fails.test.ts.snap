@@ -1,12 +1,46 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
-exports[`SQL variables && types input type must be traited as exact object type 1`] = `
+exports[`SQL doesnt merge queries with same id from different queries should merge object correctly if id matches 1`] = `
+Array [
+  "select \\"date\\", sum(\\"transactionrevenue\\") as \\"value\\" from \\"ii_transactional\\" where (\\"ii_transactional\\".\\"country\\" = 'US') AND ((\\"ii_transactional\\".\\"domain\\" IN ('test.com','test2.com'))) AND ((\\"ii_transactional\\".\\"date\\" >= '2022-01-05') AND (\\"ii_transactional\\".\\"date\\" <= '2022-01-08')) group by \\"date\\" order by \\"revenue\\" desc limit 10",
+  "select \\"date\\", sum(\\"transactionrevenue\\") as \\"value1\\" from \\"ii_transactionalb\\" where (\\"ii_transactionalb\\".\\"country\\" = 'US') AND ((\\"ii_transactionalb\\".\\"domain\\" IN ('test.com','test2.com'))) AND ((\\"ii_transactionalb\\".\\"date\\" >= '2022-01-05') AND (\\"ii_transactionalb\\".\\"date\\" <= '2022-01-08')) group by \\"date\\" order by \\"revenue\\" desc limit 10",
+]
+`;
+
+exports[`SQL doesnt merge queries with same id from different queries should merge object correctly if id matches 2`] = `
+Object {
+  "matrix": Array [
+    Object {
+      "date": "1",
+      "value": "101",
+      "value1": "1011",
+    },
+    Object {
+      "date": "2",
+      "value": "107",
+      "value1": "1071",
+    },
+    Object {
+      "date": "3",
+      "value": "201",
+      "value1": "2011",
+    },
+    Object {
+      "date": "4",
+      "value": "207",
+      "value1": "2071",
+    },
+  ],
+}
+`;
+
+exports[`SQL failed with $#@# instead of . should correctly return names with dots inside like test.com.us 1`] = `
 Array [
   "select \\"domain\\", sum(\\"transactionrevenue\\") as \\"value\\" from \\"ii_transactional\\" where (\\"ii_transactional\\".\\"country\\" = 'US') AND ((\\"ii_transactional\\".\\"domain\\" IN ('test.com','test2.com'))) AND ((\\"ii_transactional\\".\\"date\\" >= '2022-01-05') AND (\\"ii_transactional\\".\\"date\\" <= '2022-01-08')) group by \\"domain\\" order by \\"revenue\\" desc limit 10",
 ]
 `;
 
-exports[`SQL variables && types input type must be traited as exact object type 2`] = `
+exports[`SQL failed with $#@# instead of . should correctly return names with dots inside like test.com.us 2`] = `
 Object {
   "matrix": Array [
     Object {
