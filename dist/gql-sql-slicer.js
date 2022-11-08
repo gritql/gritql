@@ -315,6 +315,8 @@ const merge = (tree, data, metricResolversData) => {
         const key = q.name || '___query';
         if (!r[key])
             r[key] = [];
+        else
+            q.hashContext = r[key][0].hashContext;
         q.bid = i;
         r[key].push(q);
         return r;
