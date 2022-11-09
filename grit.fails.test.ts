@@ -188,3 +188,82 @@ describe('SQL', () => {
     })
   })
 })
+
+xdescribe('directive', () => {
+  describe('parse doesnt work for date field', () => {
+    test('should correctly parse date', () => {
+      const table = [
+        [
+          {
+            date: 'Thu Jan 06 2022 01:00:00 GMT+0100 (Central European Standard Time)',
+            value: '101',
+          },
+          {
+            date: 'Thu Jan 07 2022 01:00:00 GMT+0100 (Central European Standard Time)',
+            value: '102',
+          },
+          {
+            date: 'Thu Jan 08 2022 01:00:00 GMT+0100 (Central European Standard Time)',
+            value: '103',
+          },
+        ],
+      ]
+
+      const querier = gqlToDb()
+        .beforeDbFetch(({ sql }) => {
+          expect(sql).toMatchSnapshot()
+          return { sql }
+        })
+        .dbFetch(() => {
+          return table
+        })
+
+      return Promise.resolve(
+        querier(
+          `input Date {
+          gte: String!
+          lte: String!
+        }
+        
+        input Date {
+          gte: String!
+          lte: String!
+        }
+        
+        input OrArray {
+          in: [String]
+        }
+        
+        input Filters {
+          country: String
+          category: OrArray
+          domain: OrArray!
+          date: Date!
+        }
+        
+        query ii_transactional($filters: Filters) {
+          matrix: fetch(filters: $filters) {
+            date(type:Array, sort_desc: date) @parse(as: "date:iso"){
+              value: sum(a:transactionrevenue)
+            }
+          }
+        }`,
+          {
+            filters: {
+              country: 'US',
+              domain: {
+                in: ['test.com', 'test2.com'],
+              },
+              date: {
+                gte: '2022-01-05',
+                lte: '2022-01-08',
+              },
+            },
+          },
+        ),
+      ).then((result) => {
+        expect(result).toMatchSnapshot()
+      })
+    })
+  })
+})

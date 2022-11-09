@@ -62,3 +62,28 @@ Object {
   ],
 }
 `;
+
+exports[`directive parse doesnt work for date field should correctly parse date 1`] = `
+Array [
+  "select \\"date\\", sum(\\"transactionrevenue\\") as \\"value\\" from \\"ii_transactional\\" where (\\"ii_transactional\\".\\"country\\" = 'US') AND ((\\"ii_transactional\\".\\"domain\\" IN ('test.com','test2.com'))) AND ((\\"ii_transactional\\".\\"date\\" >= '2022-01-05') AND (\\"ii_transactional\\".\\"date\\" <= '2022-01-08')) group by \\"date\\" order by \\"date\\" desc",
+]
+`;
+
+exports[`directive parse doesnt work for date field should correctly parse date 2`] = `
+Object {
+  "matrix": Array [
+    Object {
+      "date": "Thu Jan 06 2022 01:00:00 GMT+0100 (Central European Standard Time)",
+      "value": 101,
+    },
+    Object {
+      "date": "Thu Jan 07 2022 01:00:00 GMT+0100 (Central European Standard Time)",
+      "value": 101,
+    },
+    Object {
+      "date": "Thu Jan 08 2022 01:00:00 GMT+0100 (Central European Standard Time)",
+      "value": 101,
+    },
+  ],
+}
+`;
