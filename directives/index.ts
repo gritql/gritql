@@ -222,6 +222,166 @@ const resolvers = {
       })
     }
   },
+  startsWith: (a: any[], b: any | any[]) => {
+    if (!Array.isArray(a)) {
+      throw new Error("Value must be an array")
+    }
+    
+    if (a.length === 0) {
+      return false;
+    }
+
+    const av = a[0];
+    const at = typeof av;
+
+    if (Array.isArray(b)) {
+      return b.some(bv => {
+        const bt = typeof bv;
+
+        if (bt !== at) {
+          return false;
+        }
+
+        if (bt === 'object') {
+          return Object.keys(bv).every((k) => av[k] === bv[k])
+        } else {
+          return av === bv
+        }
+      })
+    } else {
+      const bt = typeof b;
+
+        if (bt !== at) {
+          return false;
+        }
+
+        if (bt === 'object') {
+          return Object.keys(b).every((k) => av[k] === b[k])
+        } else {
+          return av === b
+        }
+    }
+  },
+  endsWidth: (a: any[], b: any | any[]) => {
+    if (!Array.isArray(a)) {
+      throw new Error("Value must be an array")
+    }
+    
+    if (a.length === 0) {
+      return false;
+    }
+
+    const av = a[a.length - 1];
+    const at = typeof av;
+
+    if (Array.isArray(b)) {
+      return b.some(bv => {
+        const bt = typeof bv;
+
+        if (bt !== at) {
+          return false;
+        }
+
+        if (bt === 'object') {
+          return Object.keys(bv).every((k) => av[k] === bv[k])
+        } else {
+          return av === bv
+        }
+      })
+    } else {
+      const bt = typeof b;
+
+        if (bt !== at) {
+          return false;
+        }
+
+        if (bt === 'object') {
+          return Object.keys(b).every((k) => av[k] === b[k])
+        } else {
+          return av === b
+        }
+    }
+  },
+  nStartsWith: (a: any[], b: any | any[]) => {
+    if (!Array.isArray(a)) {
+      throw new Error("Value must be an array")
+    }
+    
+    if (a.length === 0) {
+      return true;
+    }
+
+    const av = a[0];
+    const at = typeof av;
+
+    if (Array.isArray(b)) {
+      return b.some(bv => {
+        const bt = typeof bv;
+
+        if (bt !== at) {
+          return true;
+        }
+
+        if (bt === 'object') {
+          return !Object.keys(bv).every((k) => av[k] === bv[k])
+        } else {
+          return av !== bv
+        }
+      })
+    } else {
+      const bt = typeof b;
+
+        if (bt !== at) {
+          return true;
+        }
+
+        if (bt === 'object') {
+          return !Object.keys(b).every((k) => av[k] === b[k])
+        } else {
+          return av !== b
+        }
+    }
+  },
+  nEndsWith: (a: any[], b: any | any[]) => {
+    if (!Array.isArray(a)) {
+      throw new Error("Value must be an array")
+    }
+    
+    if (a.length === 0) {
+      return true;
+    }
+
+    const av = a[a.length - 1];
+    const at = typeof av;
+
+    if (Array.isArray(b)) {
+      return b.some(bv => {
+        const bt = typeof bv;
+
+        if (bt !== at) {
+          return true;
+        }
+
+        if (bt === 'object') {
+          return !Object.keys(bv).every((k) => av[k] === bv[k])
+        } else {
+          return av !== bv
+        }
+      })
+    } else {
+      const bt = typeof b;
+
+        if (bt !== at) {
+          return true;
+        }
+
+        if (bt === 'object') {
+          return !Object.keys(b).every((k) => av[k] === b[k])
+        } else {
+          return av !== b
+        }
+    }
+  },
 }
 
 function findResolvers(keys, value, args, name?: string) {
@@ -1148,7 +1308,16 @@ export const postExecutedDirectives = {
       transformer = dateTransformers[desc || 'iso']
     }
 
-    const T = ({ value }) => {
+    const T: any = context.on === 'dimension' ? ({ value, path, data, keys, pathKey }) => {
+      const v = transformer(value);
+
+      data[keys[pathKey]] = v;
+
+      return {
+        value: v,
+        path: replVars(path, data)
+      }
+    } : ({ value }) => {
       return {
         value: transformer(value)
       }

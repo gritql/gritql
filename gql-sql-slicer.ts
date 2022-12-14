@@ -502,6 +502,8 @@ export const merge = (
                   queries: quer,
                   batches,
                   q,
+                  keys,
+                  pathKey: key
                 })
 
                 // Important for directives which will not change value
