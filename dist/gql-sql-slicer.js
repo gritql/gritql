@@ -373,6 +373,8 @@ const merge = (tree, data, metricResolversData) => {
                                 queries: quer,
                                 batches,
                                 q,
+                                keys,
+                                pathKey: key
                             });
                             // Important for directives which will not change value
                             if (directiveResult.hasOwnProperty('value')) {
