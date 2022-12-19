@@ -404,6 +404,7 @@ export const metricResolvers = {
     (alias, args, query, knex) => {
       const functions = Object.keys(args).reduce(
         (r, k) => {
+          if (typeof args[k] !== 'string') return r
           const fns = args[k].split('|')
           if (fns.length === 2) {
             args[k] = fns[1]
@@ -413,20 +414,29 @@ export const metricResolvers = {
         },
         { a: 'sum', by: 'sum' },
       )
-
+      let bySql = {
+        query: `cast(??(??) as float)`,
+        variables: [functions.by, buildFullName(args, query, args.by, false)],
+      }
+      //if type of args by is number
+      if (typeof args.by === 'number') {
+        bySql = {
+          query: `?`,
+          variables: [`${args.by}`],
+        }
+      }
       return query.promise.select(
-        knex.raw(`cast(??(??) as float)*cast(??(??) as float)::float4 as ??`, [
+        knex.raw(`cast(??(??) as float)*${bySql.query}::float4 as ??`, [
           functions.a,
           buildFullName(args, query, args.a, false),
-          functions.by,
-          buildFullName(args, query, args.by, false),
+          ...bySql.variables,
           alias,
         ]),
       )
     },
     {
       a: PropTypes.string.isRequired,
-      by: PropTypes.string.isRequired,
+      by: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
     },
     ['CAST', 'NULLIF'],
     'knex',
