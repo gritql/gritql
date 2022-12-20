@@ -43,7 +43,7 @@ const filterOperators: Array<
   'search',
   'from',
   'inherited',
-  'isNULL'
+  'isNULL',
 ]
 
 export function buildFullName(
@@ -55,7 +55,10 @@ export function buildFullName(
   args = Array.isArray(args) ? argumentsToObject(args) : args
   const table = args?.from || query.table
 
-  if (!field?.startsWith('@') && (evaluateOnlyWithLinkSymbol || !args?.from)) {
+  if (
+    typeof field !== 'string' ||
+    (!field?.startsWith('@') && (evaluateOnlyWithLinkSymbol || !args?.from))
+  ) {
     return field
   } else {
     return `${table}.${field.replace(/^@/, '')}`
@@ -147,22 +150,20 @@ export function buildFilter(
   const sub = (subQuery, op, field, context: BuilderContext) => {
     switch (op) {
       case ops.isNULL:
-          return runOrSkip(
-            context,
-            ({ key, value, context }) =>
-                  context.builder.raw(value ? `?? IS NULL` : `?? IS NOT NULL`, [
-                    key
-                  ]),
-            ({ context }) =>
-              buildFullName(
-                { ...context, from: context.from || context.query.table },
-                context.query,
-                field,
-                false,
-              ),
-            '',
-            context.valueTransformer(context, field, subQuery),
-          )
+        return runOrSkip(
+          context,
+          ({ key, value, context }) =>
+            context.builder.raw(value ? `?? IS NULL` : `?? IS NOT NULL`, [key]),
+          ({ context }) =>
+            buildFullName(
+              { ...context, from: context.from || context.query.table },
+              context.query,
+              field,
+              false,
+            ),
+          '',
+          context.valueTransformer(context, field, subQuery),
+        )
       case ops.and:
         return runOrSkip(
           context,

@@ -209,6 +209,38 @@ exports.metricResolvers = {
         a: types_1.PropTypes.string.isRequired,
         by: types_1.PropTypes.string.isRequired,
     }, ['CAST', 'NULLIF'], 'knex'),
+    multiply: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
+        const functions = Object.keys(args).reduce((r, k) => {
+            if (typeof args[k] !== 'string')
+                return r;
+            const fns = args[k].split('|');
+            if (fns.length === 2) {
+                args[k] = fns[1];
+                r[k] = fns[0];
+            }
+            return r;
+        }, { a: 'sum', by: 'sum' });
+        let bySql = {
+            query: `cast(??(??) as float)`,
+            variables: [functions.by, (0, filters_1.buildFullName)(args, query, args.by, false)],
+        };
+        //if type of args by is number
+        if (typeof args.by === 'number') {
+            bySql = {
+                query: `?`,
+                variables: [`${args.by}`],
+            };
+        }
+        return query.promise.select(knex.raw(`cast(??(??) as float)*${bySql.query}::float4 as ??`, [
+            functions.a,
+            (0, filters_1.buildFullName)(args, query, args.a, false),
+            ...bySql.variables,
+            alias,
+        ]));
+    }, {
+        a: types_1.PropTypes.string.isRequired,
+        by: types_1.PropTypes.oneOfType([types_1.PropTypes.string, types_1.PropTypes.number]).isRequired,
+    }, ['CAST', 'NULLIF'], 'knex'),
     aggrAverage: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
         let internal = query.promise
             .select((0, filters_1.buildFullName)(args, query, alias, false))

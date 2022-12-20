@@ -26,12 +26,13 @@ const filterOperators = [
     'search',
     'from',
     'inherited',
-    'isNULL'
+    'isNULL',
 ];
 function buildFullName(args, query, field, evaluateOnlyWithLinkSymbol = true) {
     args = Array.isArray(args) ? (0, arguments_1.argumentsToObject)(args) : args;
     const table = args?.from || query.table;
-    if (!field?.startsWith('@') && (evaluateOnlyWithLinkSymbol || !args?.from)) {
+    if (typeof field !== 'string' ||
+        (!field?.startsWith('@') && (evaluateOnlyWithLinkSymbol || !args?.from))) {
         return field;
     }
     else {
@@ -93,9 +94,7 @@ function buildFilter(query, context, prefix = '') {
     const sub = (subQuery, op, field, context) => {
         switch (op) {
             case ops.isNULL:
-                return runOrSkip(context, ({ key, value, context }) => context.builder.raw(value ? `?? IS NULL` : `?? IS NOT NULL`, [
-                    key
-                ]), ({ context }) => buildFullName({ ...context, from: context.from || context.query.table }, context.query, field, false), '', context.valueTransformer(context, field, subQuery));
+                return runOrSkip(context, ({ key, value, context }) => context.builder.raw(value ? `?? IS NULL` : `?? IS NOT NULL`, [key]), ({ context }) => buildFullName({ ...context, from: context.from || context.query.table }, context.query, field, false), '', context.valueTransformer(context, field, subQuery));
             case ops.and:
                 return runOrSkip(context, ({ context }) => '(' +
                     lodash_1.default.reduce(subQuery, (accum, cur) => {
