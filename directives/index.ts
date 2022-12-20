@@ -262,7 +262,7 @@ const resolvers = {
         }
     }
   },
-  endsWidth: (a: any[], b: any | any[]) => {
+  endsWith: (a: any[], b: any | any[]) => {
     if (!Array.isArray(a)) {
       throw new Error("Value must be an array")
     }
