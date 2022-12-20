@@ -6,12 +6,12 @@ const filters_1 = require("../filters");
 const types_1 = require("../types");
 const wrapper_1 = require("./wrapper");
 exports.partitionByTypes = {
-    by: types_1.PropTypes.string,
+    by: types_1.PropTypes.oneOfType([types_1.PropTypes.string, types_1.PropTypes.arrayOf(types_1.PropTypes.string)]),
 };
 function partitionBy(args, query, knex) {
     let partition;
     if (!!args.by) {
-        let partitionBy = (0, filters_1.buildFullName)(args, query, args.by, false);
+        let partitionBy = Array.isArray(args.by) ? args.by.map((by) => (0, filters_1.buildFullName)(args, query, by, false)).join(',') : (0, filters_1.buildFullName)(args, query, args.by, false);
         if (query.replaceWith?.[args.by]) {
             partitionBy = query.replaceWith[args.by].value;
         }
@@ -20,6 +20,9 @@ function partitionBy(args, query, knex) {
     return partition || '';
 }
 exports.partitionBy = partitionBy;
+function optionalPart(checker, stmt) {
+    return checker ? ` ${stmt}` : '';
+}
 function getOverClosure(args, query, knex, options) {
     const partition = partitionBy(args, query, knex);
     const isAnyValidOptionAvailable = options && options.orderBy;
@@ -51,22 +54,25 @@ exports.metricResolvers = {
         ]));
     }, {
         a: types_1.PropTypes.string.isRequired,
-        by: types_1.PropTypes.string,
+        ...exports.partitionByTypes
     }, ['MEDIAN', 'PARTITION BY', 'ORDER BY'], 'knex'),
-    sum: (0, wrapper_1.metricWrapper)((alias, args, query) => {
-        return query.promise.sum(`${(0, filters_1.buildFullName)(args, query, args.a, false)} as ${alias}`);
+    sum: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
+        return query.promise.select(knex.raw(`SUM(??)${optionalPart(!!args.by, getOverClosure(args, query, knex))} AS ??`, [(0, filters_1.buildFullName)(args, query, args.a, false), alias]));
     }, {
         a: types_1.PropTypes.string,
+        ...exports.partitionByTypes
     }, ['SUM'], 'knex'),
-    min: (0, wrapper_1.metricWrapper)((alias, args, query) => {
-        return query.promise.min(`${(0, filters_1.buildFullName)(args, query, args.a, false)} as ${alias}`);
+    min: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
+        return query.promise.select(knex.raw(`MIN(??)${optionalPart(!!args.by, getOverClosure(args, query, knex))} AS ??`, [(0, filters_1.buildFullName)(args, query, args.a, false), alias]));
     }, {
         a: types_1.PropTypes.string.isRequired,
+        ...exports.partitionByTypes
     }, ['MIN'], 'knex'),
-    max: (0, wrapper_1.metricWrapper)((alias, args, query) => {
-        return query.promise.max(`${(0, filters_1.buildFullName)(args, query, args.a, false)} as ${alias}`);
+    max: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
+        return query.promise.select(knex.raw(`MAX(??)${optionalPart(!!args.by, getOverClosure(args, query, knex))} AS ??`, [(0, filters_1.buildFullName)(args, query, args.a, false), alias]));
     }, {
         a: types_1.PropTypes.string.isRequired,
+        ...exports.partitionByTypes
     }, ['MAX'], 'knex'),
     count: (0, wrapper_1.metricWrapper)((alias, args, query) => {
         return query.promise.count(args.a

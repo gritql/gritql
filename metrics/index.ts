@@ -4,10 +4,9 @@ import { changeQueryTable, join, JoinType } from '../cross-table'
 import { applyFilters, buildFullName, withFilters } from '../filters'
 import { PropTypes } from '../types'
 import { metricWrapper } from './wrapper'
-import type { DocumentNode } from 'graphql'
 
 export const partitionByTypes = {
-  by: PropTypes.string,
+  by: PropTypes.oneOfType([PropTypes.string, PropTypes.arrayOf(PropTypes.string)]),
 }
 
 export function partitionBy(
@@ -17,7 +16,7 @@ export function partitionBy(
 ) {
   let partition: Knex.Raw
   if (!!args.by) {
-    let partitionBy = buildFullName(args, query, args.by, false)
+    let partitionBy = Array.isArray(args.by) ? args.by.map((by) => buildFullName(args, query, by, false)).join(',') : buildFullName(args, query, args.by, false)
     if (query.replaceWith?.[args.by]) {
       partitionBy = query.replaceWith[args.by].value
     }
@@ -25,6 +24,10 @@ export function partitionBy(
   }
 
   return partition || ''
+}
+
+function optionalPart(checker: boolean, stmt: string | Knex.Raw<any>) {
+  return checker ? ` ${stmt}` : '';
 }
 
 export function getOverClosure(
@@ -83,43 +86,46 @@ export const metricResolvers = {
     },
     {
       a: PropTypes.string.isRequired,
-      by: PropTypes.string,
+      ...partitionByTypes
     },
     ['MEDIAN', 'PARTITION BY', 'ORDER BY'],
     'knex',
   ),
   sum: metricWrapper(
-    (alias, args, query) => {
-      return query.promise.sum(
-        `${buildFullName(args, query, args.a, false)} as ${alias}`,
+    (alias, args, query, knex) => {
+      return query.promise.select(
+        knex.raw(`SUM(??)${optionalPart(!!args.by, getOverClosure(args, query, knex))} AS ??`, [buildFullName(args, query, args.a, false), alias]),
       )
     },
     {
       a: PropTypes.string,
+      ...partitionByTypes
     },
     ['SUM'],
     'knex',
   ),
   min: metricWrapper(
-    (alias, args, query) => {
-      return query.promise.min(
-        `${buildFullName(args, query, args.a, false)} as ${alias}`,
+    (alias, args, query, knex) => {
+      return query.promise.select(
+        knex.raw(`MIN(??)${optionalPart(!!args.by, getOverClosure(args, query, knex))} AS ??`, [buildFullName(args, query, args.a, false), alias]),
       )
     },
     {
       a: PropTypes.string.isRequired,
+      ...partitionByTypes
     },
     ['MIN'],
     'knex',
   ),
   max: metricWrapper(
-    (alias, args, query) => {
-      return query.promise.max(
-        `${buildFullName(args, query, args.a, false)} as ${alias}`,
+    (alias, args, query, knex) => {
+      return query.promise.select(
+        knex.raw(`MAX(??)${optionalPart(!!args.by, getOverClosure(args, query, knex))} AS ??`, [buildFullName(args, query, args.a, false), alias]),
       )
     },
     {
       a: PropTypes.string.isRequired,
+      ...partitionByTypes
     },
     ['MAX'],
     'knex',
