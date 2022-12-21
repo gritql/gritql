@@ -84,7 +84,7 @@ exports.metricResolvers = {
     count: (0, wrapper_1.metricWrapper)((alias, args, query) => {
         return query.promise.count(args.a
             ? `${(0, filters_1.buildFullName)(args, query, args.a, false)} as ${alias}`
-            : '1');
+            : `* as ${alias}`);
     }, {
         a: types_1.PropTypes.string,
     }, ['COUNT'], 'knex'),
