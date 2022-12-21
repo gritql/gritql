@@ -1046,6 +1046,9 @@ function parseDirective(tree, query, on, path) {
             if (!directive) {
                 return tree;
             }
+            if (!tree) {
+                return null;
+            }
             if (exports.preExecutedDirectives[directive.name.value]) {
                 tree = exports.preExecutedDirectives[directive.name.value]({
                     tree: directive,

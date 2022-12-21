@@ -1343,6 +1343,10 @@ export function parseDirective(
         return tree
       }
 
+      if (!tree) {
+        return null;
+      }
+
       if (preExecutedDirectives[directive.name.value]) {
         tree = preExecutedDirectives[directive.name.value]({
           tree: directive,
