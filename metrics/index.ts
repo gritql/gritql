@@ -165,7 +165,7 @@ export const metricResolvers = {
       return query.promise.count(
         args.a
           ? `${buildFullName(args, query, args.a, false)} as ${alias}`
-          : '1',
+          : `* as ${alias}`,
       )
     },
     {
