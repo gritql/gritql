@@ -6,7 +6,10 @@ import { PropTypes } from '../types'
 import { metricWrapper } from './wrapper'
 
 export const partitionByTypes = {
-  by: PropTypes.oneOfType([PropTypes.string, PropTypes.arrayOf(PropTypes.string)]),
+  by: PropTypes.oneOfType([
+    PropTypes.string,
+    PropTypes.arrayOf(PropTypes.string),
+  ]),
 }
 
 export function partitionBy(
@@ -16,18 +19,27 @@ export function partitionBy(
 ) {
   let partition: Knex.Raw
   if (!!args.by) {
-    let partitionBy = Array.isArray(args.by) ? args.by.map((by) => buildFullName(args, query, by, false)).join(',') : buildFullName(args, query, args.by, false)
+    let partitionBy = Array.isArray(args.by)
+      ? args.by.map((by) => buildFullName(args, query, by, false))
+      : buildFullName(args, query, args.by, false)
     if (query.replaceWith?.[args.by]) {
       partitionBy = query.replaceWith[args.by].value
     }
-    partition = knex.raw(`PARTITION BY ??`, [partitionBy])
+    partition = knex.raw(
+      `PARTITION BY ${
+        Array.isArray(partitionBy)
+          ? partitionBy.map(() => `??`).join(', ')
+          : '??'
+      }`,
+      Array.isArray(partitionBy) ? partitionBy : [partitionBy],
+    )
   }
 
   return partition || ''
 }
 
 function optionalPart(checker: boolean, stmt: string | Knex.Raw<any>) {
-  return checker ? ` ${stmt}` : '';
+  return checker ? ` ${stmt}` : ''
 }
 
 export function getOverClosure(
@@ -86,7 +98,7 @@ export const metricResolvers = {
     },
     {
       a: PropTypes.string.isRequired,
-      ...partitionByTypes
+      ...partitionByTypes,
     },
     ['MEDIAN', 'PARTITION BY', 'ORDER BY'],
     'knex',
@@ -94,12 +106,18 @@ export const metricResolvers = {
   sum: metricWrapper(
     (alias, args, query, knex) => {
       return query.promise.select(
-        knex.raw(`SUM(??)${optionalPart(!!args.by, getOverClosure(args, query, knex))} AS ??`, [buildFullName(args, query, args.a, false), alias]),
+        knex.raw(
+          `SUM(??)${optionalPart(
+            !!args.by,
+            getOverClosure(args, query, knex),
+          )} AS ??`,
+          [buildFullName(args, query, args.a, false), alias],
+        ),
       )
     },
     {
       a: PropTypes.string,
-      ...partitionByTypes
+      ...partitionByTypes,
     },
     ['SUM'],
     'knex',
@@ -107,12 +125,18 @@ export const metricResolvers = {
   min: metricWrapper(
     (alias, args, query, knex) => {
       return query.promise.select(
-        knex.raw(`MIN(??)${optionalPart(!!args.by, getOverClosure(args, query, knex))} AS ??`, [buildFullName(args, query, args.a, false), alias]),
+        knex.raw(
+          `MIN(??)${optionalPart(
+            !!args.by,
+            getOverClosure(args, query, knex),
+          )} AS ??`,
+          [buildFullName(args, query, args.a, false), alias],
+        ),
       )
     },
     {
       a: PropTypes.string.isRequired,
-      ...partitionByTypes
+      ...partitionByTypes,
     },
     ['MIN'],
     'knex',
@@ -120,12 +144,18 @@ export const metricResolvers = {
   max: metricWrapper(
     (alias, args, query, knex) => {
       return query.promise.select(
-        knex.raw(`MAX(??)${optionalPart(!!args.by, getOverClosure(args, query, knex))} AS ??`, [buildFullName(args, query, args.a, false), alias]),
+        knex.raw(
+          `MAX(??)${optionalPart(
+            !!args.by,
+            getOverClosure(args, query, knex),
+          )} AS ??`,
+          [buildFullName(args, query, args.a, false), alias],
+        ),
       )
     },
     {
       a: PropTypes.string.isRequired,
-      ...partitionByTypes
+      ...partitionByTypes,
     },
     ['MAX'],
     'knex',
