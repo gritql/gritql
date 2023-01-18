@@ -1,11 +1,16 @@
 import knexConstructor, { Knex } from 'knex'
+import { Instruction } from '../QueryBuilder'
 
 export interface SourceProvider {
+  name: string
   connector: any
   keywords: string[]
   queryBuilder: string
+  instructions: Array<Instruction>
+  getInstruction: (name: string) => Instruction
+  enableWith: (query) => void
   getQueryBuilder: () => any
-  getQueryPromise: (query, builder) => Knex.QueryBuilder | Promise<any>
+  initiateQuery: (query) => any
   getConnection: (conf, connector) => any
   execute: (connection, sql) => any
   postTransform?: (data) => any

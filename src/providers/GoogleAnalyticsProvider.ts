@@ -16,6 +16,11 @@ export class PostgresProvider implements SourceProvider {
   getQueryPromise(_, builder) {
     return builder
   }
+  enableWith(this: any, query: any) {
+    throw new Error(
+      `${this.queryBuilder} provider doesn't support 'with' operation`,
+    )
+  }
   getConnector() {
     throw new Error('Must be implemented by integration')
   }

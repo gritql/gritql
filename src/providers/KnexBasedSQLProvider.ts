@@ -1,10 +1,13 @@
 import knexConstructor, { Knex } from 'knex'
 import { SourceProvider } from '../entities/SourceProvider'
+import { Instruction } from '../QueryBuilder'
 
 export class KnexBasedSQLProvider implements SourceProvider {
-  configuration: any
-  connector: any
-  keywords: [
+  public name = 'SQL'
+  public configuration: any
+  public instructions: Instruction[]
+  public connector: any
+  public keywords = [
     'GROUP BY',
     'WITHIN GROUP',
     'DATE_TRUNC',
@@ -38,19 +41,37 @@ export class KnexBasedSQLProvider implements SourceProvider {
     'RIGHT OUTER',
     'LEFT',
     'RIGHT',
+    'WHERE',
+    'IN',
+    'AND',
+    'OR',
+    'LIKE',
+    'ILIKE',
   ]
-  queryBuilder: 'knex'
+  public queryBuilder: 'knex'
 
   constructor(configuration, connector?) {
     this.configuration = configuration
     this.connector = connector
   }
-
-  getQueryPromise(query, builder) {
-    return builder.select().from(query.table)
+  getInstruction(name) {
+    const instruction = this.instructions.find(
+      (instruction) => instruction.name === name,
+    )
+    if (!instruction) {
+      throw new Error(`Instruction ${name} not found in ${this.name} provider`)
+    }
+    return instruction
+  }
+  initiateQuery({ table }) {
+    const builder = this.getQueryBuilder()
+    return { promise: builder.select().from(table) }
+  }
+  enableWith(query) {
+    query.isWith = true
   }
   getQueryBuilder() {
-    //implement
+    return knexConstructor({ client: 'pg' })
   }
   execute(connection: any, sql: any) {
     if (!connection) {

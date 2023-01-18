@@ -22,6 +22,8 @@ import gql, {
   enableExperimentalFragmentVariables,
   disableFragmentWarnings,
 } from 'graphql-tag'
+import { DocumentNode } from 'graphql'
+import Query from './QueryBuilder'
 
 class Runner {}
 
@@ -37,8 +39,8 @@ class GritQL {
   }
 
   queryParser(
-    tree,
-    queries: Array<any> | undefined = [],
+    tree: DocumentNode,
+    queries: Array<Query> | undefined = [],
     idx = 0,
     context = {
       fragments: {},
@@ -48,14 +50,6 @@ class GritQL {
       typeDefinitions: {},
     },
   ) {
-    if (idx !== undefined && !!~idx && !queries[idx])
-      queries[idx] = {
-        idx,
-        name: undefined,
-        context,
-      }
-    const query = queries[idx]
-
     switch (tree.kind) {
       case 'EnumTypeDefinition':
       case 'UnionTypeDefinition':
@@ -73,20 +67,22 @@ class GritQL {
         }
     }
 
-    if (Array.isArray(tree)) {
+    if (Array.isArray(tree) && tree[0].kind === 'OperationDefinition') {
       //we replace query with next level
       return tree.reduce(
-        (queries, t, i) =>
-          this.queryParser(
-            t,
-            queries,
-            queries.length ? queries.length - 1 : 0,
-            context,
-          ),
+        (queries, nextTree, i) =>
+          this.queryParser(nextTree, queries, queries.length, context),
         queries,
       )
     }
 
+    if (!queries[idx]) {
+      queries[idx] = new Query(this.sourceProviders[0])
+      queries[idx].idx = idx //not sure if that is a good idea
+    }
+    const query = queries[idx]
+    query.name = tree.alias?.value
+    // TOP LEVEL OPERATIONS
     switch (tree.kind) {
       case 'EnumTypeDefinition':
       case 'UnionTypeDefinition':
@@ -123,12 +119,14 @@ class GritQL {
               'query',
               tree.name.value,
             )
-
-            query.table = tree.name?.value
-
-            //TODO:get provider here
-            //specify builder
+            query.setInitiateContext(() => {
+              //TODO: properly specify builder based on input or take first
+              return this.sourceProviders[0].initiateQuery({
+                table: tree.name.value,
+              })
+            })
           }
+
           return tree.selectionSet.selections
             .reduce((selections, field) => {
               return processSelections(selections, field, { context: ctx }, ctx)
@@ -136,104 +134,60 @@ class GritQL {
             .filter(Boolean)
             .reduce(
               (queries, t, i) =>
-                this.queryParser(t, queries, queries.length - 1, ctx),
+                this.queryParser(
+                  t,
+                  queries,
+                  i === 0 ? idx : queries.length + 1,
+                  ctx,
+                ),
               queries,
             )
         }
     }
-    //set provider for query as first of source providers
-    if (!query.provider && query.provider !== 0) query.provider = 0
-    const builder = this.sourceProviders[query.provider].getQueryBuilder()
+    //process filters
     if (
-      !query.filters &&
-      (tree.name.value === 'fetch' ||
-        tree.name.value === 'fetchPlain' ||
-        tree.name.value === 'with')
+      tree.name.value === 'fetch' ||
+      tree.name.value === 'fetchPlain' ||
+      tree.name.value === 'with'
     ) {
       query.name = tree.alias?.value || null
-      query.promise = this.sourceProviders[query.provider].getQueryPromise(
+
+      // query.joins = []
+      // query.orderBys = []
+      //TODO: refactor this one to move it out to provider
+      const filters = parseFilters(
+        tree,
         query,
-        builder,
+        this.sourceProviders[0].getQueryBuilder(),
       )
-      query.joins = []
-      query.orderBys = []
-      query.filters = parseFilters(tree, query, builder)
-      query.promise = withFilters(query, query.filters)(query.promise, builder)
+      query.do(this.sourceProviders[0].getInstruction('apply_filters'), {
+        args: filters,
+      })
+      //query.promise = withFilters(query, filters)(query.promise, builder)
 
-      if (tree.name.value === 'with')
-        this.sourceProviders[query.provider].enableWith(query)
+      // if (tree.name.value === 'with')
+      //   this.sourceProviders[query.provider].enableWith(query)
 
-      // For GA provider we don't need table name
-      if (query.table === undefined && query.provider !== 'ga') {
-        throw 'Table name must be specified trought table argument or query name'
-      }
+      // // For GA provider we don't need table name
+      // if (query.table === undefined && query.provider !== 'ga') {
+      //   throw 'Table name must be specified trought table argument or query name'
+      // }
 
-      if (!query.isWith) {
-        queries
-          .filter((q) => q !== query && q.isWith)
-          .forEach((q) => {
-            query.promise = query.promise.with(q.name, q.promise)
-          })
-      }
+      // if (!query.isWith) {
+      //   queries
+      //     .filter((q) => q !== query && q.isWith)
+      //     .forEach((q) => {
+      //       query.promise = query.promise.with(q.name, q.promise)
+      //     })
+      // }
 
       if (!tree.selectionSet?.selections)
         throw 'The query is empty, you need specify metrics or dimensions'
     }
-    //console.log(JSON.stringify(tree, null, 2))
-    if (query.name === undefined) {
-      throw 'Builder: Cant find fetch in the payload'
-    }
 
-    if (!!tree.selectionSet?.selections) {
-      const selections = tree.selectionSet.selections
-      const [haveMetric, haveDimension] = selections.reduce(
-        (r, s) => {
-          //check multiple dimensions we also need to split queries in the case
-          if (r[1] && !!s.selectionSet) return [true, true]
-          return [r[0] || !s.selectionSet, r[1] || !!s.selectionSet]
-        },
-        [false, false],
-      )
-
-      if (
-        tree.name?.value !== 'fetch' &&
-        tree.name?.value !== 'fetchPlain' &&
-        tree.name?.value !== 'with' &&
-        !tree.with
-      )
-        parseDimension(tree, query, builder)
-
-      selections.sort((a, b) => {
-        if (!b.selectionSet === !a.selectionSet) {
-          return 0
-        } else if (!b.selectionSet) {
-          return -1
-        } else {
-          return 1
-        }
-      })
-
-      return selections.reduce((queries, t, i) => {
-        if (!!t.selectionSet && haveMetric && haveDimension) {
-          const newIdx = queries.length
-          queries[newIdx] = {
-            ...cloneDeep(omit(queries[idx], ['promise'])),
-            promise: query.promise.clone(),
-            idx: newIdx,
-          }
-
-          return this.queryParser(t, queries, newIdx, context)
-        }
-        return this.queryParser(t, queries, idx, context)
-      }, queries)
-    }
-    parseMetric(tree, query, builder)
-
+    query.name = tree.alias?.value
     return queries
   }
-  //put query parser inside gritql
-  //it should have access to all providers
-  //providers should have klear ids, that can be used in query definition as argument/directive??
 
   getRequestBuilder(providerId?: string) {
     //TODO: implement finding provider by id
@@ -244,9 +198,9 @@ class GritQL {
     this.emitter.emit('parseStart')
     //const builder = this.getRequestBuilder(providerId)
     try {
-      const definitions = cloneDeep(gql(gqlQuery).definitions)
+      const definitions = cloneDeep(gql(gqlQuery).definitions as DocumentNode)
 
-      this.queryParser(definitions)
+      return this.queryParser(definitions)
     } catch (e) {
       console.log(e)
       console.log(e.stack)
@@ -274,29 +228,51 @@ const someResProcessor = new ResultProcessor()
 const qritQLEngine = () => {
   const gritql = new GritQL()
   gritql.use(postgresqlProvider)
-
-  /*const { queryTransformer, resultTransformer } = gritql
-
-  queryTransformer.use(someProcessor)
-
-  resultTransformer.use(someResProcessor)
-  resultTransformer.use(merger)*/
-
   return gritql
 }
 
 const qlEngine = qritQLEngine()
-qlEngine.fetch('query { fetch { id } }', {})
-/*
-preModificator
-preModificator
-preModificator
-getQueryBuilder
-<metricResolvers
-<dimensionResolver
-postModificator
-postModificator
-postModificator
-dbHandler
+console.log(
+  qlEngine
+    .fetch(
+      `
+query test
+{
+  curr: fetch(a: 1, b: 2) {
+    super
+  }
+  prev: fetch(a: 2, b: 3) {
+    super2
+  }
+}
 
-merger*/
+query test1
+{
+  curr1: fetch(a: 3, b: 4) {
+    ignore
+  }
+}`,
+      {},
+    )
+    .map(
+      (q) =>
+        q &&
+        q.renderQuery().then((context) => {
+          console.log(context.promise.toSQL().sql)
+        }),
+    ),
+)
+
+// function tt(k, q, v) {
+//   if (!q) q = 0
+//   k[q] = v
+//   if (v == 'k') {
+//     return tt(k, q, 'z')
+//   }
+//   if (v == 1) {
+//     return tt(k, q + 1, 'k')
+//   }
+//   return k
+// }
+// var k = []
+// console.log([1, 2, 3].reduce((k, q) => tt(k, k.length, q), k))
