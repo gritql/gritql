@@ -15,7 +15,17 @@ export class PostgresProvider extends KnexBasedSQLProvider {
     const builder = this.getQueryBuilder()
     return { promise: builder.select().from(table), builder }
   }
-  instructions = [apply_filters]
+  instructions = Instructions
+
+  getInstruction(name: string) {
+    const instruction = this.instructions.find(
+      (instruction) => instruction.name === name,
+    )
+    if (!instruction) {
+      throw new Error(`Instruction ${name} not found in ${this.name} provider`)
+    }
+    return instruction
+  }
 }
 
 const apply_filters: Instruction = function apply_filters(
@@ -44,3 +54,7 @@ const apply_filters: Instruction = function apply_filters(
 
 apply_filters.keywords = ['WHERE', 'IN', 'AND', 'OR', 'LIKE', 'ILIKE']
 apply_filters.priority = 0
+
+const Instructions: Instruction[] = [apply_filters]
+
+type InstructionName = typeof Instructions[number]['name']
