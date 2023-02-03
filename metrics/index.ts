@@ -197,34 +197,79 @@ export const metricResolvers = {
   ranking: metricWrapper(
     (alias, args, query, knex) => {
       let alg = 'DENSE_RANK'
-
+      let isReversed = false
       if (args.alg === 'denseRank') {
         alg = 'DENSE_RANK'
       } else if (args.alg === 'rank') {
         alg = 'RANK'
       } else if (args.alg === 'rowNumber') {
         alg = 'ROW_NUMBER'
+      } else if (args.alg === 'reverseDenseRank') {
+        alg = 'DENSE_RANK'
+        isReversed = true
+      } else if (args.alg === 'reverseRank') {
+        alg = 'RANK'
+        isReversed = true
+      } else if (args.alg === 'reverseRowNumber') {
+        alg = 'ROW_NUMBER'
+        isReversed = true
       }
-
-      const promise = applyFilters(
-        query,
-        withFilters(query, query.filters)(
-          knex
-            .select('*')
-            .select(
-              knex.raw(
-                `${alg}() ${getOverClosure(args, query, knex, {
-                  orderBy: { by: buildFullName(args, query, args.a, false) },
-                })} as ??`,
-                [alias],
-              ),
-            )
-            .from(query.table || args.from),
+      let promise
+      if (isReversed) {
+        query.promise = query.promise.with(
+          `reverse_${alias}`,
+          applyFilters(
+            query,
+            withFilters(query, query.filters)(
+              knex
+                .select('*')
+                .select(
+                  knex.raw(
+                    `${alg}() ${getOverClosure(args, query, knex, {
+                      orderBy: {
+                        by: buildFullName(args, query, args.a, false),
+                      },
+                    })} as ??`,
+                    [`${alias}_to_reverse`],
+                  ),
+                )
+                .from(query.table || args.from),
+              knex,
+            ),
+            knex,
+          ),
+        )
+        promise = knex
+          .select('*')
+          .select(
+            knex.raw(`(SELECT MAX(??) FROM ??) - ?? + 1 as ??`, [
+              `${alias}_to_reverse`,
+              `reverse_${alias}`,
+              `${alias}_to_reverse`,
+              alias,
+            ]),
+          )
+          .from(`reverse_${alias}`)
+      } else {
+        promise = applyFilters(
+          query,
+          withFilters(query, query.filters)(
+            knex
+              .select('*')
+              .select(
+                knex.raw(
+                  `${alg}() ${getOverClosure(args, query, knex, {
+                    orderBy: { by: buildFullName(args, query, args.a, false) },
+                  })} as ??`,
+                  [alias],
+                ),
+              )
+              .from(query.table || args.from),
+            knex,
+          ),
           knex,
-        ),
-        knex,
-      )
-
+        )
+      }
       const table = args.tableAlias || args.from || query.table
 
       const finalPromise = query.promise
@@ -240,7 +285,14 @@ export const metricResolvers = {
     {
       a: PropTypes.string.isRequired,
       by: PropTypes.string,
-      alg: PropTypes.oneOf(['denseRank', 'rank', 'rowNumber']),
+      alg: PropTypes.oneOf([
+        'denseRank',
+        'rank',
+        'rowNumber',
+        'reverseRank',
+        'reverseRowNumber',
+        'reverseDenseRank',
+      ]),
       tableAlias: PropTypes.string,
     },
     ['DENSE_RANK', 'RANK', 'ROW_NUMBER', 'OVER', 'PARTITION BY'],

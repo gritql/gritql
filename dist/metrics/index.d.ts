@@ -1,6 +1,5 @@
 import { Knex } from 'knex';
 import { InferProps } from 'prop-types';
-import { DocumentNode } from 'graphql';
 export declare const partitionByTypes: {
     by: any;
 };

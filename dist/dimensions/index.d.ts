@@ -1,5 +1,3 @@
-import { DocumentNode } from 'graphql';
-
 export declare const dimensionResolvers: {
     groupBy: (tree: DocumentNode, query: any, knex: import("knex").Knex<any, any[]>) => any;
     groupByEach: (tree: DocumentNode, query: any, knex: import("knex").Knex<any, any[]>) => any;
