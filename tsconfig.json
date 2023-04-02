@@ -1,11 +1,11 @@
 {
-    "compilerOptions": {
-        "target": "es2021",
-        "esModuleInterop": true,
-        "moduleResolution": "node",
-        "module": "CommonJS",
-        "declaration": true,
-        "outDir": "dist"
-    },
-    "files": ["index.ts"]
+  "compilerOptions": {
+    "target": "es2021",
+    "esModuleInterop": true,
+    "moduleResolution": "node",
+    "module": "CommonJS",
+    "declaration": true,
+    "outDir": "dist"
+  },
+  "files": ["./src/gritql.ts"]
 }

@@ -1,4 +1,3 @@
-import { DocumentNode } from 'graphql'
 import { Knex } from 'knex'
 import { InferProps } from 'prop-types'
 export declare const partitionByTypes: {
@@ -20,7 +19,7 @@ export declare function getOverClosure(
     }
     cast?: String
   },
-): '' | Knex.Raw<any>
+): Knex.Raw<any> | 'OVER()'
 export declare const metricResolvers: {
   percentile: (tree: DocumentNode, query: any, knex: Knex<any, any[]>) => void
   median: (tree: DocumentNode, query: any, knex: Knex<any, any[]>) => void
@@ -67,6 +66,7 @@ export declare const metricResolvers: {
   share: (tree: DocumentNode, query: any, knex: Knex<any, any[]>) => void
   indexed: (tree: DocumentNode, query: any, knex: Knex<any, any[]>) => void
   divide: (tree: DocumentNode, query: any, knex: Knex<any, any[]>) => void
+  multiply: (tree: DocumentNode, query: any, knex: Knex<any, any[]>) => void
   aggrAverage: (tree: DocumentNode, query: any, knex: Knex<any, any[]>) => void
   weightAvg: (tree: DocumentNode, query: any, knex: Knex<any, any[]>) => void
   distinct: (tree: DocumentNode, query: any, knex: Knex<any, any[]>) => void

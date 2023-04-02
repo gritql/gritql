@@ -12,17 +12,17 @@ function getIndex(steps: [string, string][], values?: any) {
   return { indexStep, indexValue }
 }
 
-/*
-var k = {};
-progressiveSet(k, 'book.test.one', 1)
-progressiveSet(k, 'book.two.one', 3)
-progressiveSet(k, 'book.dumbo.[].one', 3)
-progressiveSet(k, 'book.dumbo.[].twenty', 434)
-progressiveSet(k, 'book.dumbo.[].second', '3dqd25')
-progressiveSet(k, 'book.dumbo.[1].leela', 'fry')
-progressiveSet(k, 'book.dumbo.[@one=3].leela', 'fry')
-console.log(JSON.stringify(k))
-*/
+// var k = {}
+// var hashContext: any = {}
+// progressiveSet(k, 'book.test.one', 1, false, hashContext)
+// progressiveSet(k, 'book.two.one', 3, false, hashContext)
+// progressiveSet(k, 'book.dumbo.[].one', 3, false, hashContext)
+// progressiveSet(k, 'book.dumbo.[].twenty', 434, false, hashContext)
+// progressiveSet(k, 'book.dumbo.[].second', '3dqd25', false, hashContext)
+// progressiveSet(k, 'book.dumbo.[1].leela', 'fry', false, hashContext)
+// progressiveSet(k, 'book.dumbo.[@one=3].leela', 'fry', false, hashContext)
+// console.log(JSON.stringify(k), hashContext)
+
 export function progressiveGet(object, queryPath, hashContext = {}) {
   const pathArray = queryPath.split(/\./).map((p) => unshieldSeparator(p))
   return pathArray.reduce((r, pathStep, i) => {

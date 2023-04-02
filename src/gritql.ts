@@ -18,10 +18,7 @@ import {
   parseVariableDefinition,
   processSelections,
 } from '../parser'
-import gql, {
-  enableExperimentalFragmentVariables,
-  disableFragmentWarnings,
-} from 'graphql-tag'
+import gql from 'graphql-tag'
 
 class Runner {}
 
@@ -36,7 +33,7 @@ class GritQL {
     this.emitter = new TinyEmitter()
   }
 
-  queryParser(
+  public queryParser(
     tree,
     queries: Array<any> | undefined = [],
     idx = 0,
@@ -116,7 +113,6 @@ class GritQL {
             tree.variableDefinitions.forEach((def) => {
               parseVariableDefinition(def, ctx)
             })
-
             checkPropTypes(
               ctx.variablesValidator,
               ctx.variables,
@@ -125,10 +121,11 @@ class GritQL {
             )
 
             query.table = tree.name?.value
-
+            query.provider = 0
             //TODO:get provider here
             //specify builder
           }
+
           return tree.selectionSet.selections
             .reduce((selections, field) => {
               return processSelections(selections, field, { context: ctx }, ctx)
@@ -141,8 +138,6 @@ class GritQL {
             )
         }
     }
-    //set provider for query as first of source providers
-    if (!query.provider && query.provider !== 0) query.provider = 0
     const builder = this.sourceProviders[query.provider].getQueryBuilder()
     if (
       !query.filters &&
@@ -158,10 +153,16 @@ class GritQL {
       query.joins = []
       query.orderBys = []
       query.filters = parseFilters(tree, query, builder)
-      query.promise = withFilters(query, query.filters)(query.promise, builder)
 
-      if (tree.name.value === 'with')
-        this.sourceProviders[query.provider].enableWith(query)
+      query.promise =
+        this.sourceProviders[query.provider]?.getFiltersResolver?.(
+          query.filters,
+        ) || (query.promise, builder)
+
+      if (tree.name.value === 'with') {
+        this.sourceProviders[query.provider].disableOperationFor(query, 'with')
+        query.isWith = true
+      }
 
       // For GA provider we don't need table name
       if (query.table === undefined && query.provider !== 'ga') {
@@ -242,7 +243,7 @@ class GritQL {
   }
   fetch(gqlQuery: string, variables: Record<string, any>, providerId?: string) {
     this.emitter.emit('parseStart')
-    //const builder = this.getRequestBuilder(providerId)
+    const builder = this.getRequestBuilder(providerId)
     try {
       const definitions = cloneDeep(gql(gqlQuery).definitions)
 
@@ -286,7 +287,17 @@ const qritQLEngine = () => {
 }
 
 const qlEngine = qritQLEngine()
-qlEngine.fetch('query { fetch { id } }', {})
+
+console.log(
+  qlEngine.queryParser(
+    gql(`query test {
+      some: fetch {
+        data: sum(a: t)
+      }
+  
+}`).definitions,
+  ),
+)
 /*
 preModificator
 preModificator

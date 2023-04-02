@@ -23,4 +23,5 @@ export interface SourceProvider {
   ) => Promise<any> | Knex.QueryBuilder
   connection?: any
   configuration?: any
+  disableOperationFor: (query: any, operation: string) => void
 }
