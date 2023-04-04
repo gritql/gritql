@@ -1,11 +1,13 @@
 import knexConstructor, { Knex } from 'knex'
 import { SourceProvider } from '../entities/SourceProvider'
-import { Instruction } from '../QueryBuilder'
+import { Instruction } from '../Instructions/basic'
 
 export class KnexBasedSQLProvider implements SourceProvider {
   public name = 'SQL'
   public configuration: any
   public instructions: Instruction[]
+  public metrics: Instruction[]
+  public dimensions: Instruction[]
   public connector: any
   public keywords = [
     'GROUP BY',

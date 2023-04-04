@@ -4,34 +4,21 @@ and have a method to Query that is producing the SQL
 and a method to execute that is executing the SQL
 */
 
-import { checkPropTypes, PropTypes } from '../types'
+import { checkPropTypes } from '../types'
 import { SourceProvider } from './entities/SourceProvider'
-import { PostgresProvider } from './providers/PostgresProvider'
+//import { PostgresProvider } from './providers/PostgresProvider'
+import { Instruction, sum } from './Instructions/basic'
 
-export type QueryInstruction = {
-  name: string
-  action: Instruction
-  arguments: InstructionArguments
-  priority: number
-}
-
-export type Instruction = ((this, ctx: any, args: any) => any) & {
-  name: string
-  priority?: number
-  argsTypeSpecs?: Object
-  keywords?: Array<string>
-}
-
-export type InstructionArguments = {
-  alias?: string
-  args?: any
+type QueryAction = {
+  instruction: Instruction
+  args: Object
   priority?: number
 }
 
 class Query {
-  public queryInstructions: Array<QueryInstruction>
+  public queryInstructions: Array<QueryAction>
   private initiateContext?: () => any
-  private provider: SourceProvider
+  public provider: SourceProvider
   public idx: number
   public name: string
 
@@ -52,9 +39,12 @@ class Query {
   }
 
   do(
-    instructionFunction: Instruction,
-    instructionArguments: InstructionArguments,
+    instructionFunction: Instruction | string,
+    instructionArguments: { args: Object; alias: string; name?: string },
   ) {
+    if (typeof instructionFunction === 'string') {
+      instructionFunction = this.provider.getInstruction(instructionFunction)
+    }
     //verify instructions match provider
     if (this.provider) {
       if (
@@ -72,16 +62,14 @@ class Query {
     if (instructionFunction.argsTypeSpecs) {
       checkPropTypes(
         instructionFunction.argsTypeSpecs,
-        instructionArguments,
+        instructionArguments.args,
         'arguments',
         instructionFunction.name,
       )
     }
     this.queryInstructions.push({
-      name: instructionFunction.name,
-      action: instructionFunction,
-      arguments: instructionArguments,
-      priority: instructionArguments.priority || 0,
+      instruction: instructionFunction,
+      args: instructionArguments,
     })
     return this
   }
@@ -92,13 +80,15 @@ class Query {
       : { promise: Promise.resolve() }
     this.queryInstructions
       .sort(
-        (a: QueryInstruction, b: QueryInstruction) => a.priority - b.priority,
+        (a: QueryAction, b: QueryAction) =>
+          (a.priority || a.instruction.priority || 100) -
+          (b.priority || b.instruction.priority || 100),
       )
-      .forEach(async (instruction) => {
-        const promise = await instruction.action.call(
+      .forEach(async (action, i) => {
+        const promise = await action.instruction.call(
           this,
           context,
-          instruction.arguments,
+          action.args,
         )
         context.promise = promise
       })
@@ -115,14 +105,6 @@ const query = new Query(provider, () => {
   return { promise, knex }
 })
 
-const sum: Instruction = function sum(this, { promise }, { alias, args }) {
-  promise.sum(args.a).as(alias)
-  return promise
-}
-sum.keywords = ['SUM']
-sum.argsTypeSpecs = {
-  a: PropTypes.string,
-}
 query.do(sum, { alias: 'a', args: { a: 'a' }, priority: 0 })
 const duplecate = query.duplicate()
 

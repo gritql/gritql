@@ -1,5 +1,5 @@
 import knexConstructor, { Knex } from 'knex'
-import { Instruction } from '../QueryBuilder'
+import { Instruction } from '../Instructions/basic'
 
 export interface SourceProvider {
   name: string
@@ -7,6 +7,9 @@ export interface SourceProvider {
   keywords: string[]
   queryBuilder: string
   instructions: Array<Instruction>
+  metrics: Array<Instruction>
+  dimensions: Array<Instruction>
+
   getInstruction: (name: string) => Instruction
   enableWith: (query) => void
   getQueryBuilder: () => any
@@ -23,5 +26,4 @@ export interface SourceProvider {
   ) => Promise<any> | Knex.QueryBuilder
   connection?: any
   configuration?: any
-  disableOperationFor: (query: any, operation: string) => void
 }

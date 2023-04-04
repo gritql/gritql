@@ -1,28 +1,32 @@
 import { Merger } from './entities/Merger'
-
+import { QueryProcessor } from './entities/QueryProcessor'
+import { QueryTransformer } from './entities/QueryTransformer'
+import { ResultProcessor } from './entities/ResultProcessor'
+import { ResultTransformer } from './entities/ResultTransformer'
 import { SourceProvider } from './entities/SourceProvider'
 import { PostgresProvider } from './providers/PostgresProvider'
 import { TinyEmitter } from 'tiny-emitter'
 import { cloneDeep, isEqual, omit, uniqWith } from 'lodash'
 import { parseDirective, parseTypeDirective } from '../directives'
 import { applyFilters, withFilters } from '../filters'
-import { checkPropTypes, PropTypes } from '../types'
+import { checkPropTypes } from '../types'
 import {
+  parseDimension,
   parseFilters,
+  parseMetric,
   parseType,
   parseVariableDefinition,
   processSelections,
 } from '../parser'
 import gql from 'graphql-tag'
-import Query from './QueryBuilder'
-import { InferProps, ValidationMap } from 'prop-types'
-import { argumentsToObject, transformLinkedArgs } from '../arguments'
 
 class Runner {}
 
 class GritQL {
   sourceProviders: SourceProvider[]
   public emitter: TinyEmitter
+
+  runner: Runner
 
   constructor() {
     this.sourceProviders = []
@@ -118,12 +122,6 @@ class GritQL {
 
             query.table = tree.name?.value
             query.provider = 0
-            query.query = new Query(this.sourceProviders[query.provider], () =>
-              this.sourceProviders[query.provider].initiateQuery({
-                table: query.table,
-              }),
-            )
-
             //TODO:get provider here
             //specify builder
           }
@@ -140,7 +138,6 @@ class GritQL {
             )
         }
     }
-    //would be good to clean this up
     const builder = this.sourceProviders[query.provider].getQueryBuilder()
     if (
       !query.filters &&
@@ -149,14 +146,45 @@ class GritQL {
         tree.name.value === 'with')
     ) {
       query.name = tree.alias?.value || null
-      //need to refactor this for new query builder
-      const filters = parseFilters(tree, query, builder)
-      query.query.do('apply_filters', { args: filters })
-    }
+      query.promise = this.sourceProviders[query.provider].getQueryPromise(
+        query,
+        builder,
+      )
+      query.joins = []
+      query.orderBys = []
+      query.filters = parseFilters(tree, query, builder)
 
+      query.promise =
+        this.sourceProviders[query.provider]?.getFiltersResolver?.(
+          query.filters,
+        ) || (query.promise, builder)
+
+      if (tree.name.value === 'with') {
+        this.sourceProviders[query.provider].disableOperationFor(query, 'with')
+        query.isWith = true
+      }
+
+      // For GA provider we don't need table name
+      if (query.table === undefined && query.provider !== 'ga') {
+        throw 'Table name must be specified trought table argument or query name'
+      }
+
+      if (!query.isWith) {
+        queries
+          .filter((q) => q !== query && q.isWith)
+          .forEach((q) => {
+            query.promise = query.promise.with(q.name, q.promise)
+          })
+      }
+
+      if (!tree.selectionSet?.selections)
+        throw 'The query is empty, you need specify metrics or dimensions'
+    }
+    //console.log(JSON.stringify(tree, null, 2))
     if (query.name === undefined) {
       throw 'Builder: Cant find fetch in the payload'
     }
+
     if (!!tree.selectionSet?.selections) {
       const selections = tree.selectionSet.selections
       const [haveMetric, haveDimension] = selections.reduce(
@@ -174,7 +202,7 @@ class GritQL {
         tree.name?.value !== 'with' &&
         !tree.with
       )
-        parseDimension.call(this, tree, query)
+        parseDimension(tree, query, builder)
 
       selections.sort((a, b) => {
         if (!b.selectionSet === !a.selectionSet) {
@@ -200,10 +228,10 @@ class GritQL {
         return this.queryParser(t, queries, idx, context)
       }, queries)
     }
-    parseMetric.call(this, tree, query)
+    parseMetric(tree, query, builder)
+
     return queries
   }
-
   //put query parser inside gritql
   //it should have access to all providers
   //providers should have klear ids, that can be used in query definition as argument/directive??
@@ -226,65 +254,19 @@ class GritQL {
       throw Error(e)
     }
   }
-  use(provider: SourceProvider) {
-    //TODO: check if sourceProviders already have signature, replace in the case
-    //destroy should force disconnect
-    this.sourceProviders.push(provider)
-  }
-}
-const defaultPropTypes = {
-  sort: PropTypes.oneOf(['asc', 'desc']),
-  limit: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
-  offset: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
-  from: PropTypes.string,
-}
-
-function parseMetric(tree: any, query: any) {
-  let args: InferProps<ValidationMap<any>> &
-    InferProps<typeof defaultPropTypes> = tree.arguments
-    ? argumentsToObject(tree.arguments)
-    : null
-  const alias = tree.alias?.value
-  const name = tree.name?.value
-  const metricInstruction = query.query.provider.getMetric(tree.name.value)
-  query.query.do(metricInstruction, { alias, args, name })
-}
-
-function parseDimension(tree: any, query: any) {
-  let args: InferProps<ValidationMap<any>> &
-    InferProps<typeof defaultPropTypes> = tree.arguments
-    ? transformLinkedArgs(argumentsToObject(tree.arguments), query)
-    : null
-  const alias = tree.alias?.value
-  const name = tree.name?.value
-  const dimensionInstruction = query.query.provider.getDimension(
-    tree.name.value,
-  )
-  query.query.do(dimensionInstruction, { alias, args, name })
-}
-
-const postgresqlProvider = new PostgresProvider({})
-const gritql = new GritQL()
-gritql.use(postgresqlProvider)
-const defs = gql(`query test {
-  some: fetch(a: 10, b: 20) {
-    troo {
-      data: divide(a: t, by: b)
+  use(provider: SourceProvider | QueryTransformer | ResultTransformer) {
+    if (provider instanceof QueryTransformer) {
+      //this.queryTransformer = provider
+    } else if (provider instanceof ResultTransformer) {
+      //this.resultTransformer = provider
+    } else {
+      //TODO: check if sourceProviders already have signature, replace in the case
+      //destroy should force disconnect
+      this.sourceProviders.push(provider)
     }
-    
   }
+}
 
-}`).definitions
-console.log(defs)
-
-gritql
-  .queryParser(defs)[0]
-  .query.renderQuery()
-  .then((context) => {
-    console.log(context.promise.toSQL().sql)
-  })
-
-/*
 const postgresqlProvider = new PostgresProvider({})
 const merger = new Merger()
 const someProcessor = new QueryProcessor()
@@ -299,11 +281,10 @@ const qritQLEngine = () => {
   queryTransformer.use(someProcessor)
 
   resultTransformer.use(someResProcessor)
-  resultTransformer.use(merger)1*1/
+  resultTransformer.use(merger)*/
 
   return gritql
 }
-
 
 const qlEngine = qritQLEngine()
 
@@ -317,7 +298,6 @@ console.log(
 }`).definitions,
   ),
 )
-*/
 /*
 preModificator
 preModificator

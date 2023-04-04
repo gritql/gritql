@@ -1,13 +1,13 @@
-import knexConstructor, { Knex } from 'knex'
-import { QueryTransformer } from '../entities/QueryTransformer'
-import { ResultTransformer } from '../entities/ResultTransformer'
-import { Instruction } from '../QueryBuilder'
+import {
+  basicSqlDimensions,
+  basicSqlMetrics,
+  Instruction,
+} from '../Instructions/basic'
 import { KnexBasedSQLProvider } from './KnexBasedSQLProvider'
 
 export class PostgresProvider extends KnexBasedSQLProvider {
   name = 'postgres'
-  public queryTransformer: QueryTransformer
-  public resultTransformer: ResultTransformer
+
   constructor(configuration, connector?) {
     super(configuration, connector || require('postgres'))
   }
@@ -16,7 +16,20 @@ export class PostgresProvider extends KnexBasedSQLProvider {
     return { promise: builder.select().from(table), builder }
   }
   instructions = Instructions
+  metrics = basicSqlMetrics
+  dimensions = basicSqlDimensions
 
+  getMetric(name) {
+    const metric = this.metrics.find((instruction) => instruction.name === name)
+    return metric
+  }
+  getDimension(name) {
+    const dimension = this.dimensions.find(
+      (instruction) => instruction.name === name,
+    )
+    if (!dimension) return this.dimensions[0] //return default
+    return dimension
+  }
   getInstruction(name: string) {
     const instruction = this.instructions.find(
       (instruction) => instruction.name === name,
@@ -55,6 +68,4 @@ const apply_filters: Instruction = function apply_filters(
 apply_filters.keywords = ['WHERE', 'IN', 'AND', 'OR', 'LIKE', 'ILIKE']
 apply_filters.priority = 0
 
-const Instructions: Instruction[] = [apply_filters]
-
-type InstructionName = typeof Instructions[number]['name']
+const Instructions: Instruction[] = [apply_filters].concat(basicSqlMetrics)
