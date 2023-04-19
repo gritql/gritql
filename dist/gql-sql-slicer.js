@@ -333,6 +333,8 @@ const merge = (tree, data, metricResolversData) => {
         }
         return quer.reduce((result, q) => {
             const resultData = data[q.bid];
+            if (!resultData)
+                return result;
             for (var j = 0; j < resultData.length; j++) {
                 const keys = Object.keys(resultData[j]);
                 for (var key in keys) {
@@ -374,7 +376,7 @@ const merge = (tree, data, metricResolversData) => {
                                 batches,
                                 q,
                                 keys,
-                                pathKey: key
+                                pathKey: key,
                             });
                             // Important for directives which will not change value
                             if (directiveResult.hasOwnProperty('value')) {
