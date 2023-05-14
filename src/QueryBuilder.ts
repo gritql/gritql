@@ -85,11 +85,7 @@ class Query {
           (b.priority || b.instruction.priority || 100),
       )
       .forEach(async (action, i) => {
-        const promise = await action.instruction.call(
-          this,
-          context,
-          action.args,
-        )
+        const promise = action.instruction.call(this, context, action.args)
         context.promise = promise
       })
     return context

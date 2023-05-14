@@ -5,7 +5,7 @@ import {
 } from '../Instructions/basic'
 import { KnexBasedSQLProvider } from './KnexBasedSQLProvider'
 
-export class PostgresProvider extends KnexBasedSQLProvider {
+export default class PostgresProvider extends KnexBasedSQLProvider {
   name = 'postgres'
 
   constructor(configuration, connector?) {
@@ -44,8 +44,18 @@ export class PostgresProvider extends KnexBasedSQLProvider {
 const apply_filters: Instruction = function apply_filters(
   this,
   { promise, builder },
-  { args: filters },
+  { args: filters, advancedFilters },
 ) {
+  // todo: refactor, remove advanced filters. All should be normalised if possible.
+  if (advancedFilters) {
+    if (advancedFilters?.where) {
+      promise = promise.where(builder.raw(advancedFilters.where))
+    }
+
+    if (advancedFilters?.having) {
+      promise = promise.having(builder.raw(advancedFilters.having))
+    }
+  }
   return filters.reduce((queryPromise, filter, i) => {
     const selector =
       filter[1] === 'in' ? 'whereIn' : i === 0 ? 'where' : 'andWhere'

@@ -556,7 +556,6 @@ export function transformFilters(args, query?, builder?) {
       }
 
       if (arg.name.value === 'filters') {
-        disableArgumentFor(query, 'filters', 'ga')
         if (arg.value.kind === 'JSONValue') {
           query.advancedFilters = argumentsToObject(arg.value.value)
         } else {

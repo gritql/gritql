@@ -1,11 +1,11 @@
 import { Merger } from './entities/Merger'
 
 import { SourceProvider } from './entities/SourceProvider'
-import { PostgresProvider } from './providers/PostgresProvider'
+import PostgresProvider from './providers/PostgresProvider'
 import { TinyEmitter } from 'tiny-emitter'
-import { cloneDeep, isEqual, omit, uniqWith } from 'lodash'
-import { parseDirective, parseTypeDirective } from '../directives'
-import { applyFilters, withFilters } from '../filters'
+import { cloneDeep, omit } from 'lodash'
+import { parseTypeDirective } from '../directives'
+
 import { checkPropTypes, PropTypes } from '../types'
 import {
   parseFilters,
@@ -20,7 +20,7 @@ import { argumentsToObject, transformLinkedArgs } from '../arguments'
 
 class Runner {}
 
-class GritQL {
+export default class GritQL {
   sourceProviders: SourceProvider[]
   public emitter: TinyEmitter
 
@@ -151,7 +151,11 @@ class GritQL {
       query.name = tree.alias?.value || null
       //need to refactor this for new query builder
       const filters = parseFilters(tree, query, builder)
-      query.query.do('apply_filters', { args: filters })
+
+      query.query.do('apply_filters', {
+        args: filters,
+        advancedFilters: query.preparedAdvancedFilters,
+      })
     }
 
     if (query.name === undefined) {
@@ -262,7 +266,7 @@ function parseDimension(tree: any, query: any) {
   )
   query.query.do(dimensionInstruction, { alias, args, name })
 }
-
+/*
 const postgresqlProvider = new PostgresProvider({})
 const gritql = new GritQL()
 gritql.use(postgresqlProvider)
@@ -284,50 +288,4 @@ gritql
     console.log(context.promise.toSQL().sql)
   })
 
-/*
-const postgresqlProvider = new PostgresProvider({})
-const merger = new Merger()
-const someProcessor = new QueryProcessor()
-const someResProcessor = new ResultProcessor()
-
-const qritQLEngine = () => {
-  const gritql = new GritQL()
-  gritql.use(postgresqlProvider)
-
-  /*const { queryTransformer, resultTransformer } = gritql
-
-  queryTransformer.use(someProcessor)
-
-  resultTransformer.use(someResProcessor)
-  resultTransformer.use(merger)1*1/
-
-  return gritql
-}
-
-
-const qlEngine = qritQLEngine()
-
-console.log(
-  qlEngine.queryParser(
-    gql(`query test {
-      some: fetch {
-        data: sum(a: t)
-      }
-  
-}`).definitions,
-  ),
-)
 */
-/*
-preModificator
-preModificator
-preModificator
-getQueryBuilder
-<metricResolvers
-<dimensionResolver
-postModificator
-postModificator
-postModificator
-dbHandler
-
-merger*/
