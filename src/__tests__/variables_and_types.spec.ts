@@ -165,7 +165,7 @@ describe('gritql variables && types', () => {
       },
     ).then(matchSnapshot)
   })
-
+  //TODO: fix this one, seems doesn't work properly
   test('Custom types directives', () => {
     getSql(
       `

@@ -56,7 +56,7 @@ describe('gritql simple query', () => {
       }
     }
   }
-  `
+  `.then(matchSnapshot)
   })
 
   test('metric functions', () => {
@@ -71,7 +71,7 @@ describe('gritql simple query', () => {
       }
     }
   }
-  `
+  `.then(matchSnapshot)
   })
 })
 

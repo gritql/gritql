@@ -1,5 +1,9 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
+exports[`gritql simple query basic Array with sorting works 1`] = `"select "channel", SUM("revenue")::float4//NULLIF(SUM("sessions")::float4, 0) AS "session_value" from "table" where "table"."category" = ? and "table"."country" = ? and "table"."date" > ? and "table"."date" < ? group by "channel""`;
+
 exports[`gritql simple query basic example works 1`] = `"select "device", "date", sum("no_baskets"), sum("no_all_baskets"), sum("no_unique_products"), sum("no_brand_products"), sum("no_uniqie_brand_products"), sum("total_revenue"), sum("brand_revenue") from "table" where "table"."brand" = ? and "table"."country" = ? and "table"."date" > ? and "table"."date" < ? group by "device", "date""`;
 
 exports[`gritql simple query generate proper sql 1`] = `"select "troo", SUM("t")::float4//NULLIF(SUM("b")::float4, 0) AS "data" from "test" where "test"."a" = ? and "test"."b" = ? group by "troo""`;
+
+exports[`gritql simple query metric functions 1`] = `"select "device", "date", sum("no_unique_products"), sum("no_brand_products"), SUM("no_baskets")::float4//NULLIF(SUM("no_all_baskets")::float4, 0) AS "average" from "table" where "table"."brand" = ? and "table"."country" = ? and "table"."date" > ? and "table"."date" < ? group by "device", "date""`;
