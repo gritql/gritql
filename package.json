@@ -1,6 +1,6 @@
 {
   "name": "gritql",
-  "version": "1.2.5",
+  "version": "1.2.6",
   "main": "gql-sql-slicer.js",
   "types": "gql-sql-slicer.ts",
   "repository": "git@github.com:edjafarov/gql-sql-slicer.git",

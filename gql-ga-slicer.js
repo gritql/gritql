@@ -207,7 +207,7 @@ exports.gaMetricResolvers = {
             throw "Indexed  function requires 'a' as argument";
         //if (!!args.by) throw "Indexed  function doesnot support 'a' as argument";
         query.postQueryTransform.push(function (result) {
-            var maxValue = Math.max.apply(Math, result.map(function (l) { return l[args.a]; }));
+            var maxValue = args.alg === 'first' ? result[0][args.a] : Math.max.apply(Math, result.map(function (l) { return l[args.a]; }));
             return result.map(function (l) {
                 var _a;
                 return (__assign(__assign({}, l), (_a = {}, _a[tree.alias.value] = l[args.a] / maxValue, _a)));

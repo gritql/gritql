@@ -173,7 +173,7 @@ export const gaMetricResolvers = {
     if (!args.a) throw "Indexed  function requires 'a' as argument";
     //if (!!args.by) throw "Indexed  function doesnot support 'a' as argument";
     query.postQueryTransform.push((result) => {
-      const maxValue = Math.max(...result.map((l) => l[args.a]))
+      const maxValue = args.alg==='first' ?result[0][args.a] :Math.max(...result.map((l) => l[args.a]))
       return result.map(l => ({ ...l, [tree.alias.value]: l[args.a] / maxValue }))
     })
     if (!~query.metrics.indexOf(args.a)) query.metrics.push(args.a)
