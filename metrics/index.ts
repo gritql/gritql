@@ -432,24 +432,42 @@ export const metricResolvers = {
   ),
   indexed: metricWrapper(
     (alias, args, query, knex) => {
-      return query.promise.select(
-        knex.raw(
-          `sum(??)/NULLIF(max(sum(??)::float) ${getOverClosure(
-            args,
-            query,
-            knex,
-          )}, 0)::float4 as ??`,
-          [
-            buildFullName(args, query, args.a, false),
-            buildFullName(args, query, args.a, false),
-            alias,
-          ],
-        ),
-      )
+      if (args.alg === 'first') {
+        return query.promise.select(
+          knex.raw(
+            `sum(??)/NULLIF(first_value(sum(??)::float) ${getOverClosure(
+              args,
+              query,
+              knex,
+            )}, 0)::float4 as ??`,
+            [
+              buildFullName(args, query, args.a, false),
+              buildFullName(args, query, args.a, false),
+              alias,
+            ],
+          ),
+        )
+      } else {
+        return query.promise.select(
+          knex.raw(
+            `sum(??)/NULLIF(max(sum(??)::float) ${getOverClosure(
+              args,
+              query,
+              knex,
+            )}, 0)::float4 as ??`,
+            [
+              buildFullName(args, query, args.a, false),
+              buildFullName(args, query, args.a, false),
+              alias,
+            ],
+          ),
+        )
+      }
     },
     {
       a: PropTypes.string.isRequired,
       by: PropTypes.string,
+      alg: PropTypes.oneOf(['first', 'max']),
     },
     ['MAX', 'SUM', 'NULLIF', 'OVER', 'PARTITION BY'],
     'knex',

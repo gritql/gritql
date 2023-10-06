@@ -229,14 +229,24 @@ exports.metricResolvers = {
         by: types_1.PropTypes.string,
     }, ['SUM', 'NULLIF', 'OVER', 'PARTITION BY'], 'knex'),
     indexed: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
-        return query.promise.select(knex.raw(`sum(??)/NULLIF(max(sum(??)::float) ${getOverClosure(args, query, knex)}, 0)::float4 as ??`, [
-            (0, filters_1.buildFullName)(args, query, args.a, false),
-            (0, filters_1.buildFullName)(args, query, args.a, false),
-            alias,
-        ]));
+        if (args.alg === 'first') {
+            return query.promise.select(knex.raw(`sum(??)/NULLIF(first_value(sum(??)::float) ${getOverClosure(args, query, knex)}, 0)::float4 as ??`, [
+                (0, filters_1.buildFullName)(args, query, args.a, false),
+                (0, filters_1.buildFullName)(args, query, args.a, false),
+                alias,
+            ]));
+        }
+        else {
+            return query.promise.select(knex.raw(`sum(??)/NULLIF(max(sum(??)::float) ${getOverClosure(args, query, knex)}, 0)::float4 as ??`, [
+                (0, filters_1.buildFullName)(args, query, args.a, false),
+                (0, filters_1.buildFullName)(args, query, args.a, false),
+                alias,
+            ]));
+        }
     }, {
         a: types_1.PropTypes.string.isRequired,
         by: types_1.PropTypes.string,
+        alg: types_1.PropTypes.oneOf(['first', 'max']),
     }, ['MAX', 'SUM', 'NULLIF', 'OVER', 'PARTITION BY'], 'knex'),
     divide: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
         const functions = Object.keys(args).reduce((r, k) => {
