@@ -540,6 +540,40 @@ export const metricResolvers = {
     ['CAST'],
     'knex',
   ),
+  diff: metricWrapper(
+    (alias, args, query, knex) => {
+      const functions = Object.keys(args).reduce(
+        (r, k) => {
+          const fns = args[k].split('|')
+          if (fns.length === 2) {
+            args[k] = fns[1]
+            r[k] = fns[0]
+          }
+          return r
+        },
+        { a: 'sum', by: 'sum' },
+      )
+
+      return query.promise.select(
+        knex.raw(
+          `cast(??(??) as float)/NULLIF(cast(??(??) as float), 0)::float4 - 1  as ??`,
+          [
+            functions.a,
+            buildFullName(args, query, args.a, false),
+            functions.by,
+            buildFullName(args, query, args.by, false),
+            alias,
+          ],
+        ),
+      )
+    },
+    {
+      a: PropTypes.string.isRequired,
+      by: PropTypes.string.isRequired,
+    },
+    ['CAST', 'NULLIF'],
+    'knex',
+  ),
   multiply: metricWrapper(
     (alias, args, query, knex) => {
       const functions = Object.keys(args).reduce(
