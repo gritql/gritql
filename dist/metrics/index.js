@@ -268,6 +268,26 @@ exports.metricResolvers = {
         a: types_1.PropTypes.string.isRequired,
         by: types_1.PropTypes.string.isRequired,
     }, ['CAST', 'NULLIF'], 'knex'),
+    subtract: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
+        const functions = Object.keys(args).reduce((r, k) => {
+            const fns = args[k].split('|');
+            if (fns.length === 2) {
+                args[k] = fns[1];
+                r[k] = fns[0];
+            }
+            return r;
+        }, { a: 'sum', by: 'sum' });
+        return query.promise.select(knex.raw(`cast(??(??) as float)-cast(??(??) as float) as ??`, [
+            functions.a,
+            (0, filters_1.buildFullName)(args, query, args.a, false),
+            functions.by,
+            (0, filters_1.buildFullName)(args, query, args.by, false),
+            alias,
+        ]));
+    }, {
+        a: types_1.PropTypes.string.isRequired,
+        by: types_1.PropTypes.string.isRequired,
+    }, ['CAST'], 'knex'),
     multiply: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
         const functions = Object.keys(args).reduce((r, k) => {
             if (typeof args[k] !== 'string')

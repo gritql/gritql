@@ -37,6 +37,7 @@ export declare const metricResolvers: {
     share: (tree: DocumentNode, query: any, knex: Knex<any, any[]>) => void;
     indexed: (tree: DocumentNode, query: any, knex: Knex<any, any[]>) => void;
     divide: (tree: DocumentNode, query: any, knex: Knex<any, any[]>) => void;
+    subtract: (tree: DocumentNode, query: any, knex: Knex<any, any[]>) => void;
     multiply: (tree: DocumentNode, query: any, knex: Knex<any, any[]>) => void;
     aggrAverage: (tree: DocumentNode, query: any, knex: Knex<any, any[]>) => void;
     weightAvg: (tree: DocumentNode, query: any, knex: Knex<any, any[]>) => void;
