@@ -488,7 +488,7 @@ export const metricResolvers = {
 
       return query.promise.select(
         knex.raw(
-          `cast(??(??) as float)/NULLIF(cast(??(??) as float), 0)::float4 as ??`,
+          `cast(??(??) as float)/NULLIF(cast(??(??) as float) + 1e-10, 0)::float4 as ??`,
           [
             functions.a,
             buildFullName(args, query, args.a, false),
@@ -556,7 +556,7 @@ export const metricResolvers = {
 
       return query.promise.select(
         knex.raw(
-          `cast(??(??) as float)/NULLIF(cast(??(??) as float), 0)::float4 - 1  as ??`,
+          `cast(??(??) as float)/NULLIF(cast(??(??) as float) + 1e-10, 0)::float4 - 1  as ??`,
           [
             functions.a,
             buildFullName(args, query, args.a, false),

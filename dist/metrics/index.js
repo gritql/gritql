@@ -257,7 +257,7 @@ exports.metricResolvers = {
             }
             return r;
         }, { a: 'sum', by: 'sum' });
-        return query.promise.select(knex.raw(`cast(??(??) as float)/NULLIF(cast(??(??) as float), 0)::float4 as ??`, [
+        return query.promise.select(knex.raw(`cast(??(??) as float)/NULLIF(cast(??(??) as float) + 1e-10, 0)::float4 as ??`, [
             functions.a,
             (0, filters_1.buildFullName)(args, query, args.a, false),
             functions.by,
@@ -297,7 +297,7 @@ exports.metricResolvers = {
             }
             return r;
         }, { a: 'sum', by: 'sum' });
-        return query.promise.select(knex.raw(`cast(??(??) as float)/NULLIF(cast(??(??) as float), 0)::float4 - 1  as ??`, [
+        return query.promise.select(knex.raw(`cast(??(??) as float)/NULLIF(cast(??(??) as float) + 1e-10, 0)::float4 - 1  as ??`, [
             functions.a,
             (0, filters_1.buildFullName)(args, query, args.a, false),
             functions.by,
