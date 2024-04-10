@@ -323,6 +323,48 @@ function queryBuilder(
       }
   }
 
+  if (tree.name.value === 'unionall') {
+    query.name = tree.alias?.value || null
+
+    query.joins = []
+    query.orderBys = []
+    const tables = (tree.arguments || [])
+      .filter((arg) => arg.name.value === 'table')
+      .map((arg) => arg.value.value)
+    if (tables.length === 0) {
+      throw 'Table name must be specified trought table argument or query name'
+    } else if (tables.length == 1) {
+      query.table = builder
+        .select('*')
+        .from(tables[0])
+        .as(tree.arguments[0].name.value)
+    } else {
+      query.table = builder
+        .select('*')
+        .from(tables[0])
+        .unionAll(
+          tables.slice(1).map((table) => builder.select('*').from(table)),
+        )
+        .as(`unionall_${tables.join('_')}`)
+    }
+    query.promise = query.providers[query.provider].getQueryPromise(
+      query,
+      builder,
+    )
+    //query.filters = parseFilters(tree, query, builder)
+    //query.promise = withFilters(query, query.filters)(query.promise, builder)
+
+    // For GA provider we don't need table name
+
+    if (!query.isWith) {
+      queries
+        .filter((q) => q !== query && q.isWith)
+        .forEach((q) => {
+          query.promise = query.promise.with(q.name, q.promise)
+        })
+    }
+  }
+
   if (
     !query.filters &&
     (tree.name.value === 'fetch' ||
@@ -381,6 +423,7 @@ function queryBuilder(
       tree.name?.value !== 'fetch' &&
       tree.name?.value !== 'fetchPlain' &&
       tree.name?.value !== 'with' &&
+      tree.name?.value !== 'unionall' &&
       !tree.with
     )
       parseDimension(tree, query, builder)
@@ -658,6 +701,11 @@ function getMergeStrings(
     return queries
   }
 
+  if (tree.name.value === 'unionall') {
+    query.name = tree.alias?.value || null
+    query.metrics = {}
+    query.path = ''
+  }
   if (
     !query.filters &&
     (tree.name.value === 'fetch' || tree.name.value === 'fetchPlain')
@@ -684,7 +732,11 @@ function getMergeStrings(
       },
       [false, false],
     )
-    if (tree.name?.value !== 'fetch' && tree.name.value !== 'fetchPlain')
+    if (
+      tree.name?.value !== 'fetch' &&
+      tree.name.value !== 'fetchPlain' &&
+      tree.name.value !== 'unionall'
+    )
       mergeDimension(tree, query)
     selections.sort((a, b) => (!b.selectionSet ? -1 : 1))
     return selections.reduce((queries, t, i) => {
