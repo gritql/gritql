@@ -425,7 +425,10 @@ export const metricResolvers = {
     },
     {
       a: PropTypes.string.isRequired,
-      by: PropTypes.string,
+      by: PropTypes.oneOfType([
+        PropTypes.string,
+        PropTypes.arrayOf(PropTypes.string),
+      ]),
     },
     ['SUM', 'NULLIF', 'OVER', 'PARTITION BY'],
     'knex',
@@ -521,16 +524,13 @@ export const metricResolvers = {
       )
 
       return query.promise.select(
-        knex.raw(
-          `cast(??(??) as float)-cast(??(??) as float) as ??`,
-          [
-            functions.a,
-            buildFullName(args, query, args.a, false),
-            functions.by,
-            buildFullName(args, query, args.by, false),
-            alias,
-          ],
-        ),
+        knex.raw(`cast(??(??) as float)-cast(??(??) as float) as ??`, [
+          functions.a,
+          buildFullName(args, query, args.a, false),
+          functions.by,
+          buildFullName(args, query, args.by, false),
+          alias,
+        ]),
       )
     },
     {

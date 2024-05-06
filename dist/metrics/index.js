@@ -226,7 +226,10 @@ exports.metricResolvers = {
         ]));
     }, {
         a: types_1.PropTypes.string.isRequired,
-        by: types_1.PropTypes.string,
+        by: types_1.PropTypes.oneOfType([
+            types_1.PropTypes.string,
+            types_1.PropTypes.arrayOf(types_1.PropTypes.string),
+        ]),
     }, ['SUM', 'NULLIF', 'OVER', 'PARTITION BY'], 'knex'),
     indexed: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
         if (args.alg === 'first') {
