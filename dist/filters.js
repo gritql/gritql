@@ -27,6 +27,10 @@ const filterOperators = [
     'from',
     'inherited',
     'isNULL',
+    'RegExp~',
+    'RegExp!~',
+    'RegExp~*',
+    'RegExp!~*',
 ];
 function buildFullName(args, query, field, evaluateOnlyWithLinkSymbol = true) {
     args = Array.isArray(args) ? (0, arguments_1.argumentsToObject)(args) : args;
@@ -135,6 +139,14 @@ function buildFilter(query, context, prefix = '') {
                 return runDefaultRunner(context, '<=', field, subQuery);
             case ops.ne:
                 return runDefaultRunner(context, '<>', field, subQuery);
+            case ops['RegExp~']:
+                return runDefaultRunner(context, '~', field, subQuery);
+            case ops['RegExp!~']:
+                return runDefaultRunner(context, '!~', field, subQuery);
+            case ops['RegExp~*']:
+                return runDefaultRunner(context, '~*', field, subQuery);
+            case ops['RegExp!~*']:
+                return runDefaultRunner(context, '!~*', field, subQuery);
             case ops.not:
                 return runOrSkip(context, () => `NOT (${buildFilter(subQuery, context, prefix)})`, '', '', subQuery);
             case ops.like:

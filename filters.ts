@@ -44,6 +44,10 @@ const filterOperators: Array<
   'from',
   'inherited',
   'isNULL',
+  'RegExp~',
+  'RegExp!~',
+  'RegExp~*',
+  'RegExp!~*',
 ]
 
 export function buildFullName(
@@ -298,6 +302,18 @@ export function buildFilter(
 
       case ops.ne:
         return runDefaultRunner(context, '<>', field, subQuery)
+
+      case ops['RegExp~']:
+        return runDefaultRunner(context, '~', field, subQuery)
+
+      case ops['RegExp!~']:
+        return runDefaultRunner(context, '!~', field, subQuery)
+
+      case ops['RegExp~*']:
+        return runDefaultRunner(context, '~*', field, subQuery)
+
+      case ops['RegExp!~*']:
+        return runDefaultRunner(context, '!~*', field, subQuery)
 
       case ops.not:
         return runOrSkip(
