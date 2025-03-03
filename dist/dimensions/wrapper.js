@@ -13,6 +13,7 @@ const defaultPropTypes = {
     offset: types_1.PropTypes.oneOfType([types_1.PropTypes.string, types_1.PropTypes.number]),
     type: types_1.PropTypes.oneOf(['Array', 'Map']),
     from: types_1.PropTypes.string,
+    having: types_1.PropTypes.object,
 };
 const dimensionWrapper = (dimension, properties, keywords, builder) => {
     return (tree, query, knex) => {
@@ -60,6 +61,17 @@ const dimensionWrapper = (dimension, properties, keywords, builder) => {
                 query.promise.limit(args?.limit);
             if (!!args?.offset)
                 query.promise.offset(args?.offset);
+            if (!!args?.having) {
+                const havingConditions = (0, filters_1.buildFilter)(args.having, {
+                    query,
+                    builder: knex,
+                    onlyInherited: true,
+                    valueTransformer: (context, k, v) => {
+                        return v;
+                    },
+                });
+                query.promise.havingRaw(havingConditions);
+            }
         }
         else {
             if (!!args?.sort_desc)

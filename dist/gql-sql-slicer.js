@@ -26,7 +26,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.merge = exports.gqlToDb = void 0;
+exports.merge = exports.gqlToDb = exports.knex = void 0;
 const arguments_1 = require("./arguments");
 const directives_1 = require("./directives");
 const progressive_1 = require("./progressive");
@@ -35,6 +35,7 @@ const filters_1 = require("./filters");
 const metrics_1 = require("./metrics");
 const parser_1 = require("./parser");
 const dimensions_1 = require("./dimensions");
+const knex_1 = __importDefault(require("knex"));
 const providers_1 = require("./providers");
 const graphql_tag_1 = __importStar(require("graphql-tag"));
 const types_1 = require("./types");
@@ -43,6 +44,7 @@ const parser_2 = require("./parser");
 const tiny_emitter_1 = require("tiny-emitter");
 (0, graphql_tag_1.enableExperimentalFragmentVariables)();
 (0, graphql_tag_1.disableFragmentWarnings)();
+exports.knex = knex_1.default;
 const gqlToDb = () => {
     let beforeDbHandler = (r) => Promise.resolve(r);
     let dbHandler = ({ queries }) => {

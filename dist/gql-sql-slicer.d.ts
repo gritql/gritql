@@ -1,5 +1,5 @@
 import type { DocumentNode } from 'graphql';
-import { Knex } from 'knex';
+import knexConstructor, { Knex } from 'knex';
 import { Provider } from './providers';
 import { TinyEmitter } from 'tiny-emitter';
 interface GqlQuery {
@@ -30,6 +30,7 @@ interface metricResolver {
 interface metricDataResolver {
     (tree: any, query: any): void;
 }
+export declare const knex: typeof knexConstructor;
 export declare const gqlToDb: () => {
     (gqlQuery: string, variables: Record<string, any>, provider?: string): Promise<any>;
     beforeDbFetch(fn: BeforeDbHandler): any;

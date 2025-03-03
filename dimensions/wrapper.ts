@@ -4,7 +4,7 @@ import { omit, cloneDeep } from 'lodash'
 import type { InferProps, ValidationMap } from 'prop-types'
 import { checkPropTypes, PropTypes } from '../types'
 import { Knex } from 'knex'
-import { buildFullName } from '../filters'
+import { buildFilter, buildFullName } from '../filters'
 import { combineQuery } from '../query-combiner'
 
 const defaultPropTypes = {
@@ -14,6 +14,7 @@ const defaultPropTypes = {
   offset: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
   type: PropTypes.oneOf(['Array', 'Map']),
   from: PropTypes.string,
+  having: PropTypes.object,
 }
 
 export const dimensionWrapper = <T = ValidationMap<any>>(
@@ -106,6 +107,18 @@ export const dimensionWrapper = <T = ValidationMap<any>>(
 
       if (!!args?.limit) query.promise.limit(args?.limit)
       if (!!args?.offset) query.promise.offset(args?.offset)
+
+      if (!!args?.having) {
+        const havingConditions = buildFilter(args.having, {
+          query,
+          builder: knex,
+          onlyInherited: true,
+          valueTransformer: (context, k, v) => {
+            return v
+          },
+        })
+        query.promise.havingRaw(havingConditions)
+      }
     } else {
       if (!!args?.sort_desc)
         query.orderBys = (query.orderBys || []).concat(`-${args?.sort_desc}`)

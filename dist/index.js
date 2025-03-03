@@ -14,9 +14,10 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.dimensionWrapper = exports.metricWrapper = exports.dimensionResolvers = exports.metricResolvers = exports.partitionBy = exports.checkPropTypes = exports.PropTypes = exports.gqlToDb = void 0;
+exports.dimensionWrapper = exports.metricWrapper = exports.dimensionResolvers = exports.metricResolvers = exports.partitionBy = exports.checkPropTypes = exports.PropTypes = exports.knex = exports.gqlToDb = void 0;
 var gql_sql_slicer_1 = require("./gql-sql-slicer");
 Object.defineProperty(exports, "gqlToDb", { enumerable: true, get: function () { return gql_sql_slicer_1.gqlToDb; } });
+Object.defineProperty(exports, "knex", { enumerable: true, get: function () { return gql_sql_slicer_1.knex; } });
 var types_1 = require("./types");
 Object.defineProperty(exports, "PropTypes", { enumerable: true, get: function () { return types_1.PropTypes; } });
 Object.defineProperty(exports, "checkPropTypes", { enumerable: true, get: function () { return types_1.checkPropTypes; } });
