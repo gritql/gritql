@@ -14,7 +14,7 @@ import {
 } from './parser'
 import type { DocumentNode } from 'graphql'
 import { dimensionResolvers } from './dimensions'
-import { Knex } from 'knex'
+import knexConstructor, { Knex } from 'knex'
 import { disableOperationFor, Provider, providers } from './providers'
 import gql, {
   enableExperimentalFragmentVariables,
@@ -57,6 +57,8 @@ interface metricResolver {
 interface metricDataResolver {
   (tree, query): void
 }
+
+export const knex = knexConstructor
 
 export const gqlToDb = () => {
   let beforeDbHandler: BeforeDbHandler = (r) => Promise.resolve(r)

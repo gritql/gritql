@@ -1,4 +1,4 @@
-export { gqlToDb } from './gql-sql-slicer'
+export { gqlToDb, knex } from './gql-sql-slicer'
 export { PropTypes, checkPropTypes } from './types'
 export * from './filter'
 export { partitionBy, metricResolvers } from './metrics/index'
