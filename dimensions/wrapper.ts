@@ -117,7 +117,9 @@ export const dimensionWrapper = <T = ValidationMap<any>>(
             return v
           },
         })
-        query.promise.havingRaw(havingConditions)
+
+        const regex = new RegExp(`\`${query.table}\`\\.`, 'g')
+        query.promise.havingRaw(havingConditions.replace(regex, ''))
       }
     } else {
       if (!!args?.sort_desc)

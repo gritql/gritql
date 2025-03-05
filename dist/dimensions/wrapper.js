@@ -70,7 +70,8 @@ const dimensionWrapper = (dimension, properties, keywords, builder) => {
                         return v;
                     },
                 });
-                query.promise.havingRaw(havingConditions);
+                const regex = new RegExp(`\`${query.table}\`\\.`, 'g');
+                query.promise.havingRaw(havingConditions.replace(regex, ''));
             }
         }
         else {
