@@ -68,7 +68,7 @@ export function buildFullName(
     return `${table}.${field.replace(/^@/, '')}`
   }
 }
-
+// hacked, fix in future versions.
 function runDefaultRunner(
   context,
   operator: ((options) => string) | string,
@@ -78,11 +78,25 @@ function runDefaultRunner(
   return runOrSkip(
     context,
     typeof operator === 'string'
-      ? ({ key, value, isField, context }) =>
-          context.builder.raw(`?? ${operator} ${isField ? '??' : '?'}`, [
+      ? ({ key, value, isField, context }) => {
+          // Handle ClickHouse-specific regexp operators
+          if (context.query.provider === 'clickhouse') {
+            if (operator === '~') {
+              return context.builder.raw(`match(??, ?)`, [key, value])
+            } else if (operator === '~*') {
+              return context.builder.raw(`ilike(??, ?)`, [key, value])
+            } else if (operator === '!~') {
+              return context.builder.raw(`NOT match(??, ?)`, [key, value])
+            } else if (operator === '!~*') {
+              return context.builder.raw(`NOT ilike(??, ?)`, [key, value])
+            }
+          }
+          // Default behavior for all other operators and providers
+          return context.builder.raw(`?? ${operator} ${isField ? '??' : '?'}`, [
             key,
             value,
           ])
+        }
       : operator,
     ({ context }) =>
       buildFullName(
