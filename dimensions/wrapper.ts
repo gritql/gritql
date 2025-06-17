@@ -10,6 +10,7 @@ import { combineQuery } from '../query-combiner'
 const defaultPropTypes = {
   sort_desc: PropTypes.string,
   sort_asc: PropTypes.string,
+  sort: PropTypes.object,
   limit: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
   offset: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
   type: PropTypes.oneOf(['Array', 'Map']),
@@ -105,6 +106,18 @@ export const dimensionWrapper = <T = ValidationMap<any>>(
       if (!!args?.sort_asc)
         query.promise.orderBy(buildFullName(args, query, args?.sort_asc), 'asc')
 
+      // Handle sort object: {field: "revenue", order: "asc/desc"}
+      if (!!args?.sort) {
+        if (args.sort.field && args.sort.order) {
+          const order =
+            args.sort.order.toLowerCase() === 'desc' ? 'desc' : 'asc'
+          query.promise.orderBy(
+            buildFullName(args, query, args.sort.field),
+            order,
+          )
+        }
+      }
+
       if (!!args?.limit) query.promise.limit(args?.limit)
       if (!!args?.offset) query.promise.offset(args?.offset)
 
@@ -126,6 +139,17 @@ export const dimensionWrapper = <T = ValidationMap<any>>(
         query.orderBys = (query.orderBys || []).concat(`-${args?.sort_desc}`)
       if (!!args?.sort_asc)
         query.orderBys = (query.orderBys || []).concat(args?.sort_asc)
+
+      // Handle sort object for non-knex providers
+      if (!!args?.sort) {
+        if (args.sort.field && args.sort.order) {
+          const sortField =
+            args.sort.order.toLowerCase() === 'desc'
+              ? `-${args.sort.field}`
+              : args.sort.field
+          query.orderBys = (query.orderBys || []).concat(sortField)
+        }
+      }
     }
 
     dimensions.push(tree.alias?.value || tree.name.value)

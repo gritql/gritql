@@ -13,5 +13,5 @@ export declare enum Kind {
     DIMENSION = "dimension",
     METRIC = "metric"
 }
-export declare function join(type: JoinType, kind?: Kind): (tree: DocumentNode, query: any, knex: import("knex").Knex<any, any[]>) => any;
+export declare function join(type: JoinType, kind?: Kind): (tree: DocumentNode, query: any, knex: import("knex").Knex<any, any[]>) => void;
 export declare function changeQueryTable(query: any, knex: any, table: string, dropJoins: boolean): any;

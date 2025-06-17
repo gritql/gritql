@@ -9,6 +9,7 @@ const query_combiner_1 = require("../query-combiner");
 const defaultPropTypes = {
     sort_desc: types_1.PropTypes.string,
     sort_asc: types_1.PropTypes.string,
+    sort: types_1.PropTypes.object,
     limit: types_1.PropTypes.oneOfType([types_1.PropTypes.string, types_1.PropTypes.number]),
     offset: types_1.PropTypes.oneOfType([types_1.PropTypes.string, types_1.PropTypes.number]),
     type: types_1.PropTypes.oneOf(['Array', 'Map']),
@@ -57,6 +58,13 @@ const dimensionWrapper = (dimension, properties, keywords, builder) => {
                 query.promise.orderBy((0, filters_1.buildFullName)(args, query, args?.sort_desc), 'desc');
             if (!!args?.sort_asc)
                 query.promise.orderBy((0, filters_1.buildFullName)(args, query, args?.sort_asc), 'asc');
+            // Handle sort object: {field: "revenue", order: "asc/desc"}
+            if (!!args?.sort) {
+                if (args.sort.field && args.sort.order) {
+                    const order = args.sort.order.toLowerCase() === 'desc' ? 'desc' : 'asc';
+                    query.promise.orderBy((0, filters_1.buildFullName)(args, query, args.sort.field), order);
+                }
+            }
             if (!!args?.limit)
                 query.promise.limit(args?.limit);
             if (!!args?.offset)
@@ -79,6 +87,15 @@ const dimensionWrapper = (dimension, properties, keywords, builder) => {
                 query.orderBys = (query.orderBys || []).concat(`-${args?.sort_desc}`);
             if (!!args?.sort_asc)
                 query.orderBys = (query.orderBys || []).concat(args?.sort_asc);
+            // Handle sort object for non-knex providers
+            if (!!args?.sort) {
+                if (args.sort.field && args.sort.order) {
+                    const sortField = args.sort.order.toLowerCase() === 'desc'
+                        ? `-${args.sort.field}`
+                        : args.sort.field;
+                    query.orderBys = (query.orderBys || []).concat(sortField);
+                }
+            }
         }
         dimensions.push(tree.alias?.value || tree.name.value);
         query.dimensions = dimensions;

@@ -260,13 +260,21 @@ exports.metricResolvers = {
             }
             return r;
         }, { a: 'sum', by: 'sum' });
-        return query.promise.select(knex.raw(`cast(??(??) as float)/NULLIF(cast(??(??) as float) + 1e-10, 0)::float4 as ??`, [
-            functions.a,
-            (0, filters_1.buildFullName)(args, query, args.a, false),
-            functions.by,
-            (0, filters_1.buildFullName)(args, query, args.by, false),
-            alias,
-        ]));
+        const fieldA = (0, filters_1.buildFullName)(args, query, args.a, false);
+        const fieldBy = (0, filters_1.buildFullName)(args, query, args.by, false);
+        // Build SQL query with proper parameter binding based on whether functions are empty
+        if (functions.a === '' && functions.by === '') {
+            return query.promise.select(knex.raw(`cast(?? as float)/NULLIF(cast(?? as float) + 1e-10, 0)::float4 as ??`, [fieldA, fieldBy, alias]));
+        }
+        else if (functions.a === '') {
+            return query.promise.select(knex.raw(`cast(?? as float)/NULLIF(cast(??(??) as float) + 1e-10, 0)::float4 as ??`, [fieldA, functions.by, fieldBy, alias]));
+        }
+        else if (functions.by === '') {
+            return query.promise.select(knex.raw(`cast(??(??) as float)/NULLIF(cast(?? as float) + 1e-10, 0)::float4 as ??`, [functions.a, fieldA, fieldBy, alias]));
+        }
+        else {
+            return query.promise.select(knex.raw(`cast(??(??) as float)/NULLIF(cast(??(??) as float) + 1e-10, 0)::float4 as ??`, [functions.a, fieldA, functions.by, fieldBy, alias]));
+        }
     }, {
         a: types_1.PropTypes.string.isRequired,
         by: types_1.PropTypes.string.isRequired,
@@ -280,13 +288,41 @@ exports.metricResolvers = {
             }
             return r;
         }, { a: 'sum', by: 'sum' });
-        return query.promise.select(knex.raw(`cast(??(??) as float)-cast(??(??) as float) as ??`, [
-            functions.a,
-            (0, filters_1.buildFullName)(args, query, args.a, false),
-            functions.by,
-            (0, filters_1.buildFullName)(args, query, args.by, false),
-            alias,
-        ]));
+        const fieldA = (0, filters_1.buildFullName)(args, query, args.a, false);
+        const fieldBy = (0, filters_1.buildFullName)(args, query, args.by, false);
+        // Build SQL query with proper parameter binding based on whether functions are empty
+        if (functions.a === '' && functions.by === '') {
+            return query.promise.select(knex.raw(`cast(?? as float)-cast(?? as float) as ??`, [
+                fieldA,
+                fieldBy,
+                alias,
+            ]));
+        }
+        else if (functions.a === '') {
+            return query.promise.select(knex.raw(`cast(?? as float)-cast(??(??) as float) as ??`, [
+                fieldA,
+                functions.by,
+                fieldBy,
+                alias,
+            ]));
+        }
+        else if (functions.by === '') {
+            return query.promise.select(knex.raw(`cast(??(??) as float)-cast(?? as float) as ??`, [
+                functions.a,
+                fieldA,
+                fieldBy,
+                alias,
+            ]));
+        }
+        else {
+            return query.promise.select(knex.raw(`cast(??(??) as float)-cast(??(??) as float) as ??`, [
+                functions.a,
+                fieldA,
+                functions.by,
+                fieldBy,
+                alias,
+            ]));
+        }
     }, {
         a: types_1.PropTypes.string.isRequired,
         by: types_1.PropTypes.string.isRequired,
@@ -300,13 +336,21 @@ exports.metricResolvers = {
             }
             return r;
         }, { a: 'sum', by: 'sum' });
-        return query.promise.select(knex.raw(`cast(??(??) as float)/NULLIF(cast(??(??) as float) + 1e-10, 0)::float4 - 1  as ??`, [
-            functions.a,
-            (0, filters_1.buildFullName)(args, query, args.a, false),
-            functions.by,
-            (0, filters_1.buildFullName)(args, query, args.by, false),
-            alias,
-        ]));
+        const fieldA = (0, filters_1.buildFullName)(args, query, args.a, false);
+        const fieldBy = (0, filters_1.buildFullName)(args, query, args.by, false);
+        // Build SQL query with proper parameter binding based on whether functions are empty
+        if (functions.a === '' && functions.by === '') {
+            return query.promise.select(knex.raw(`cast(?? as float)/NULLIF(cast(?? as float) + 1e-10, 0)::float4 - 1  as ??`, [fieldA, fieldBy, alias]));
+        }
+        else if (functions.a === '') {
+            return query.promise.select(knex.raw(`cast(?? as float)/NULLIF(cast(??(??) as float) + 1e-10, 0)::float4 - 1  as ??`, [fieldA, functions.by, fieldBy, alias]));
+        }
+        else if (functions.by === '') {
+            return query.promise.select(knex.raw(`cast(??(??) as float)/NULLIF(cast(?? as float) + 1e-10, 0)::float4 - 1  as ??`, [functions.a, fieldA, fieldBy, alias]));
+        }
+        else {
+            return query.promise.select(knex.raw(`cast(??(??) as float)/NULLIF(cast(??(??) as float) + 1e-10, 0)::float4 - 1  as ??`, [functions.a, fieldA, functions.by, fieldBy, alias]));
+        }
     }, {
         a: types_1.PropTypes.string.isRequired,
         by: types_1.PropTypes.string.isRequired,
@@ -322,23 +366,53 @@ exports.metricResolvers = {
             }
             return r;
         }, { a: 'sum', by: 'sum' });
-        let bySql = {
-            query: `cast(??(??) as float)`,
-            variables: [functions.by, (0, filters_1.buildFullName)(args, query, args.by, false)],
-        };
-        //if type of args by is number
+        const fieldA = (0, filters_1.buildFullName)(args, query, args.a, false);
+        // Handle numeric 'by' parameter
         if (typeof args.by === 'number') {
-            bySql = {
-                query: `?`,
-                variables: [`${args.by}`],
-            };
+            if (functions.a === '') {
+                return query.promise.select(knex.raw(`cast(?? as float)*?::float4 as ??`, [
+                    fieldA,
+                    args.by,
+                    alias,
+                ]));
+            }
+            else {
+                return query.promise.select(knex.raw(`cast(??(??) as float)*?::float4 as ??`, [
+                    functions.a,
+                    fieldA,
+                    args.by,
+                    alias,
+                ]));
+            }
         }
-        return query.promise.select(knex.raw(`cast(??(??) as float)*${bySql.query}::float4 as ??`, [
-            functions.a,
-            (0, filters_1.buildFullName)(args, query, args.a, false),
-            ...bySql.variables,
-            alias,
-        ]));
+        // Handle string 'by' parameter
+        const fieldBy = (0, filters_1.buildFullName)(args, query, args.by, false);
+        if (functions.a === '' && functions.by === '') {
+            return query.promise.select(knex.raw(`cast(?? as float)*cast(?? as float)::float4 as ??`, [
+                fieldA,
+                fieldBy,
+                alias,
+            ]));
+        }
+        else if (functions.a === '') {
+            return query.promise.select(knex.raw(`cast(?? as float)*cast(??(??) as float)::float4 as ??`, [
+                fieldA,
+                functions.by,
+                fieldBy,
+                alias,
+            ]));
+        }
+        else if (functions.by === '') {
+            return query.promise.select(knex.raw(`cast(??(??) as float)*cast(?? as float)::float4 as ??`, [
+                functions.a,
+                fieldA,
+                fieldBy,
+                alias,
+            ]));
+        }
+        else {
+            return query.promise.select(knex.raw(`cast(??(??) as float)*cast(??(??) as float)::float4 as ??`, [functions.a, fieldA, functions.by, fieldBy, alias]));
+        }
     }, {
         a: types_1.PropTypes.string.isRequired,
         by: types_1.PropTypes.oneOfType([types_1.PropTypes.string, types_1.PropTypes.number]).isRequired,
