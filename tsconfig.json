@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "target": "es6",
+    "lib": ["es2015", "dom"],
     "module": "commonjs",
     "strict": false,
     "esModuleInterop": true,
@@ -11,6 +12,6 @@
     "isolatedModules": true,
     "noEmit": true
   },
-  "include": ["src", "global.d.ts"],
+  "include": ["src2", "global.d.ts"],
   "exclude": ["node_modules", "**/*.spec.ts"]
 }
