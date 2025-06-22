@@ -7,6 +7,7 @@ module.exports = {
   env: {
     node: true,
     jest: true,
+    es6: true,
   },
   rules: {
     // Keep it simple - just basic linting
