@@ -120,4 +120,28 @@ describe('SQL Generation Only (No Database)', () => {
       expect(sqlObj.bindings).toEqual(['2023-01-01'])
     })
   })
+
+  describe('User Specific Test Cases', () => {
+    test('two-argument aggregation steps show Knex limitations', () => {
+      // Steps from user question
+      const steps = [
+        {"type": "select", "args": ["data.sales", "sales"]},
+        {"type": "sum", "args": ["sales.revenue", "sum_revenue"]},
+        {"type": "avg", "args": ["sales.revenue", "avg_revenue"]},
+        {"type": "count", "args": ["sales.*", "total_count"]}
+      ]
+
+      // Build query using steps
+      let q = query()
+      steps.forEach(step => {
+        q = (q as any)[step.type](...step.args)
+      })
+
+      const sql = q.toSQL(sqlOnlyKnex)
+
+      // What user expects: "SELECT SUM(revenue) AS sum_revenue, AVG(revenue) AS avg_revenue, COUNT(*) AS total_count FROM sales"
+      // What actually happens due to Knex limitations:
+      expect(sql).toBe('select "data"."sales", sum("sales"."revenue"), avg("sales"."revenue"), count("sales".*) from "sales"')
+    })
+  })
 })

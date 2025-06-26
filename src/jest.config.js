@@ -9,5 +9,5 @@ module.exports = {
     '!**/__tests__/**',
     '!jest.config.js',
   ],
-  setupFilesAfterEnv: ['<rootDir>/__tests__/setup.ts'],
+  setupFilesAfterEnv: ['<rootDir>/test-setup.ts'],
 };

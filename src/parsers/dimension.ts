@@ -1,5 +1,6 @@
 import { FieldNode } from 'graphql';
 import { DimensionParser, ParseContext } from '../types';
+import { logger, LogModules } from '../utils/logger';
 
 /**
  * Basic dimension parsers for SQL grouping and selection
@@ -9,7 +10,7 @@ export const groupParser: DimensionParser = {
   name: 'group',
   parse: (field: FieldNode, context: ParseContext) => {
     const alias = field.alias?.value || field.name.value;
-    const tableName = context.path.length > 0 ? context.path[0] : 'data';
+    const tableName = context.table || 'data';
     
     // Get the column name from field arguments or name
     const columnArg = field.arguments?.find(arg => arg.name.value === 'column');
@@ -19,9 +20,21 @@ export const groupParser: DimensionParser = {
     
     const fullColumnName = `${tableName}.${columnName}`;
     
+    logger.debug(LogModules.DIMENSION_PARSER, 'Parsing group dimension', {
+      alias,
+      columnName,
+      fullColumnName,
+      hasColumnArg: !!columnArg
+    });
+    
     // Add to select and group by
     context.query = context.query.select(fullColumnName, alias);
     context.query = context.query.groupBy(fullColumnName);
+    
+    logger.trace(LogModules.DIMENSION_PARSER, 'Group dimension applied', {
+      selectAdded: fullColumnName,
+      groupByAdded: fullColumnName
+    });
   }
 };
 
@@ -29,7 +42,7 @@ export const selectParser: DimensionParser = {
   name: 'select',
   parse: (field: FieldNode, context: ParseContext) => {
     const alias = field.alias?.value || field.name.value;
-    const tableName = context.path.length > 0 ? context.path[0] : 'data';
+    const tableName = context.table || 'data';
     
     // Get the column name from field arguments or name
     const columnArg = field.arguments?.find(arg => arg.name.value === 'column');
@@ -38,6 +51,12 @@ export const selectParser: DimensionParser = {
       field.name.value;
     
     const fullColumnName = `${tableName}.${columnName}`;
+    
+    logger.debug(LogModules.DIMENSION_PARSER, 'Parsing select dimension', {
+      alias,
+      columnName,
+      fullColumnName
+    });
     
     // Add to select only
     context.query = context.query.select(fullColumnName, alias);
@@ -48,7 +67,7 @@ export const distinctParser: DimensionParser = {
   name: 'distinct',
   parse: (field: FieldNode, context: ParseContext) => {
     const alias = field.alias?.value || field.name.value;
-    const tableName = context.path.length > 0 ? context.path[0] : 'data';
+    const tableName = context.table || 'data';
     
     const columnArg = field.arguments?.find(arg => arg.name.value === 'column');
     const columnName = columnArg ? 
@@ -56,6 +75,13 @@ export const distinctParser: DimensionParser = {
       field.name.value.replace('distinct_', '');
     
     const fullColumnName = `${tableName}.${columnName}`;
+    
+    logger.debug(LogModules.DIMENSION_PARSER, 'Parsing distinct dimension', {
+      alias,
+      columnName,
+      fullColumnName,
+      removedPrefix: !columnArg
+    });
     
     // Add distinct select
     context.query = context.query.distinct(fullColumnName, alias);

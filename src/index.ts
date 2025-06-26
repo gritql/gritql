@@ -21,6 +21,7 @@ import {
 } from './types'
 
 export * from './types'
+export { logger, LogLevel, LogModules } from './utils/logger'
 
 export class GritQLInstance implements GritQL {
   private registry: ExtensionRegistry
@@ -100,30 +101,35 @@ export class GritQLInstance implements GritQL {
     const walker = new ASTWalker(metricParsers, dimensionParsers, directiveParsers)
     
     // 3. Walk AST to build query
-    walker.walk(ast, parseContext)
+    const walkResult = walker.walk(ast, parseContext)
     
-    // Run afterBuild hooks
-    // parseContext.query = await this.registry.runHooks('afterBuild', parseContext.query, queryContext)
-    
-    // Run beforeFinalize hooks
-    // parseContext.query = await this.registry.runHooks('beforeFinalize', parseContext.query, queryContext)
-    
-    // 4. Execute query
+    // 4. Execute queries
     const executorHooks = [
       ...this.registry.getHooks('beforeExecute'),
       ...this.registry.getHooks('afterExecute')
     ]
     const executor = new QueryExecutor(executorHooks)
-    const sqlResult = await executor.execute(parseContext.query, queryContext)
     
-    // 5. Convert result
+    // Execute all queries (could be multiple due to dimension splitting)
+    const sqlResults = await executor.executeBatch(
+      walkResult.queries.map(ctx => ({
+        builder: ctx.query,
+        context: queryContext
+      })),
+      { concurrent: true }
+    )
+    
+    // 5. Convert and merge results
     const converterHooks = [
       ...this.registry.getHooks('beforeConvert'),
       ...this.registry.getHooks('duringConvert'),
       ...this.registry.getHooks('afterConvert')
     ]
     const converter = new ResultConverter(converterHooks)
-    const result = await converter.convert(sqlResult, queryContext, { format: 'graphql' })
+    
+    // For now, return the first result. Later we'll need to implement proper result merging
+    // based on the GraphQL structure
+    const result = await converter.convert(sqlResults[0], queryContext, { format: 'graphql' })
     
     return result
   }

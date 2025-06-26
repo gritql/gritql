@@ -60,6 +60,8 @@ export const createQueryBuilder = (steps: Step[] = []) => {
                 { type: '__GROUP', args: [], steps: groupSteps },
               ])
             }
+          case 'clone':
+            return () => createQueryBuilder([...steps])
           default:
             return (...args: any[]) =>
               createQueryBuilder([...steps, { type: prop, args }])
