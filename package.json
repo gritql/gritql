@@ -1,8 +1,11 @@
 {
   "name": "gritql",
-  "version": "3.0.0-beta.31",
+  "version": "3.0.0-beta.32",
   "types": "dist/index.d.ts",
-  "repository": "git@github.com:gritql/gritql.git",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/gritql/gritql.git"
+  },
   "author": "Eldar Dzhafarov <djkojb@gmail.com>",
   "license": "MIT",
   "main": "dist/index.js",
