@@ -31,6 +31,7 @@ export declare const metricResolvers: {
     searchRanking: (tree: DocumentNode, query: any, knex: Knex<any, any[]>) => void;
     searchHeadline: (tree: DocumentNode, query: any, knex: Knex<any, any[]>) => void;
     unique: (tree: DocumentNode, query: any, knex: Knex<any, any[]>) => void;
+    any: (tree: DocumentNode, query: any, knex: Knex<any, any[]>) => void;
     from: (tree: DocumentNode, query: any, knex: Knex<any, any[]>) => void;
     avg: (tree: DocumentNode, query: any, knex: Knex<any, any[]>) => void;
     avgPerDimension: (tree: DocumentNode, query: any, knex: Knex<any, any[]>) => void;

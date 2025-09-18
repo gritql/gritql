@@ -193,6 +193,12 @@ exports.metricResolvers = {
     }, {
         a: types_1.PropTypes.string,
     }, ['GROUP BY'], 'knex'),
+    any: (0, wrapper_1.metricWrapper)((alias, args, query, knex) => {
+        const field = (0, filters_1.buildFullName)(args, query, args?.a || alias, false);
+        return query.promise.select(knex.raw(`any(??) as ??`, [field, alias]));
+    }, {
+        a: types_1.PropTypes.string,
+    }, [], 'knex'),
     from: (0, wrapper_1.metricWrapper)((alias, args, query) => {
         const field = (0, filters_1.buildFullName)(args, query, args?.a || alias, false);
         return query.promise.select(`${field} as ${alias}`);

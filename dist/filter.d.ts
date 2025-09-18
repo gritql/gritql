@@ -26,6 +26,8 @@ export interface FilterOperators<TValue = unknown> extends Model {
     eq?: TValue;
     gt?: TValue;
     gte?: TValue;
+    hasAny?: ReadonlyArray<TValue>;
+    hasAll?: ReadonlyArray<TValue>;
     in?: ReadonlyArray<TValue>;
     lt?: TValue;
     lte?: TValue;

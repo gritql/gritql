@@ -358,6 +358,18 @@ export const metricResolvers = {
     ['GROUP BY'],
     'knex',
   ),
+  any: metricWrapper(
+    (alias, args, query, knex) => {
+      const field = buildFullName(args, query, args?.a || alias, false)
+
+      return query.promise.select(knex.raw(`any(??) as ??`, [field, alias]))
+    },
+    {
+      a: PropTypes.string,
+    },
+    [],
+    'knex',
+  ),
   from: metricWrapper(
     (alias, args, query) => {
       const field = buildFullName(args, query, args?.a || alias, false)

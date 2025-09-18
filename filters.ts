@@ -30,6 +30,8 @@ const filterOperators: Array<
   'eq',
   'gt',
   'gte',
+  'hasAny',
+  'hasAll',
   'in',
   'lt',
   'lte',
@@ -265,6 +267,68 @@ export function buildFilter(
           '',
           '',
           subQuery,
+        )
+
+      case ops.hasAny:
+        return runOrSkip(
+          context,
+          ({ key: k, value: v, isField, context }) => {
+            if (context.query.provider !== 'clickhouse') {
+              throw new Error(
+                `hasAny operator is supported only by clickhouse provider`,
+              )
+            }
+            if (isField) {
+              return context.builder.raw(`hasAny(??, ??)`, [k, v])
+            }
+            if (!_.isArray(v)) {
+              throw 'HAS_ANY requires array value'
+            }
+            return context.builder.raw(
+              `hasAny(??, [${_.map(v, () => '?').join(',')}])`,
+              [k, ...v],
+            )
+          },
+          ({ context }) =>
+            buildFullName(
+              { ...context, from: context.from || context.query.table },
+              context.query,
+              field,
+              false,
+            ),
+          '',
+          context.valueTransformer(context, field, subQuery),
+        )
+
+      case ops.hasAll:
+        return runOrSkip(
+          context,
+          ({ key: k, value: v, isField, context }) => {
+            if (context.query.provider !== 'clickhouse') {
+              throw new Error(
+                `hasAll operator is supported only by clickhouse provider`,
+              )
+            }
+            if (isField) {
+              return context.builder.raw(`hasAll(??, ??)`, [k, v])
+            }
+            if (!_.isArray(v)) {
+              throw 'HAS_ALL requires array value'
+            }
+            return context.builder.raw(
+              `hasAll(??, [${_.map(v, () => '?').join(',')}])`,
+              [k, ...v],
+            )
+          },
+          ({ context }) =>
+            buildFullName(
+              { ...context, from: context.from || context.query.table },
+              context.query,
+              field,
+              false,
+            ),
+          '',
+          context.valueTransformer(context, field, subQuery),
         )
 
       case ops.in:

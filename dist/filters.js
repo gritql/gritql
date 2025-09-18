@@ -13,6 +13,8 @@ const filterOperators = [
     'eq',
     'gt',
     'gte',
+    'hasAny',
+    'hasAll',
     'in',
     'lt',
     'lte',
@@ -136,6 +138,32 @@ function buildFilter(query, context, prefix = '') {
                         return runOrSkip(context, ({ context }) => getCombineRunner(accum, () => buildFilter(cur, context, prefix), 'OR'), '', accum, cur);
                     }, '') +
                     ')', '', '', subQuery);
+            case ops.hasAny:
+                return runOrSkip(context, ({ key: k, value: v, isField, context }) => {
+                    if (context.query.provider !== 'clickhouse') {
+                        throw new Error(`hasAny operator is supported only by clickhouse provider`);
+                    }
+                    if (isField) {
+                        return context.builder.raw(`hasAny(??, ??)`, [k, v]);
+                    }
+                    if (!lodash_1.default.isArray(v)) {
+                        throw 'HAS_ANY requires array value';
+                    }
+                    return context.builder.raw(`hasAny(??, [${lodash_1.default.map(v, () => '?').join(',')}])`, [k, ...v]);
+                }, ({ context }) => buildFullName({ ...context, from: context.from || context.query.table }, context.query, field, false), '', context.valueTransformer(context, field, subQuery));
+            case ops.hasAll:
+                return runOrSkip(context, ({ key: k, value: v, isField, context }) => {
+                    if (context.query.provider !== 'clickhouse') {
+                        throw new Error(`hasAll operator is supported only by clickhouse provider`);
+                    }
+                    if (isField) {
+                        return context.builder.raw(`hasAll(??, ??)`, [k, v]);
+                    }
+                    if (!lodash_1.default.isArray(v)) {
+                        throw 'HAS_ALL requires array value';
+                    }
+                    return context.builder.raw(`hasAll(??, [${lodash_1.default.map(v, () => '?').join(',')}])`, [k, ...v]);
+                }, ({ context }) => buildFullName({ ...context, from: context.from || context.query.table }, context.query, field, false), '', context.valueTransformer(context, field, subQuery));
             case ops.in:
                 if (!lodash_1.default.isArray(subQuery)) {
                     throw 'IN requries array value';
