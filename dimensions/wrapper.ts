@@ -129,7 +129,9 @@ export const dimensionWrapper = <T = ValidationMap<any>>(
           },
         })
 
-        const regex = new RegExp(`\`${query.table}\`\\.`, 'g')
+        const tableParts = query.table.split('.')
+        const escapedPattern = tableParts.map((part) => `\`${part}\``).join('\\.')
+        const regex = new RegExp(`${escapedPattern}\\.`, 'g')
         query.promise.havingRaw(havingConditions.replace(regex, ''))
       }
     } else {
