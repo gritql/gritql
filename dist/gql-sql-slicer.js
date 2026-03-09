@@ -529,7 +529,7 @@ function getMergeStrings(tree, queries = [], idx = undefined, metricResolversDat
         if (tree.name?.value !== 'fetch' &&
             tree.name.value !== 'fetchPlain' &&
             tree.name.value !== 'unionall')
-            mergeDimension(tree, query);
+            mergeDimension(tree, query, metricResolversData);
         selections.sort((a, b) => (!b.selectionSet ? -1 : 1));
         return selections.reduce((queries, t, i) => {
             if (!!t.selectionSet && haveMetric && haveDimension) {
@@ -542,7 +542,7 @@ function getMergeStrings(tree, queries = [], idx = undefined, metricResolversDat
             return getMergeStrings(t, queries, idx, metricResolversData, hashContext);
         }, queries);
     }
-    mergeMetric(tree, query);
+    mergeMetric(tree, query, metricResolversData);
     return queries;
 }
 function getDefaultPath(name, path, isArray) {
@@ -564,13 +564,14 @@ function getDefaultFullPath(name, path, isArray, on) {
         metricPath: getDefaultMetricPath(name, path),
     };
 }
-function mergeMetric(tree, query) {
+function mergeMetric(tree, query, resolversData) {
+    const resolvers = resolversData || metricResolversData;
     let name = tree.alias?.value || tree.name.value;
     const isInGetters = query.getters?.find((name) => name === tree.name.value);
     const fieldName = isInGetters ? tree.name.value : name;
     const args = (0, arguments_1.argumentsToObject)(tree.arguments);
-    if (metricResolversData[tree.name?.value])
-        metricResolversData[tree.name?.value](tree, query, {
+    if (resolvers[tree.name?.value])
+        resolvers[tree.name?.value](tree, query, {
             on: 'metric',
             isInGetters,
             fieldName,
@@ -585,12 +586,13 @@ function mergeMetric(tree, query) {
     }
     return (0, directives_1.parseDirective)(tree, query, 'metric', query.metrics[fieldName]);
 }
-function mergeDimension(tree, query) {
+function mergeDimension(tree, query, resolversData) {
+    const resolvers = resolversData || metricResolversData;
     const args = (0, arguments_1.argumentsToObject)(tree.arguments);
     let name = tree.alias?.value || tree.name.value;
     query.getters = query.getters || [];
-    if (metricResolversData[tree.name?.value])
-        metricResolversData[tree.name?.value](tree, query, {
+    if (resolvers[tree.name?.value])
+        resolvers[tree.name?.value](tree, query, {
             on: 'dimension',
             isInGetters: false,
             fieldName: name,

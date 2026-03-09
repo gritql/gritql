@@ -2,8 +2,8 @@
 
 exports[`SQL doesnt merge queries with same id from different queries should merge object correctly if id matches 1`] = `
 Array [
-  "select \\"date\\", sum(\\"transactionrevenue\\") as \\"value\\" from \\"ii_transactional\\" where (\\"ii_transactional\\".\\"country\\" = 'US') AND ((\\"ii_transactional\\".\\"domain\\" IN ('test.com','test2.com'))) AND ((\\"ii_transactional\\".\\"date\\" >= '2022-01-05') AND (\\"ii_transactional\\".\\"date\\" <= '2022-01-08')) group by \\"date\\" order by \\"revenue\\" desc limit 10",
-  "select \\"date\\", sum(\\"transactionrevenue\\") as \\"value1\\" from \\"ii_transactionalb\\" where (\\"ii_transactionalb\\".\\"country\\" = 'US') AND ((\\"ii_transactionalb\\".\\"domain\\" IN ('test.com','test2.com'))) AND ((\\"ii_transactionalb\\".\\"date\\" >= '2022-01-05') AND (\\"ii_transactionalb\\".\\"date\\" <= '2022-01-08')) group by \\"date\\" order by \\"revenue\\" desc limit 10",
+  "select \\"date\\", SUM(\\"transactionrevenue\\") AS \\"value\\" from \\"ii_transactional\\" where (\\"ii_transactional\\".\\"country\\" = 'US') AND ((\\"ii_transactional\\".\\"domain\\" IN ('test.com','test2.com'))) AND ((\\"ii_transactional\\".\\"date\\" >= '2022-01-05') AND (\\"ii_transactional\\".\\"date\\" <= '2022-01-08')) group by \\"date\\" order by \\"revenue\\" desc limit 10",
+  "select \\"date\\", SUM(\\"transactionrevenue\\") AS \\"value1\\" from \\"ii_transactionalb\\" where (\\"ii_transactionalb\\".\\"country\\" = 'US') AND ((\\"ii_transactionalb\\".\\"domain\\" IN ('test.com','test2.com'))) AND ((\\"ii_transactionalb\\".\\"date\\" >= '2022-01-05') AND (\\"ii_transactionalb\\".\\"date\\" <= '2022-01-08')) group by \\"date\\" order by \\"revenue\\" desc limit 10",
 ]
 `;
 
@@ -36,7 +36,7 @@ Object {
 
 exports[`SQL failed with $#@# instead of . should correctly return names with dots inside like test.com.us 1`] = `
 Array [
-  "select \\"domain\\", sum(\\"transactionrevenue\\") as \\"value\\" from \\"ii_transactional\\" where (\\"ii_transactional\\".\\"country\\" = 'US') AND ((\\"ii_transactional\\".\\"domain\\" IN ('test.com','test2.com'))) AND ((\\"ii_transactional\\".\\"date\\" >= '2022-01-05') AND (\\"ii_transactional\\".\\"date\\" <= '2022-01-08')) group by \\"domain\\" order by \\"revenue\\" desc limit 10",
+  "select \\"domain\\", SUM(\\"transactionrevenue\\") AS \\"value\\" from \\"ii_transactional\\" where (\\"ii_transactional\\".\\"country\\" = 'US') AND ((\\"ii_transactional\\".\\"domain\\" IN ('test.com','test2.com'))) AND ((\\"ii_transactional\\".\\"date\\" >= '2022-01-05') AND (\\"ii_transactional\\".\\"date\\" <= '2022-01-08')) group by \\"domain\\" order by \\"revenue\\" desc limit 10",
 ]
 `;
 
