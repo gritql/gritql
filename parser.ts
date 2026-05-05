@@ -193,6 +193,25 @@ export function parseVariableDefinition(def, context) {
   return context
 }
 
+function substituteVariablesDeep(selections, context) {
+  if (!selections) return
+  selections.forEach((field) => {
+    if (field?.directives) {
+      field.directives.forEach((directive) => {
+        if (directive.arguments) {
+          directive.arguments = processArguments(directive.arguments, context)
+        }
+      })
+    }
+    if (field?.arguments) {
+      field.arguments = processArguments(field.arguments, context)
+    }
+    if (field?.selectionSet) {
+      substituteVariablesDeep(field.selectionSet.selections, context)
+    }
+  })
+}
+
 export function processArguments(args, context) {
   return args
     .map((argument) => {
@@ -229,6 +248,7 @@ export function processArguments(args, context) {
 }
 
 export function processSelections(selections, field, query, context) {
+  const originalField = field
   if (field?.directives) {
     field.directives = field.directives.map((directive) => {
       if (directive.arguments) {
@@ -239,6 +259,14 @@ export function processSelections(selections, field, query, context) {
     })
 
     field = parseDirective(field, null, 'field')
+  }
+
+  // Even if this field was excluded by a @include/@skip directive, descendant
+  // fields may still be visited later (e.g. by getMergeStrings, which walks
+  // the original tree). Substitute their directive/argument variables now so
+  // those phases never see raw `$variable` references they cannot resolve.
+  if (field === null && originalField?.selectionSet) {
+    substituteVariablesDeep(originalField.selectionSet.selections, context)
   }
 
   if (field?.arguments) {

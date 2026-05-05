@@ -352,6 +352,53 @@ describe('SQL', () => {
           expect(result).toMatchSnapshot()
         })
       })
+
+      test('@include with $variable inside an outer @include that excludes the block', () => {
+        const table = [[{ date: '2020-01-01T23:00:00.000Z', no_baskets: '101' }]]
+
+        const querier = gqlToDb()
+          .beforeDbFetch(({ sql }) => sql)
+          .dbFetch(() => table)
+
+        const query = `
+        query table($outer: Bool!, $inner: Bool!) {
+          outerBlock: fetch @include(if: $outer) {
+            date(type: Array) {
+              no_baskets
+              extra: no_baskets @include(if: $inner)
+            }
+          }
+        }
+      `
+
+        return Promise.resolve(
+          querier(query, { outer: false, inner: false }),
+        ).then((result) => {
+          expect(result).toBeDefined()
+        })
+      })
+
+      test('@include with $variable inside an outer @include — outer false, inner true', () => {
+        const table = [[{ date: '2020-01-01T23:00:00.000Z', no_baskets: '101' }]]
+        const querier = gqlToDb()
+          .beforeDbFetch(({ sql }) => sql)
+          .dbFetch(() => table)
+        const query = `
+        query table($outer: Bool!, $inner: Bool!) {
+          outerBlock: fetch @include(if: $outer) {
+            date(type: Array) {
+              no_baskets
+              extra: no_baskets @include(if: $inner)
+            }
+          }
+        }
+      `
+        return Promise.resolve(
+          querier(query, { outer: false, inner: true }),
+        ).then((result) => {
+          expect(result).toBeDefined()
+        })
+      })
     })
   })
 
