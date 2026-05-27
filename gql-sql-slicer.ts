@@ -681,7 +681,11 @@ function getMergeStrings(
   }
 
   const query = queries[idx]
-  if (query) {
+  // Only seed hashContext when the query slot is fresh. When the outer
+  // Array reduce walks multiple OperationDefinitions, idx points back at
+  // the previously completed query — reassigning would make sibling
+  // queries share one hashContext, causing cross-query merge bleed.
+  if (query && query.name === undefined) {
     query.hashContext = hashContext
   }
 

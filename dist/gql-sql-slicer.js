@@ -489,7 +489,11 @@ function getMergeStrings(tree, queries = [], idx = undefined, metricResolversDat
         return tree.reduce((queries, t, i) => getMergeStrings(t, queries, queries.length - 1, metricResolversData, !t.alias ? hashContext : {}), queries);
     }
     const query = queries[idx];
-    if (query) {
+    // Only seed hashContext when the query slot is fresh. When the outer
+    // Array reduce walks multiple OperationDefinitions, idx points back at
+    // the previously completed query — reassigning would make sibling
+    // queries share one hashContext, causing cross-query merge bleed.
+    if (query && query.name === undefined) {
         query.hashContext = hashContext;
     }
     if (tree.kind === 'OperationDefinition' && !!tree.selectionSet) {
