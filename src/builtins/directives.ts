@@ -60,18 +60,32 @@ export const operators: Record<string, (a: any, b: any) => boolean> = {
   },
 }
 
-/** true when `value` fails any of the `ops` taken from `args` (optionally prefixed `name_`) */
-function fails(ops: string[], value: unknown, args: Record<string, unknown>, name?: string): boolean {
-  return ops.some((op) => {
-    const fn = operators[op] ?? operators.eq
-    const argKey = operators[op] && name ? `${name}_${op}` : op
-    return !fn(value, args[argKey])
-  })
+/** true when `value` fails any of the operator `ops` taken from `args` (metric-level `@filter(gt: 1)`) */
+function fails(ops: string[], value: unknown, args: Record<string, unknown>): boolean {
+  return ops.some((op) => !(operators[op] ?? operators.eq)(value, args[op]))
 }
 
-/** ops in `argKeys` that address `key`: `value_gt` → gt, `value` → value (eq) */
-function opsFor(argKeys: string[], key: string): string[] {
-  return argKeys.filter((k) => k === key || k.startsWith(key + '_')).map((k) => k.split('_').slice(-1)[0])
+/** the field conditions of a directive's arguments, grouped by field: `value_gt: 1, value_lt: 9, name: "x"` → value [gt, lt], name [eq] */
+interface FieldConds {
+  field: string
+  checks: { fn: (a: unknown, b: unknown) => boolean; argKey: string }[]
+}
+const condCache = new WeakMap<object, FieldConds[]>()
+function fieldConds(args: Record<string, unknown>, ignore?: string): FieldConds[] {
+  let conds = condCache.get(args)
+  if (conds) return conds
+  conds = []
+  for (const argKey of Object.keys(args)) {
+    if (argKey === ignore) continue
+    const i = argKey.lastIndexOf('_')
+    const suffix = i > 0 ? argKey.slice(i + 1) : ''
+    const [field, fn] = operators[suffix] ? [argKey.slice(0, i), operators[suffix]] : [argKey, operators.eq]
+    let group = conds.find((c) => c.field === field)
+    if (!group) conds.push((group = { field, checks: [] }))
+    group.checks.push({ fn, argKey })
+  }
+  condCache.set(args, conds)
+  return conds
 }
 
 const need = (cond: unknown, message: string) => {
@@ -180,10 +194,7 @@ export const directives: Record<string, Resolver> = {
       if (ctx.node?.kind === 'metric') return { skip: fails(argKeys, cell.value, ctx.args) }
       const obj = ownerOf(cell, ctx)
       if (!obj) return { skip: true, skipAll: true }
-      const skip = Object.keys(obj).some((key) => {
-        const ops = opsFor(argKeys, key)
-        return ops.length > 0 && fails(ops, obj[key], ctx.args, key)
-      })
+      const skip = fieldConds(ctx.args).some((c) => c.field in obj && c.checks.some((k) => !k.fn(obj[c.field], ctx.args[k.argKey])))
       return { skip, skipAll: skip }
     },
   },
@@ -195,13 +206,9 @@ export const directives: Record<string, Resolver> = {
     },
     result: (cell, ctx) => {
       if (!ctx.baseline) return undefined
-      const argKeys = Object.keys(ctx.args).filter((k) => k !== 'replacers')
       const obj = ownerOf(cell, ctx)
       if (!obj) return undefined
-      const matched = Object.keys(obj).some((key) => {
-        const ops = opsFor(argKeys, key)
-        return ops.length > 0 && !fails(ops, obj[key], ctx.args, key)
-      })
+      const matched = fieldConds(ctx.args, 'replacers').some((c) => c.field in obj && c.checks.every((k) => k.fn(obj[c.field], ctx.args[k.argKey])))
       if (!matched) return undefined
       const replacers = (ctx.args.replacers as Record<string, unknown>) ?? {}
       const res: CellResult = { keys: { ...cell.keys, ...replacers } }

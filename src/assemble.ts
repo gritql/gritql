@@ -217,6 +217,7 @@ function iterate(node: any, steps: Step[], i: number, cb: (value: unknown) => vo
 
 export class Assembler {
   private stepCache = new Map<string, Step[]>()
+  private pathCache = new WeakMap<string[], Map<string | null, Step[]>>()
   /** one state bag per middleware per assembler run, so its result hooks behave like a directive occurrence */
   private mwStates = new Map<Resolver, Record<string, unknown>>()
   /** state for metric/dimension resolver result hooks, per node */
@@ -226,9 +227,17 @@ export class Assembler {
 
   /** steps for an output-key path inside a fetch, resolved through the fetch tree */
   stepsFor(alias: string | null, path: string[]): Step[] {
-    const cacheKey = `${alias ?? '\u0001'}\u0000${path.join('\u0000')}`
-    let steps = this.stepCache.get(cacheKey)
+    // hooks pass the same path array every row: resolve by identity first, by content second
+    let byAlias = this.pathCache.get(path)
+    if (!byAlias) this.pathCache.set(path, (byAlias = new Map()))
+    let steps = byAlias.get(alias)
     if (steps) return steps
+    const cacheKey = `${alias ?? '\u0001'}\u0000${path.join('\u0000')}`
+    steps = this.stepCache.get(cacheKey)
+    if (steps) {
+      byAlias.set(alias, steps)
+      return steps
+    }
     steps = []
     // every fetch sharing the alias writes into the same tree; the first one that knows the path decides the shape
     const fetches = this.env.plan.fetches.filter((f) => f.alias === alias)
@@ -247,6 +256,7 @@ export class Assembler {
       else steps.push({ cols: [path[i]], keySpec: path[i], array: false, plain: true })
     }
     this.stepCache.set(cacheKey, steps)
+    byAlias.set(alias, steps)
     return steps
   }
 
