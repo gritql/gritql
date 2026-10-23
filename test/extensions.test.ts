@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { PropTypes, Resolver, fetchOf, nodeAt, insertNode, cloneNode, builtins } from '../src'
+import { PropTypes, Resolver, Node, fetchOf, nodeAt, insertNode, cloneNode, builtins } from '../src'
 import { run, sqlOf } from './harness'
 
 describe('extensions', () => {
@@ -186,6 +186,68 @@ describe('extensions', () => {
       await run([[{ device: 'm', a: 1 }]], `query t { fetch { device { a: sum(a: x) } } }`, {}, { middleware: [audit] })
       expect(cells).toEqual(['device.a'])
       expect(timings).toMatchObject({ parse: expect.any(Number), execute: expect.any(Number) })
+    })
+  })
+})
+
+describe('review findings', () => {
+  test('metric and dimension resolvers may carry plan and result hooks', async () => {
+    const doubled: Resolver = {
+      args: { a: PropTypes.string.isRequired },
+      plan: (node) => {
+        ;(node as any).args.a = `${(node as any).args.a}_src`
+      },
+      sql: (n, c) => c.knex.raw('SUM(??) AS ??', [c.col(n.args.a as string), n.alias]),
+      result: (cell) => ({ value: (cell.value as number) * 2 }),
+    }
+    const upper: Resolver = {
+      sql: (n, c) => ({ select: [c.knex.raw('?? AS ??', [c.col(n.name), n.alias])], groupBy: [c.knex.raw('??', [c.col(n.name)])] }),
+      result: (cell, ctx) => ({ keys: { ...cell.keys, [ctx.node!.alias]: String(cell.keys[ctx.node!.alias]).toUpperCase() } }),
+    }
+    const sql = await sqlOf(`query t { fetch { device { v: doubled(a: x) } } }`, {}, { metrics: { doubled } })
+    expect(sql[0]).toContain('SUM("x_src") AS "v"')
+    const out = await run([[{ device: 'm', v: 2 }]], `query t { fetch { device { v: doubled(a: x) } } }`, {}, { metrics: { doubled }, dimensions: { device: upper } })
+    expect(out).toEqual({ M: { v: 4 } })
+  })
+
+  test('middleware query hook sees every builder', async () => {
+    const cap: Resolver = { query: (qb) => qb.limit(1) }
+    const [sql] = await sqlOf(`query t { fetch { device { v: sum(a: x) } } }`, {}, { middleware: [cap] })
+    expect(sql.endsWith('limit 1')).toBe(true)
+  })
+
+  test('emit: false keeps a node in the baseline but out of the output', async () => {
+    const hide: Resolver = {
+      plan: (node) => {
+        ;(node as Node).emit = false
+      },
+    }
+    const out = await run([[{ device: 'm', a: 10, b: 2 }]], `query t { fetch { device { a: sum(a: x) @divide(byField: b) b: sum(a: y) @hide } } }`, {}, { directives: { hide } })
+    expect(out).toEqual({ m: { a: 5 } })
+  })
+
+  test('a row-level hook may replace the value of every cell of the row', async () => {
+    const zero: Resolver = { result: () => ({ value: 0 }) }
+    await expect(run([[{ device: 'm', a: 1, b: 2 }]], `query t { fetch @zero { device { a: sum(a: x) b: sum(a: y) } } }`, {}, { directives: { zero } })).resolves.toEqual({
+      m: { a: 0, b: 0 },
+    })
+  })
+
+  test('ctx.at resolves the shape through every fetch sharing the alias', async () => {
+    const out = await run(
+      [[{ device: 'm', v: 10 }], [{ country: 'DE', v: 1 }], [{ device: 'm', v: 3 }]],
+      `query t {
+        cur: fetch { device(type: Array) { v: sum(a: x) @subtract(by: prev) } }
+        prev: fetch { country { v: sum(a: x) } }
+        prev: fetch { device(type: Array) { v: sum(a: x) } }
+      }`,
+    )
+    expect(out.cur).toEqual([{ device: 'm', v: 7 }])
+  })
+
+  test('a relocated type: Array metric keeps its identity value', async () => {
+    await expect(run([[{ year: '2026', price: 2 }]], `query t { fetch { year @parse(as: "int") { price: distinct(type: Array) } } }`)).resolves.toEqual({
+      '2026': [{ price: 2 }],
     })
   })
 })

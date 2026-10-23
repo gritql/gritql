@@ -219,18 +219,31 @@ export class Assembler {
   private stepCache = new Map<string, Step[]>()
   /** one state bag per middleware per assembler run, so its result hooks behave like a directive occurrence */
   private mwStates = new Map<Resolver, Record<string, unknown>>()
+  /** state for metric/dimension resolver result hooks, per node */
+  private nodeStates = new Map<Node, Record<string, unknown>>()
 
   constructor(private env: AssembleEnv) {}
 
   /** steps for an output-key path inside a fetch, resolved through the fetch tree */
-  stepsFor(fetch: Fetch | undefined, path: string[]): Step[] {
-    const cacheKey = `${fetch ? groupKey(fetch) : '\u0001'}\u0000${path.join('\u0000')}`
+  stepsFor(alias: string | null, path: string[]): Step[] {
+    const cacheKey = `${alias ?? '\u0001'}\u0000${path.join('\u0000')}`
     let steps = this.stepCache.get(cacheKey)
     if (steps) return steps
     steps = []
+    // every fetch sharing the alias writes into the same tree; the first one that knows the path decides the shape
+    const fetches = this.env.plan.fetches.filter((f) => f.alias === alias)
     for (let i = 0; i < path.length; i++) {
-      const node = fetch ? nodeAt(fetch, path.slice(0, i + 1)) : undefined
-      if (node && node.kind === 'dimension') steps.push(this.dimStep(node, fetch!))
+      let node: Node | undefined
+      let owner: Fetch | undefined
+      for (const f of fetches) {
+        node = nodeAt(f, path.slice(0, i + 1))
+        if (node) {
+          owner = f
+          break
+        }
+      }
+      if (node && node.kind === 'dimension') steps.push(this.dimStep(node, owner!))
+      else if (node && node.args.type === 'Array') steps.push({ cols: [node.alias], keySpec: node.alias, array: true }, { cols: [node.alias], keySpec: node.alias, array: false, plain: true })
       else steps.push({ cols: [path[i]], keySpec: path[i], array: false, plain: true })
     }
     this.stepCache.set(cacheKey, steps)
@@ -246,15 +259,14 @@ export class Assembler {
   reader(baseline: Output | undefined) {
     return (alias: string | null, keys: Record<string, unknown>, path: string[]): unknown => {
       if (!baseline) return undefined
-      const fetch = this.env.plan.fetches.find((f) => f.alias === alias)
-      return readAt(baseline[alias ?? ''], this.stepsFor(fetch, path), keys)
+      return readAt(baseline[alias ?? ''], this.stepsFor(alias, path), keys)
     }
   }
 
   /** every value at `path` in a tree (for `@indexed`) */
-  values(tree: any, fetch: Fetch | undefined, path: string[]): unknown[] {
+  values(tree: any, alias: string | null, path: string[]): unknown[] {
     const out: unknown[] = []
-    iterate(tree, this.stepsFor(fetch, path), 0, (v) => out.push(v))
+    iterate(tree, this.stepsFor(alias, path), 0, (v) => out.push(v))
     return out
   }
 
@@ -273,6 +285,13 @@ export class Assembler {
       return out
     }
     const shared: Hook[] = []
+    const resolverHook = (node: Node, ownerPath: string[], rowLevel: boolean): Hook[] => {
+      const resolver = node.kind === 'metric' ? this.env.registry.metric(node.name) : this.env.registry.dimension(node.name)
+      if (!resolver.result) return []
+      let state = this.nodeStates.get(node)
+      if (!state) this.nodeStates.set(node, (state = {}))
+      return [{ use: { name: node.name, args: node.args, state }, resolver, owner: node, ownerPath, rowLevel }]
+    }
     for (const mw of this.env.registry.middleware) {
       if (!mw.result) continue
       let state = this.mwStates.get(mw)
@@ -280,12 +299,12 @@ export class Assembler {
       shared.push({ use: { name: 'middleware', args: {}, state }, resolver: mw, owner: undefined, ownerPath: [], rowLevel: true })
     }
     shared.push(...hooksOf(fetch.directives, undefined, [], true))
-    grain.forEach((d, i) => shared.push(...hooksOf(d.directives, d, grainPath.slice(0, i + 1), true)))
+    grain.forEach((d, i) => shared.push(...resolverHook(d, grainPath.slice(0, i + 1), true), ...hooksOf(d.directives, d, grainPath.slice(0, i + 1), true)))
 
     const cells: MetricCell[] = []
     for (const m of physical.metrics) {
       const path = [...grainPath, m.alias]
-      const hooks = [...shared, ...hooksOf(m.directives, m, path, false)]
+      const hooks = [...shared, ...resolverHook(m, path, false), ...hooksOf(m.directives, m, path, false)]
       for (const col of this.env.columns(m, physical)) {
         const cell: MetricCell = { node: m, col, path, hooks }
         if (m.args.type === 'Array') cell.allSteps = [...steps, { cols: [col], keySpec: col, array: true }]
@@ -293,7 +312,9 @@ export class Assembler {
       }
       if (m.args.type === 'Array') keyCols.push(...this.env.columns(m, physical))
     }
-    return { steps, keyCols, cells, hasHooks: cells.some((c) => c.hooks.length > 0) }
+    // hidden nodes (`emit: false`) exist in the baseline only, so they force a second pass too
+    const hidden = fetch.emit === false || grain.some((d) => d.emit === false) || physical.metrics.some((m) => m.emit === false)
+    return { steps, keyCols, cells, hasHooks: hidden || cells.some((c) => c.hooks.length > 0) }
   }
 
   assemble(rowSets: RowSet[]): Output {
@@ -317,6 +338,8 @@ export class Assembler {
     for (const { physical, rows } of rowSets) {
       const key = groupKey(physical.fetch)
       if (only && !only.has(key)) continue
+      // pass 2 leaves hidden fetches and hidden grains out of the output
+      if (baseline && (physical.fetch.emit === false || physical.grain.some((d) => d.emit === false))) continue
       if (physical.fetch.kind === 'fetchPlain') {
         ;(out[key] ??= []).push(rows)
         continue
@@ -347,7 +370,7 @@ export class Assembler {
           output,
           path: h.ownerPath,
           at,
-          values: (tree, alias, path) => this.values(tree, this.env.plan.fetches.find((f) => f.alias === alias), path),
+          values: (tree, alias, path) => this.values(tree, alias, path),
         })
         ctxs.set(h.use, ctx)
       }
@@ -361,6 +384,7 @@ export class Assembler {
 
       for (const m of cells) {
         if (!(m.col in row)) continue
+        if (baseline && m.node.emit === false) continue
         let value = row[m.col]
         let keys = rowKeys
         let skip = false
@@ -382,7 +406,7 @@ export class Assembler {
             res = h.resolver.result!({ value, row, keys, node: m.node, path: m.path, index: j }, ctxFor(h))
           }
           if (!res) continue
-          if (!h.rowLevel && 'value' in res) value = res.value
+          if ('value' in res) value = res.value
           if (res.skip) skip = true
           if (res.skipAll) skipAll = true
           if (res.keys) {
@@ -395,7 +419,7 @@ export class Assembler {
         if (skip) continue
 
         const target = m.allSteps ? descend(holder, m.allSteps, { ...keys, [m.col]: value }) : descend(holder, steps, keys)
-        if (relocated && typeof target[m.col] === 'number' && typeof value === 'number') target[m.col] += value
+        if (relocated && !m.allSteps && typeof target[m.col] === 'number' && typeof value === 'number') target[m.col] += value
         else target[m.col] = value
         if (sets) for (const s of sets) Object.assign(target, s)
       }

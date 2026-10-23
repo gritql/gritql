@@ -6,6 +6,7 @@ import { parse } from '@0no-co/graphql.web'
 import type { OperationDefinitionNode, TypeNode } from '@0no-co/graphql.web'
 import { GritqlError } from '../errors'
 import { Checker, checkPropTypes, PropTypes } from '../types'
+import { toGritqlError } from '../errors'
 import type { TypeDef, TypeRef } from './typeblocks'
 import { argsToObject, valueToJs, UNDEFINED, Variables } from './values'
 
@@ -120,6 +121,10 @@ export function resolveVariables(
       if (v !== UNDEFINED) out[name] = v
     }
   }
-  checkPropTypes(validators, out, 'query', op.name?.value ?? 'query')
+  try {
+    checkPropTypes(validators, out, 'query', op.name?.value ?? 'query')
+  } catch (e) {
+    throw toGritqlError('TYPE', e)
+  }
   return out
 }

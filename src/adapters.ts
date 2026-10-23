@@ -24,6 +24,11 @@ export function pgAdapter(db: Knex, name = 'pg'): Adapter {
     name,
     dialect: 'pg',
     knex: db,
+    // knex.raw binds `?` placeholders itself, so hand it the un-nativized statement
+    compile: (qb) => {
+      const q = qb.toSQL()
+      return { sql: q.sql, params: q.bindings as unknown[] }
+    },
     async execute({ sql, params }) {
       const res = await db.raw(sql, params as Knex.RawBinding[])
       return (res as any).rows ?? res

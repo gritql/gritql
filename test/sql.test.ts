@@ -84,3 +84,51 @@ describe('SQL shapes not covered by the v3 suites', () => {
     expect(sql).toContain('SUM("t"."y") AS "b"')
   })
 })
+
+describe('review findings', () => {
+  test('four repeated arguments stay one flat list', async () => {
+    const [sql] = await sqlOf(`query t { u: unionall(table: a, table: b, table: c, table: d) { v: sum(a: x) } }`)
+    expect(sql).toContain('select * from "a" union all select * from "b" union all select * from "c" union all select * from "d"')
+  })
+
+  test('empty IN / NOT IN lists compile to constants', async () => {
+    const [sql] = await sqlOf(`query t { fetch(filters: { country: [], brand: { nin: [] } }) { v: sum(a: x) } }`)
+    expect(sql).toContain('(1 = 0) AND ((1 = 1))')
+  })
+
+  test('filter from: "@" means the fetch table', async () => {
+    const [sql] = await sqlOf(`query t { fetch(filters: { from: "@", country: "DE" }) { v: sum(a: x) } }`)
+    expect(sql).toContain(`"t"."country" = 'DE'`)
+  })
+
+  test('an operator without a field is an ARGS error', async () => {
+    await expect(sqlOf(`query t { fetch(filters: { or: [{ gte: 1 }] }) { v: sum(a: x) } }`)).rejects.toMatchObject({ code: 'ARGS' })
+  })
+
+  test('every bounded nested dimension gets its own ranking layer; root limit applies last', async () => {
+    const [sql] = await sqlOf(`query t { fetch { country(limit: 5) { device(limit: 2) { city(limit: 1) { v: sum(a: x) } } } } }`)
+    expect(sql).toContain('partition by "country")')
+    expect(sql).toContain('partition by "country", "device")')
+    expect(sql).toContain('"__rn" <= 2')
+    expect(sql).toContain('"__rn" <= 1')
+    expect(sql.endsWith('limit 5')).toBe(true)
+  })
+
+  test('count without a column is COUNT(*)', async () => {
+    const [sql] = await sqlOf(`query t { fetch { n: count m: count(a: "*") } }`)
+    expect(sql).toBe('select COUNT(*) AS "n", COUNT(*) AS "m" from "t"')
+  })
+
+  test('groupBy dimension whose alias shadows its column groups by the alias', async () => {
+    const [sql] = await sqlOf(`query t { fetch { date: groupBy(field: date, by: month) { v: sum(a: x) } } }`)
+    expect(sql).toBe(`select date_trunc('month', "date") as "date", SUM("x") AS "v" from "t" group by "date"`)
+  })
+
+  test('typed errors: TYPE for variables, PLAN for cycles, RESULT for hooks, ARGS carries the path', async () => {
+    await expect(sqlOf(`query t($n: Number!) { fetch { v: sum(a: x) } }`)).rejects.toMatchObject({ code: 'TYPE' })
+    await expect(sqlOf(`query t { a: with(table: b) { v: sum(a: x) } b: with(table: a) { v: sum(a: x) } c: fetch(table: a) { v: sum(a: x) } }`)).rejects.toMatchObject({ code: 'PLAN' })
+    await expect(sqlOf(`query t { fetch { d { v: sum } } }`)).rejects.toMatchObject({ code: 'ARGS', path: ['fetch', 'd'] })
+    const boom = { result: () => { throw new Error('oops') } }
+    await expect(run([[{ d: 1, v: 1 }]], `query t { fetch { d { v: sum(a: x) @boom } } }`, {}, { directives: { boom } })).rejects.toMatchObject({ code: 'RESULT', message: 'oops' })
+  })
+})

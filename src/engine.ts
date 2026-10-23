@@ -114,7 +114,7 @@ export class Gritql {
       try {
         qb = compilePhysical(physical, env)
       } catch (e) {
-        throw toGritqlError('PLAN', e, [physical.fetch.alias ?? physical.fetch.kind, ...physical.path])
+        throw withPath(toGritqlError('PLAN', e), [physical.fetch.alias ?? physical.fetch.kind, ...physical.path])
       }
       const req = adapter.compile ? adapter.compile(qb, physical) : native(qb)
       queries.push({ physical, sql: req.sql, params: req.params, text: qb.toString() })
@@ -148,7 +148,12 @@ export class Gritql {
       columns: (node, physical) => this.columns(node, physical, base),
       makeCtx: (physical, node, use, over) => this.makeCtx(base, physical, node, use, over),
     })
-    const output = assembler.assemble(rowSets)
+    let output: Output
+    try {
+      output = assembler.assemble(rowSets)
+    } catch (e) {
+      throw toGritqlError('RESULT', e)
+    }
     timings.assemble = now() - t5
     return output
   }
@@ -179,6 +184,16 @@ export class Gritql {
     for (const node of nodes) {
       const p = [...path, node.alias]
       if (!(await this.runDirectives(node, node.directives, base, fetch, node, p))) continue
+      const resolver = node.kind === 'metric' ? this.registry.metric(node.name) : this.registry.dimension(node.name)
+      if (resolver.plan) {
+        let removed = false
+        try {
+          await resolver.plan(node, this.makeCtx(base, undefined, node, undefined, { fetch, path: p, remove: () => (removed = true) }))
+        } catch (e) {
+          throw toGritqlError('PLAN', e, p)
+        }
+        if (removed) continue
+      }
       if (node.children.length) node.children = await this.planNodes(node.children, base, fetch, p)
       kept.push(node)
     }
@@ -265,6 +280,11 @@ interface BaseCtx {
   dialect: string
   variables: Record<string, unknown>
   timings: Record<string, number>
+}
+
+function withPath(e: GritqlError, path: string[]): GritqlError {
+  if (!e.path) e.path = path
+  return e
 }
 
 function native(qb: Knex.QueryBuilder): SqlReq {

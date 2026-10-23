@@ -10,7 +10,7 @@ import type {
   SelectionNode,
   VariableDefinitionNode,
 } from '@0no-co/graphql.web'
-import { GritqlError } from '../errors'
+import { GritqlError, toGritqlError } from '../errors'
 import type { DirectiveUse, Fetch, FetchKind, FilterExpr, Join, JoinType, Node, Plan } from '../model'
 import { JOIN_TYPES } from '../model'
 import type { Fragment, ParsedDocument } from '../parse'
@@ -219,7 +219,11 @@ function useFragment(field: FieldNode, ctx: BuildContext): Node[] {
     if (given[varName] !== undefined) overlay[varName] = given[varName]
     else if (def.defaultValue) overlay[varName] = argsToObject([{ kind: 'Argument', name: def.variable.name, value: def.defaultValue } as any], {})[varName]
   }
-  checkPropTypes(validators, overlay, 'fragment arguments', name)
+  try {
+    checkPropTypes(validators, overlay, 'fragment arguments', name)
+  } catch (e) {
+    throw toGritqlError('ARGS', e, ctx.path)
+  }
   return buildNodes(fragment.definition.selectionSet.selections, { ...ctx, variables: overlay })
 }
 

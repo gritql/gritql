@@ -64,7 +64,7 @@ export function argsToObject(
     const k = a.name.value
     if (seen.has(k)) {
       const prev = out[k]
-      out[k] = Array.isArray(prev) && (prev as any).__repeated ? [...prev, v] : repeated([prev, v])
+      out[k] = Array.isArray(prev) && (prev as any).__repeated ? repeated([...prev, v]) : repeated([prev, v])
     } else {
       seen.add(k)
       out[k] = v

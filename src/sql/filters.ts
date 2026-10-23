@@ -66,7 +66,7 @@ const isOp = (k: string) => OPERATORS.has(k)
 
 function qualify(ctx: FilterContext, field: string): string {
   if (ctx.qualify === false && !ctx.from) return field.replace(/^@/, '')
-  const table = ctx.from ?? ctx.table
+  const table = ctx.from && ctx.from !== '@' ? ctx.from : ctx.table
   return `${table}.${field.replace(/^@/, '')}`
 }
 
@@ -85,7 +85,7 @@ function operand(ctx: FilterContext, value: unknown): Frag {
 }
 
 function skipForeign(ctx: FilterContext): boolean {
-  const from = ctx.from ?? ctx.table
+  const from = ctx.from && ctx.from !== '@' ? ctx.from : ctx.table
   return ctx.inherited === false && from !== ctx.table && !ctx.joins.includes(from)
 }
 
@@ -103,6 +103,8 @@ function compare(ctx: FilterContext, field: string, op: string, value: unknown):
 function list(ctx: FilterContext, field: string, keyword: string, values: unknown, name: string): Frag {
   if (!Array.isArray(values)) throw new GritqlError('ARGS', `${name} requries array value`)
   if (skipForeign(ctx)) return EMPTY
+  // `IN ()` is invalid SQL: an empty list matches nothing, an empty NOT IN matches everything
+  if (values.length === 0) return { sql: keyword.trim() === 'IN' ? '1 = 0' : '1 = 1', bindings: [] }
   return { sql: `?? ${keyword}(${values.map(() => '?').join(',')})`, bindings: [qualify(ctx, field), ...values] }
 }
 
@@ -136,7 +138,12 @@ function search(ctx: FilterContext, value: unknown): Frag {
   return { sql, bindings }
 }
 
+const LOGICAL = new Set(['and', 'or', 'nor', 'not', 'having', 'from', 'search'])
+
 function predicate(ctx: FilterContext, field: string | null, op: string | null, value: unknown): Frag {
+  if (field === null && op !== null && !LOGICAL.has(op)) {
+    throw new GritqlError('ARGS', `Operator \`${op}\` needs a field: write { field: { ${op}: value } }`)
+  }
   switch (op) {
     case 'isNULL':
       if (skipForeign(ctx)) return EMPTY

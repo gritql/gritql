@@ -5,6 +5,7 @@
  * selection set that holds metrics. `with`, `fetchPlain` and `unionall`
  * fetches are lowered as one statement at their finest grain.
  */
+import { GritqlError } from './errors'
 import type { Fetch, Node, Physical, Plan } from './model'
 
 export function lower(plan: Plan): Physical[] {
@@ -60,7 +61,7 @@ export function dependencies(fetch: Fetch, plan: Plan, withAliases: Set<string>)
     for (const ref of refs) {
       if (!withAliases.has(ref)) continue
       if (seen.has(ref)) continue
-      if (visiting.has(ref)) throw new Error(`Circular with dependency: ${from} → ${ref}`)
+      if (visiting.has(ref)) throw new GritqlError('PLAN', `Circular with dependency: ${from} → ${ref}`, { path: [from] })
       visiting.add(ref)
       visit(byAlias.get(ref)!, ref)
       visiting.delete(ref)

@@ -79,7 +79,14 @@ export const metrics: Record<string, Resolver> = {
   sum: aggregate('sum'),
   min: aggregate('min'),
   max: aggregate('max'),
-  count: aggregate('count'),
+  count: {
+    args: { a: PropTypes.string, ...partitionByTypes },
+    sql: (node, ctx) => {
+      const p = node.args.by ? ` ${over(node, ctx)}` : ''
+      if (node.args.a === undefined || node.args.a === '*') return ctx.knex.raw(`COUNT(*)${p} AS ??`, [node.alias])
+      return ctx.knex.raw(`COUNT(??)${p} AS ??`, [a(node, ctx), node.alias])
+    },
+  },
 
   countDistinct: {
     args: { a: PropTypes.string.isRequired },

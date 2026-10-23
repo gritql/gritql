@@ -85,8 +85,8 @@ function conditionalTarget(ctx: Ctx, kind: 'Include' | 'Skip'): boolean {
   return !!ctx.args.if
 }
 
-/** baseline object that holds the cell (the metric's parent) */
-const parentOf = (cell: Cell, ctx: Ctx) => ctx.at(ctx.fetch!.alias, cell.keys, cell.path.slice(0, -1)) as Record<string, unknown> | undefined
+/** baseline object of the dimension (or fetch) the directive sits on, for the row's keys */
+const ownerOf = (cell: Cell, ctx: Ctx) => ctx.at(ctx.fetch!.alias, cell.keys, ctx.path) as Record<string, unknown> | undefined
 
 const isDirectChild = (cell: Cell, ctx: Ctx) => cell.path.length === ctx.path.length + 1
 
@@ -178,7 +178,7 @@ export const directives: Record<string, Resolver> = {
       if (!ctx.baseline) return undefined
       const argKeys = Object.keys(ctx.args)
       if (ctx.node?.kind === 'metric') return { skip: fails(argKeys, cell.value, ctx.args) }
-      const obj = parentOf(cell, ctx)
+      const obj = ownerOf(cell, ctx)
       if (!obj) return { skip: true, skipAll: true }
       const skip = Object.keys(obj).some((key) => {
         const ops = opsFor(argKeys, key)
@@ -196,7 +196,7 @@ export const directives: Record<string, Resolver> = {
     result: (cell, ctx) => {
       if (!ctx.baseline) return undefined
       const argKeys = Object.keys(ctx.args).filter((k) => k !== 'replacers')
-      const obj = parentOf(cell, ctx)
+      const obj = ownerOf(cell, ctx)
       if (!obj) return undefined
       const matched = Object.keys(obj).some((key) => {
         const ops = opsFor(argKeys, key)

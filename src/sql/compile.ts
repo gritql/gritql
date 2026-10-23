@@ -132,7 +132,7 @@ export function compilePhysical(physical: Physical, env: CompileEnv): Knex.Query
   let distinct = false
   let limit: number | undefined
   let offset: number | undefined
-  let nestedLimitDim: Node | undefined
+  const nestedLimits: Node[] = []
   const queryHooks: { resolver: Resolver; node: Node }[] = []
   /** group expressions per grain dimension, for the per-parent window partition */
   const grainGroups: Knex.Raw[][] = []
@@ -162,7 +162,7 @@ export function compilePhysical(physical: Physical, env: CompileEnv): Knex.Query
         if (a.limit !== undefined) limit = Number(a.limit)
         if (a.offset !== undefined) offset = Number(a.offset)
       } else {
-        nestedLimitDim = dim
+        nestedLimits.push(dim)
       }
     }
   })
@@ -224,23 +224,28 @@ export function compilePhysical(physical: Physical, env: CompileEnv): Knex.Query
   if (having?.sql) qb = qb.having(raw(knex, having))
 
   // --- order / limit / offset -------------------------------------------
-  if (nestedLimitDim) {
+  if (nestedLimits.length) {
     // per-parent limit: rank the grouped rows inside each outer-dimension partition, then keep a window of ranks.
-    // Window and ORDER BY see output columns only, so the grouped statement is wrapped first.
-    const idx = physical.grain.indexOf(nestedLimitDim)
-    const partition = physical.grain.slice(0, idx).flatMap((d) => dimColumns(d, physical, env))
+    // Window and ORDER BY see output columns only, so the grouped statement is wrapped first; one layer per bounded dimension.
     const orderCols = orderBys.map((o) => ({ by: o.by.slice(o.by.lastIndexOf('.') + 1), dir: o.dir }))
-    const over =
-      (partition.length ? `partition by ${partition.map(() => '??').join(', ')}` : '') +
-      (orderCols.length ? `${partition.length ? ' ' : ''}order by ${orderCols.map((o) => `?? ${o.dir}`).join(', ')}` : '')
-    const rn = knex.raw(`row_number() over (${over}) as ??`, [...partition, ...orderCols.map((o) => o.by), '__rn'])
-    const ranked = knex.select('*').select(rn).from(qb.as('__g'))
-    let outer = knex.select(outputAliases(physical, registry, env)).from(ranked.as('__r'))
-    const lo = Number(nestedLimitDim.args.offset ?? 0)
-    if (lo > 0) outer = outer.where('__rn', '>', lo)
-    if (nestedLimitDim.args.limit !== undefined) outer = outer.where('__rn', '<=', lo + Number(nestedLimitDim.args.limit))
-    for (const o of orderCols) outer = outer.orderBy(o.by, o.dir)
-    qb = outer
+    const outputs = outputAliases(physical, registry, env)
+    for (const dim of nestedLimits) {
+      const idx = physical.grain.indexOf(dim)
+      const partition = physical.grain.slice(0, idx).flatMap((d) => dimColumns(d, physical, env))
+      const over =
+        (partition.length ? `partition by ${partition.map(() => '??').join(', ')}` : '') +
+        (orderCols.length ? `${partition.length ? ' ' : ''}order by ${orderCols.map((o) => `?? ${o.dir}`).join(', ')}` : '')
+      const rn = knex.raw(`row_number() over (${over}) as ??`, [...partition, ...orderCols.map((o) => o.by), '__rn'])
+      const ranked = knex.select('*').select(rn).from(qb.as('__g'))
+      let outer = knex.select(outputs).from(ranked.as('__r'))
+      const lo = Number(dim.args.offset ?? 0)
+      if (lo > 0) outer = outer.where('__rn', '>', lo)
+      if (dim.args.limit !== undefined) outer = outer.where('__rn', '<=', lo + Number(dim.args.limit))
+      qb = outer
+    }
+    for (const o of orderCols) qb = qb.orderBy(o.by, o.dir)
+    if (limit !== undefined) qb = qb.limit(limit)
+    if (offset !== undefined) qb = qb.offset(offset)
   } else {
     for (const o of orderBys) qb = qb.orderBy(o.by, o.dir)
     if (limit !== undefined) qb = qb.limit(limit)
@@ -249,6 +254,7 @@ export function compilePhysical(physical: Physical, env: CompileEnv): Knex.Query
 
   // --- escape hatch -------------------------------------------------------
   for (const { resolver, node } of queryHooks) qb = resolver.query!(qb, physical, env.makeCtx(physical, node))
+  for (const mw of registry.middleware) if (mw.query) qb = mw.query(qb, physical, env.makeCtx(physical))
 
   // --- CTEs ----------------------------------------------------------------
   for (const alias of physical.ctes) {

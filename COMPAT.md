@@ -31,15 +31,16 @@ Dependencies: `graphql`, `graphql-tag`, `lodash`, `luxon`, `deepmerge`, `tiny-em
 All differences below were reviewed against the v3 snapshots; the semantics are the same unless marked *fixed*.
 
 - **Parenthesization and keyword case.** Predicates are parenthesized per operator and joined with `AND`/`OR` in upper case (`("t"."a" = 1) AND (("t"."b" > 1) AND ("t"."b" < 5))`). v3 inlined top-level predicates with lower-case `and`.
-- **`groupBy(field, by)` dimension** emits `date_trunc(by, field) as alias` inline and groups by the expression. v3 wrapped the source in a subquery that repeated the WHERE clause.
+- **`groupBy(field, by)` dimension** emits `date_trunc(by, field) as alias` inline and groups by the expression, or by the alias when the alias shadows the source column (`date: groupBy(field: date, by: month)` → `group by "date"`; ClickHouse rejects the expression form as a cyclic alias). v3 wrapped the source in a subquery that repeated the WHERE clause.
 - **`groupByEach`** no longer selects the hidden `groupByEach_min_*` / `groupByEach_max_*` columns.
 - **Reverse rankings** (`ranking(alg: reverseRank)` and friends) compute `max(x) over () - x + 1` on the derived table instead of a `reverse_<alias>` CTE with a scalar subquery. The window column is named `reverse_<alias>`.
 - **`unique(a, from: t)`** groups by `t.col`, as v3 did; `unique` without `from` groups by the bare column.
 - **Numeric literals stay numeric.** `price_gt: 126` compiles to `> 126`; v3 stringified it to `> '126'`.
 - **List values in filters are `IN`.** `categories: [1, 11, 6]` compiles to `IN (1,11,6)`; v3 produced `= 1 AND = 11 AND = 6` (*fixed*).
 - **`count` / `countDistinct` without an alias** are aliased by their name; v3 produced `as "undefined"` (*fixed*).
-- **`having`** (fetch `filters.having` and dimension `having:`) compiles with unqualified names (`"value" > 1`), since it addresses aggregate aliases; v3 qualified them with the table.
+- **`having`** (fetch `filters.having` and dimension `having:`) compiles with unqualified names (`"value" > 1`), since it addresses aggregate aliases; v3 qualified them with the table. PostgreSQL does not accept output aliases in HAVING, so there `having` works on real columns and aggregate expressions only; ClickHouse and MySQL accept the alias.
 - **Search metrics** read the search term by the bare column name (`title`), whether it came from `search: {}` or `filters: { search: {} }`. Defining the same field in both is an `ARGS` error, as in v3.
+- **Empty lists**: `country: []` compiles to `1 = 0`, `nin: []` to `1 = 1` (v3 emitted invalid `IN ()`, *fixed*). An operator without a field (`or: [{ gte: 1 }]`) is an `ARGS` error.
 - **Identical select expressions are emitted once** (`brand { brand }`), as v3 did through statement deduplication.
 
 ## Assembly (result differences)
