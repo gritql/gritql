@@ -1,5 +1,11 @@
-test-db.ts
+src
+test
+bench
 coverage
-__snapshots__
-gql-sql-slicer.test.ts
-jest.config.js
+.bench-build
+projectplan.md
+SPEC.md
+COMPAT.md
+vitest.config.ts
+tsconfig*.json
+.claude
