@@ -147,6 +147,7 @@ describe('review findings', () => {
     expect(sql).toContain('JOIN "c" ON ("c"."pid" = "t"."id") AND (("c"."b" < "t"."a"))')
     const [same] = await sqlOf(`query t { fetch { join(table: c, by: "@id:@pid", by_gt: "@a:@pid") { v: sum(a: x) } } }`)
     expect(same).toContain('JOIN "c" ON (("c"."pid" = "t"."id") AND ("c"."pid" < "t"."a"))')
+    await expect(sqlOf(`query t { fetch { join(table: c, by: "@a:@pid", by: "@b:@pid") { v: sum(a: x) } } }`)).rejects.toMatchObject({ code: 'ARGS' })
     await expect(sqlOf(`query t { fetch { join(table: c, by_in: "@id:@pid") { v: sum(a: x) } } }`)).rejects.toMatchObject({ code: 'ARGS' })
     await expect(sqlOf(`query t { fetch { join(table: c, by_like: "@n:@p") { v: sum(a: x) } } }`)).rejects.toMatchObject({ code: 'ARGS' })
   })

@@ -45,7 +45,7 @@ Only real consumer: `peekd-sp/lib/frontend` (ClickHouse via knex dialect plugin,
 - [x] Profile and optimise until v4 ≤ v3 on every scenario.
 
 ## Phase 5 — implementation review
-- [~] Fable + Codex review of the code against SPEC.md and v3 behaviour. Fix findings. Repeat until no blocking issues (cap 2 rounds). Codex round 1: 15 blocking items, all fixed (HAVING-alias on pg documented as limitation). Codex round 2: 13/15 verified fixed, 6 new blocking (groupBy alias on pg, `__proto__` keys, `by_in`, untyped middleware plan errors, `percentile(factor: 0)`, `avg OVER()`), all fixed. Fable round 1: 4 blocking (row-level `value` cached per row, groupBy alias on pg, `avg OVER()`, `by_gt` inverted), all fixed; nits folded (CTE nesting, median `from`, COMPAT lines). Codex rounds 3–4: `by_like` dropped, prototype-safe fetch aliases; round 4 SATISFIED. Fable final round: four blockers confirmed fixed, one new (no-op row-level result cached) fixed plus join-shorthand AND; confirmation pending.
+- [x] Fable + Codex review of the code against SPEC.md and v3 behaviour. Fix findings. Repeat until no blocking issues (cap 2 rounds). Codex round 1: 15 blocking items, all fixed (HAVING-alias on pg documented as limitation). Codex round 2: 13/15 verified fixed, 6 new blocking (groupBy alias on pg, `__proto__` keys, `by_in`, untyped middleware plan errors, `percentile(factor: 0)`, `avg OVER()`), all fixed. Fable round 1: 4 blocking (row-level `value` cached per row, groupBy alias on pg, `avg OVER()`, `by_gt` inverted), all fixed; nits folded (CTE nesting, median `from`, COMPAT lines). Codex rounds 3–4: `by_like` dropped, prototype-safe fetch aliases; round 4 **SATISFIED at 8bca762**. Fable rounds 1–2: four blockers confirmed fixed, one new (no-op row-level result cached) fixed plus join-shorthand AND; **SATISFIED at 779cbc0**. The round cap (2) was exceeded because every round found real defects. Later commits: join same-operator ARGS check, docs.
 - [x] `npm run build`, `tsc --noEmit`, full test run (385 tests, 13 files), bench rerun (`bench/RESULTS.md`).
 
 ## Review
@@ -63,13 +63,13 @@ Only real consumer: `peekd-sp/lib/frontend` (ClickHouse via knex dialect plugin,
 |---|---|---|
 | object dims | 44 ms | 40 ms |
 | array date dim | 61 ms | 48 ms |
-| array dim + @filter | 239 ms | 151 ms |
+| array dim + @filter | 239 ms | 151–160 ms |
 | two queries + @diff | 117 ms | 84 ms |
 | compile | n/a | 0.10 ms |
 v4 is faster everywhere; the review-fix commit briefly regressed `@filter` to 294 ms (dimension-level filter scanning every key of its object), caught by the bench rerun and fixed by precomputing field conditions per directive occurrence.
 
 ### v3 bugs fixed rather than preserved (all in COMPAT.md)
-`@groupBy` double-counting sibling metrics; list filter values compiled to `= a AND = b` instead of `IN`; `count` without alias → `as "undefined"`; numeric literals stringified; empty `IN ()`; nested `limit` applied globally instead of per parent; `from null` for anonymous operations; repeated arguments nested on the third occurrence.
+`@groupBy` double-counting sibling metrics; list filter values compiled to `= a AND = b` instead of `IN`; `count` without alias → `as "undefined"`; numeric literals stringified; empty `IN ()`; nested `limit` applied globally instead of per parent; `from null` for anonymous operations; repeated arguments nested on the third occurrence; `avg`/`median` without `by` emitted `OVER()` (invalid in grouped pg statements); join shorthands silently overwriting each other on one column; dimension values or fetch aliases named `__proto__`/`constructor` lost or written onto the prototype.
 
 ### Known limitations
 - `having` on output aliases works on ClickHouse/MySQL, not PostgreSQL (documented).
@@ -78,5 +78,4 @@ v4 is faster everywhere; the review-fix commit briefly regressed `@filter` to 29
 
 ### Follow-ups (not done)
 - GA adapter (dropped by decision), `@filter` pushdown (opt-in), skipping pass 2 for hook-free fetches.
-- Fold remaining Fable/Codex implementation-review findings when they arrive (see Phase 5).
 

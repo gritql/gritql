@@ -156,7 +156,11 @@ function toJoin(type: JoinType, args: Record<string, unknown>, where: string): J
         const prev = on[col]
         const next = { [BY_OPS[op]]: ref }
         if (prev === undefined) on[col] = op === 'eq' ? ref : next
-        else on[col] = { ...(typeof prev === 'string' ? { eq: prev } : (prev as object)), ...next }
+        else {
+          const merged = typeof prev === 'string' ? { eq: prev } : (prev as Record<string, unknown>)
+          if (BY_OPS[op] in merged) throw new GritqlError('ARGS', `Join condition on '${col}' repeats operator '${op}'`, { path: [where] })
+          on[col] = { ...merged, ...next }
+        }
       }
     }
   }

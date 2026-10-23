@@ -42,7 +42,7 @@ All differences below were reviewed against the v3 snapshots; the semantics are 
 - **Search metrics** read the search term by the bare column name (`title`), whether it came from `search: {}` or `filters: { search: {} }`. Defining the same field in both is an `ARGS` error, as in v3.
 - **Empty lists**: `country: []` compiles to `1 = 0`, `nin: []` to `1 = 1` (v3 emitted invalid `IN ()`, *fixed*). An operator without a field (`or: [{ gte: 1 }]`) is an `ARGS` error.
 - **`avg` / `median` without `by` are plain aggregates** (`avg("x")::float4`). v3 emitted `avg(x) OVER()`, which PostgreSQL rejects inside a grouped statement (*fixed*; snapshot `avg 1` regenerated).
-- **Join shorthands `by_gt`/`by_gte`/`by_lt`/`by_lte`** read left to right as in v3 (`by_gt: "@a:@b"` → `fetch.a > joined.b`). `by_in` (column IN column was never meaningful) and `by_like` (cannot be mirrored onto the joined column; use `on`) are dropped and rejected as `ARGS`.
+- **Join shorthands `by_gt`/`by_gte`/`by_lt`/`by_lte`** read left to right as in v3 (`by_gt: "@a:@b"` → `fetch.a > joined.b`). `by_in` (column IN column was never meaningful) and `by_like` (cannot be mirrored onto the joined column; use `on`) are dropped and rejected as `ARGS`. Several shorthands on one joined column are ANDed; repeating the same operator on one column is an `ARGS` error (v3 silently kept the last).
 - **CTE bodies carry no nested `WITH`**: the outer statement lists every transitive `with` once, in dependency order.
 - **`limit: 0` / `offset: 0`** are emitted; v3 ignored falsy values.
 - **Unknown fetch arguments** (`fetch(limit: 5)`) still become equality filters on that column, as in v3.
