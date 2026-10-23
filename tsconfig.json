@@ -3,16 +3,22 @@
     "target": "es2022",
     "module": "commonjs",
     "moduleResolution": "node",
-    "lib": ["es2022"],
+    "lib": [
+      "es2022"
+    ],
     "strict": true,
     "noUncheckedIndexedAccess": false,
     "esModuleInterop": true,
     "declaration": true,
     "sourceMap": true,
     "outDir": "dist",
-    "rootDir": "src",
     "skipLibCheck": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ],
+    "rootDir": "src"
   },
-  "include": ["src", "test"]
+  "include": [
+    "src"
+  ]
 }

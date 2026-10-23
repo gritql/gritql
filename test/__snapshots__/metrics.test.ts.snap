@@ -1,0 +1,175 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`metrics > arithmetic metrics with \`fn|field\` syntax > diff > custom functions 1`] = `
+[
+  "select "device", cast("count"("sessions") as float)/NULLIF(cast("max"("users") as float) + 1e-10, 0)::float4 - 1  as "x" from "t" group by "device"",
+]
+`;
+
+exports[`metrics > arithmetic metrics with \`fn|field\` syntax > diff > default sums both 1`] = `
+[
+  "select "device", cast("sum"("sessions") as float)/NULLIF(cast("sum"("users") as float) + 1e-10, 0)::float4 - 1  as "x" from "t" group by "device"",
+]
+`;
+
+exports[`metrics > arithmetic metrics with \`fn|field\` syntax > diff > raw a 1`] = `
+[
+  "select "device", cast("sessions" as float)/NULLIF(cast("sum"("users") as float) + 1e-10, 0)::float4 - 1  as "x" from "t" group by "device"",
+]
+`;
+
+exports[`metrics > arithmetic metrics with \`fn|field\` syntax > diff > raw both 1`] = `
+[
+  "select "device", cast("sessions" as float)/NULLIF(cast("users" as float) + 1e-10, 0)::float4 - 1  as "x" from "t" group by "device"",
+]
+`;
+
+exports[`metrics > arithmetic metrics with \`fn|field\` syntax > diff > raw by 1`] = `
+[
+  "select "device", cast("sum"("sessions") as float)/NULLIF(cast("users" as float) + 1e-10, 0)::float4 - 1  as "x" from "t" group by "device"",
+]
+`;
+
+exports[`metrics > arithmetic metrics with \`fn|field\` syntax > divide > custom functions 1`] = `
+[
+  "select "device", cast("count"("sessions") as float)/NULLIF(cast("max"("users") as float) + 1e-10, 0)::float4 as "x" from "t" group by "device"",
+]
+`;
+
+exports[`metrics > arithmetic metrics with \`fn|field\` syntax > divide > default sums both 1`] = `
+[
+  "select "device", cast("sum"("sessions") as float)/NULLIF(cast("sum"("users") as float) + 1e-10, 0)::float4 as "x" from "t" group by "device"",
+]
+`;
+
+exports[`metrics > arithmetic metrics with \`fn|field\` syntax > divide > raw a 1`] = `
+[
+  "select "device", cast("sessions" as float)/NULLIF(cast("sum"("users") as float) + 1e-10, 0)::float4 as "x" from "t" group by "device"",
+]
+`;
+
+exports[`metrics > arithmetic metrics with \`fn|field\` syntax > divide > raw both 1`] = `
+[
+  "select "device", cast("sessions" as float)/NULLIF(cast("users" as float) + 1e-10, 0)::float4 as "x" from "t" group by "device"",
+]
+`;
+
+exports[`metrics > arithmetic metrics with \`fn|field\` syntax > divide > raw by 1`] = `
+[
+  "select "device", cast("sum"("sessions") as float)/NULLIF(cast("users" as float) + 1e-10, 0)::float4 as "x" from "t" group by "device"",
+]
+`;
+
+exports[`metrics > arithmetic metrics with \`fn|field\` syntax > multiply > custom functions 1`] = `
+[
+  "select "device", cast("count"("sessions") as float)*cast("max"("users") as float)::float4 as "x" from "t" group by "device"",
+]
+`;
+
+exports[`metrics > arithmetic metrics with \`fn|field\` syntax > multiply > default sums both 1`] = `
+[
+  "select "device", cast("sum"("sessions") as float)*cast("sum"("users") as float)::float4 as "x" from "t" group by "device"",
+]
+`;
+
+exports[`metrics > arithmetic metrics with \`fn|field\` syntax > multiply > raw a 1`] = `
+[
+  "select "device", cast("sessions" as float)*cast("sum"("users") as float)::float4 as "x" from "t" group by "device"",
+]
+`;
+
+exports[`metrics > arithmetic metrics with \`fn|field\` syntax > multiply > raw both 1`] = `
+[
+  "select "device", cast("sessions" as float)*cast("users" as float)::float4 as "x" from "t" group by "device"",
+]
+`;
+
+exports[`metrics > arithmetic metrics with \`fn|field\` syntax > multiply > raw by 1`] = `
+[
+  "select "device", cast("sum"("sessions") as float)*cast("users" as float)::float4 as "x" from "t" group by "device"",
+]
+`;
+
+exports[`metrics > arithmetic metrics with \`fn|field\` syntax > subtract > custom functions 1`] = `
+[
+  "select "device", cast("count"("sessions") as float)-cast("max"("users") as float) as "x" from "t" group by "device"",
+]
+`;
+
+exports[`metrics > arithmetic metrics with \`fn|field\` syntax > subtract > default sums both 1`] = `
+[
+  "select "device", cast("sum"("sessions") as float)-cast("sum"("users") as float) as "x" from "t" group by "device"",
+]
+`;
+
+exports[`metrics > arithmetic metrics with \`fn|field\` syntax > subtract > raw a 1`] = `
+[
+  "select "device", cast("sessions" as float)-cast("sum"("users") as float) as "x" from "t" group by "device"",
+]
+`;
+
+exports[`metrics > arithmetic metrics with \`fn|field\` syntax > subtract > raw both 1`] = `
+[
+  "select "device", cast("sessions" as float)-cast("users" as float) as "x" from "t" group by "device"",
+]
+`;
+
+exports[`metrics > arithmetic metrics with \`fn|field\` syntax > subtract > raw by 1`] = `
+[
+  "select "device", cast("sum"("sessions") as float)-cast("users" as float) as "x" from "t" group by "device"",
+]
+`;
+
+exports[`metrics > averages > aggrAverage 1`] = `
+[
+  "select "device", sum("aggrAverage")/max("users")::float4  as "price_aggrAverage" from (select "device", "price", sum("sessions") as "sessions", sum("users") as "users", "price" * sum("sessions") as "aggrAverage", sum("users") as "users" from "t" group by "device", "price") as "middleTable" group by "device"",
+]
+`;
+
+exports[`metrics > averages > aggrAverage with to equal to by 1`] = `
+[
+  "select "device", sum("aggrAverage")/max("users")::float4  as "price_aggrAverage" from (select "device", "price", sum("users") as "users", sum("users") as "users", "price" * sum("users") as "aggrAverage" from "t" group by "device", "price") as "middleTable" group by "device"",
+]
+`;
+
+exports[`metrics > averages > weightAvg 1`] = `
+[
+  "select "device", sum("weightAvg")/sum("users")::float4 as "x" from (select "device", "price", sum("users") as "users", "price" * sum("users")::float4 as "weightAvg" from "t" group by "device", "price") as "middleTable" group by "device"",
+]
+`;
+
+exports[`metrics > ranking > alg denseRank 1`] = `
+[
+  "select "device", "t"."rank" from (select *, DENSE_RANK() OVER(ORDER BY "sessions" DESC) as "rank" from "t") as "t" group by "device", "t"."rank"",
+]
+`;
+
+exports[`metrics > ranking > alg rank 1`] = `
+[
+  "select "device", "t"."rank" from (select *, RANK() OVER(ORDER BY "sessions" DESC) as "rank" from "t") as "t" group by "device", "t"."rank"",
+]
+`;
+
+exports[`metrics > ranking > alg reverseDenseRank builds a reverse CTE 1`] = `
+[
+  "select "device", (max("t"."reverse_rank") over ()) - "t"."reverse_rank" + 1 as "rank" from (select *, DENSE_RANK() OVER(ORDER BY "sessions" DESC) as "reverse_rank" from "t") as "t" group by "device", "t"."reverse_rank"",
+]
+`;
+
+exports[`metrics > ranking > alg reverseRank builds a reverse CTE 1`] = `
+[
+  "select "device", (max("t"."reverse_rank") over ()) - "t"."reverse_rank" + 1 as "rank" from (select *, RANK() OVER(ORDER BY "sessions" DESC) as "reverse_rank" from "t") as "t" group by "device", "t"."reverse_rank"",
+]
+`;
+
+exports[`metrics > ranking > alg reverseRowNumber builds a reverse CTE 1`] = `
+[
+  "select "device", (max("t"."reverse_rank") over ()) - "t"."reverse_rank" + 1 as "rank" from (select *, ROW_NUMBER() OVER(ORDER BY "sessions" DESC) as "reverse_rank" from "t") as "t" group by "device", "t"."reverse_rank"",
+]
+`;
+
+exports[`metrics > ranking > alg rowNumber 1`] = `
+[
+  "select "device", "t"."rank" from (select *, ROW_NUMBER() OVER(ORDER BY "sessions" DESC) as "rank" from "t") as "t" group by "device", "t"."rank"",
+]
+`;

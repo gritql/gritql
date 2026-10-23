@@ -6,6 +6,6 @@ coverage
 projectplan.md
 SPEC.md
 COMPAT.md
-vitest.config.ts
+vitest.config.mts
 tsconfig*.json
 .claude
