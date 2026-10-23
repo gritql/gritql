@@ -146,6 +146,7 @@ describe('review findings', () => {
     // written on the joined column, so `fetch.a > joined.b` prints as `c.b < t.a`
     expect(sql).toContain('JOIN "c" ON ("c"."pid" = "t"."id") AND (("c"."b" < "t"."a"))')
     await expect(sqlOf(`query t { fetch { join(table: c, by_in: "@id:@pid") { v: sum(a: x) } } }`)).rejects.toMatchObject({ code: 'ARGS' })
+    await expect(sqlOf(`query t { fetch { join(table: c, by_like: "@n:@p") { v: sum(a: x) } } }`)).rejects.toMatchObject({ code: 'ARGS' })
   })
 
   test('a CTE chain lists every with once in the outer statement', async () => {

@@ -131,7 +131,7 @@ function normalizeFilters(args: Record<string, unknown>): FilterExpr | null {
 }
 
 /** join shorthand operators and their mirror when written on the joined-table side */
-const BY_OPS: Record<string, string> = { eq: 'eq', gt: 'lt', gte: 'lte', lt: 'gt', lte: 'gte', like: 'like' }
+const BY_OPS: Record<string, string> = { eq: 'eq', gt: 'lt', gte: 'lte', lt: 'gt', lte: 'gte' }
 
 function toJoin(type: JoinType, args: Record<string, unknown>, where: string): Join {
   const table = args.table

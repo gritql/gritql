@@ -136,7 +136,7 @@ function mapKey(step: Step, keys: Record<string, unknown>): string {
 
 /** descend (creating) to the object the cell is written into */
 function descend(holder: Holder, steps: Step[], keys: Record<string, unknown>): any {
-  let node = holder.obj[holder.key]
+  let node = hasOwn(holder.obj, holder.key) ? holder.obj[holder.key] : undefined
   for (let i = 0; i < steps.length; i++) {
     const s = steps[i]
     if (s.array) {
@@ -144,7 +144,7 @@ function descend(holder: Holder, steps: Step[], keys: Record<string, unknown>): 
       if (Array.isArray(node)) arr = node
       else if (i === 0 && isEmptyObject(node)) {
         arr = []
-        holder.obj[holder.key] = arr
+        setOwn(holder.obj, holder.key, arr)
       } else {
         arr = node[s.keySpec]
         if (arr == null) {
@@ -277,7 +277,8 @@ export class Assembler {
   reader(baseline: Output | undefined) {
     return (alias: string | null, keys: Record<string, unknown>, path: string[]): unknown => {
       if (!baseline) return undefined
-      return readAt(baseline[alias ?? ''], this.stepsFor(alias, path), keys)
+      const key = alias ?? ''
+      return readAt(hasOwn(baseline, key) ? baseline[key] : undefined, this.stepsFor(alias, path), keys)
     }
   }
 
@@ -359,10 +360,11 @@ export class Assembler {
       // pass 2 leaves hidden fetches and hidden grains out of the output
       if (baseline && (physical.fetch.emit === false || physical.grain.some((d) => d.emit === false))) continue
       if (physical.fetch.kind === 'fetchPlain') {
-        ;(out[key] ??= []).push(rows)
+        if (!hasOwn(out, key)) setOwn(out, key, [])
+        out[key].push(rows)
         continue
       }
-      if (!(key in out)) out[key] = {}
+      if (!hasOwn(out, key)) setOwn(out, key, {})
       this.fill({ obj: out, key }, physical, rows, templates.get(physical)!, baseline, out, at)
     }
     return out

@@ -119,7 +119,7 @@ pre: with(filters: $f) {
 }
 ```
 
-A join node adds a join to its fetch and is transparent in the output (its children are placed as if they were its siblings). `on` is a filter object: each key names a column of the **joined** table and a string value written `@col` names a column of the **fetch** table, so `on: { pid: "@id" }` compiles to `JOIN products ON products.pid = <fetch_table>.id`. `by: "@fetch_col:@joined_col"` (repeatable) is the shorthand for `on: { joined_col: "@fetch_col" }`; `by_gt`, `by_gte`, `by_lt`, `by_lte`, `by_like` read left to right (`by_gt: "@a:@b"` means `fetch.a > joined.b`). v3's `by_in` (column IN column) is dropped and rejected as `ARGS`. Joins may also be given as fetch arguments.
+A join node adds a join to its fetch and is transparent in the output (its children are placed as if they were its siblings). `on` is a filter object: each key names a column of the **joined** table and a string value written `@col` names a column of the **fetch** table, so `on: { pid: "@id" }` compiles to `JOIN products ON products.pid = <fetch_table>.id`. `by: "@fetch_col:@joined_col"` (repeatable) is the shorthand for `on: { joined_col: "@fetch_col" }`; `by_gt`, `by_gte`, `by_lt`, `by_lte` read left to right (`by_gt: "@a:@b"` means `fetch.a > joined.b`). v3's `by_in` (column IN column) and `by_like` (not reversible onto the joined column; write it as `on`) are dropped and rejected as `ARGS`. Joins may also be given as fetch arguments.
 
 ---
 

@@ -19,6 +19,15 @@ describe('dimension values named like prototype members', () => {
     const diff = await run([rows, rows], `query t { a: fetch { country { v: sum(a: x) @subtract(by: b) } } b: fetch { country { v: sum(a: x) } } }`)
     expect(Object.getOwnPropertyDescriptor((diff as any).a, '__proto__')!.value).toEqual({ v: 0 })
   })
+
+  test('fetch aliases named like prototype members are ordinary keys', async () => {
+    const out = await run([[{ v: 2 }], [{ v: 3 }], [[{ v: 4 }]].flat()], `query t { __proto__: fetch { v: sum(a: x) } constructor: fetch { v: sum(a: x) } toString: fetchPlain { v } }`)
+    expect(Object.keys(out as object).sort()).toEqual(['__proto__', 'constructor', 'toString'])
+    expect(Object.getOwnPropertyDescriptor(out, '__proto__')!.value).toEqual({ v: 2 })
+    expect((out as any).constructor).toEqual({ v: 3 })
+    expect((out as any).toString).toEqual([[{ v: 4 }]])
+    expect(({} as any).v).toBeUndefined()
+  })
 })
 
 describe('merge', () => {
