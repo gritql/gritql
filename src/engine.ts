@@ -162,7 +162,12 @@ export class Gritql {
 
   private async planStage(plan: Plan, base: BaseCtx): Promise<void> {
     for (const mw of this.registry.middleware) {
-      if (mw.plan) await mw.plan(undefined, this.makeCtx(base))
+      if (!mw.plan) continue
+      try {
+        await mw.plan(undefined, this.makeCtx(base))
+      } catch (e) {
+        throw toGritqlError('PLAN', e)
+      }
     }
     const kept: Fetch[] = []
     for (const fetch of plan.fetches) {

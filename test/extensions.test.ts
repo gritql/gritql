@@ -226,10 +226,12 @@ describe('review findings', () => {
     expect(out).toEqual({ m: { a: 5 } })
   })
 
-  test('a row-level hook may replace the value of every cell of the row', async () => {
-    const zero: Resolver = { result: () => ({ value: 0 }) }
-    await expect(run([[{ device: 'm', a: 1, b: 2 }]], `query t { fetch @zero { device { a: sum(a: x) b: sum(a: y) } } }`, {}, { directives: { zero } })).resolves.toEqual({
-      m: { a: 0, b: 0 },
+  test('a row-level hook that returns a value runs for every cell of the row', async () => {
+    const dbl: Resolver = { result: (cell, ctx) => (ctx.baseline ? { value: (cell.value as number) * 2 } : undefined) }
+    const q = `query t { fetch @dbl { device { a: sum(a: x) b: sum(a: y) } } }`
+    await expect(run([[{ device: 'm', a: 1, b: 10 }]], q, {}, { directives: { dbl } })).resolves.toEqual({ m: { a: 2, b: 20 } })
+    await expect(run([[{ device: 'm', a: 1, b: 10 }]], `query t { fetch { device { a: sum(a: x) b: sum(a: y) } } }`, {}, { middleware: [dbl] })).resolves.toEqual({
+      m: { a: 2, b: 20 },
     })
   })
 

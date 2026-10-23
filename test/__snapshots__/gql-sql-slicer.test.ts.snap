@@ -498,7 +498,7 @@ exports[`SQL > gql directives > @subtract directive on deep path 2`] = `
 
 exports[`SQL > gqlBuilder function > avg 1`] = `
 [
-  "select "channels", avg("sessions") OVER() as "avg" from "ecom_benchmarking" where ("ecom_benchmarking"."date" = '2020-11-27') AND ("ecom_benchmarking"."category" = 'Finance/Investing') group by "channels"",
+  "select "channels", avg("sessions")::float4 as "avg" from "ecom_benchmarking" where ("ecom_benchmarking"."date" = '2020-11-27') AND ("ecom_benchmarking"."category" = 'Finance/Investing') group by "channels"",
 ]
 `;
 
@@ -634,7 +634,7 @@ exports[`SQL > gqlBuilder single query > distinct 1`] = `
 
 exports[`SQL > gqlBuilder single query > group date by month 1`] = `
 [
-  "select "device", date_trunc('month', "date") as "date", SUM("no_unique_products") AS "no_unique_products", SUM("no_brand_products") AS "no_brand_products" from "table" where ("table"."brand" = 'Adidas') AND ("table"."country" = 'US') AND (("table"."date" > '2020-1-1') AND ("table"."date" < '2021-7-12')) group by "device", "date"",
+  "select "device", date_trunc('month', "date") as "date", SUM("no_unique_products") AS "no_unique_products", SUM("no_brand_products") AS "no_brand_products" from "table" where ("table"."brand" = 'Adidas') AND ("table"."country" = 'US') AND (("table"."date" > '2020-1-1') AND ("table"."date" < '2021-7-12')) group by "device", date_trunc('month', "date")",
 ]
 `;
 
@@ -647,7 +647,7 @@ exports[`SQL > gqlBuilder single query > handle table name in query 1`] = `
 
 exports[`SQL > gqlBuilder single query > median 1`] = `
 [
-  "select MEDIAN("price") OVER() AS "median" from "table"",
+  "select MEDIAN("price") AS "median" from "table"",
 ]
 `;
 

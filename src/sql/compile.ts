@@ -108,7 +108,7 @@ function raw(knex: Knex, frag: Frag): Knex.Raw {
   return knex.raw(frag.sql, frag.bindings)
 }
 
-export function compilePhysical(physical: Physical, env: CompileEnv): Knex.QueryBuilder {
+export function compilePhysical(physical: Physical, env: CompileEnv, asCte = false): Knex.QueryBuilder {
   const { knex, registry } = env
   const { fetch } = physical
   const table = tableOf(fetch)
@@ -256,11 +256,13 @@ export function compilePhysical(physical: Physical, env: CompileEnv): Knex.Query
   for (const { resolver, node } of queryHooks) qb = resolver.query!(qb, physical, env.makeCtx(physical, node))
   for (const mw of registry.middleware) if (mw.query) qb = mw.query(qb, physical, env.makeCtx(physical))
 
-  // --- CTEs ----------------------------------------------------------------
-  for (const alias of physical.ctes) {
-    const cte = env.physicals.find((p) => p.fetch.kind === 'with' && p.fetch.alias === alias)
-    if (!cte) throw new GritqlError('PLAN', `with "${alias}" is referenced but not defined`)
-    qb = qb.with(alias, compilePhysical(cte, env))
+  // --- CTEs (the outer statement lists every transitive dependency in order; bodies attach none) ---
+  if (!asCte) {
+    for (const alias of physical.ctes) {
+      const cte = env.physicals.find((p) => p.fetch.kind === 'with' && p.fetch.alias === alias)
+      if (!cte) throw new GritqlError('PLAN', `with "${alias}" is referenced but not defined`)
+      qb = qb.with(alias, compilePhysical(cte, env, true))
+    }
   }
 
   return qb

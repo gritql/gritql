@@ -4,6 +4,23 @@ import { run } from './harness'
 
 const d = (date: string, device: string, value: number) => ({ date, device, value })
 
+describe('dimension values named like prototype members', () => {
+  test('are ordinary keys and never touch Object.prototype', async () => {
+    const rows = [
+      { country: '__proto__', v: 2 },
+      { country: 'constructor', v: 3 },
+      { country: 'toString', v: 4 },
+    ]
+    const out = (await run([rows], `query t { fetch { country { v: sum(a: x) } } }`)) as Record<string, { v: number }>
+    expect(Object.keys(out).sort()).toEqual(['__proto__', 'constructor', 'toString'])
+    expect(Object.getOwnPropertyDescriptor(out, '__proto__')!.value).toEqual({ v: 2 })
+    expect(out.constructor).toEqual({ v: 3 })
+    expect(({} as any).v).toBeUndefined()
+    const diff = await run([rows, rows], `query t { a: fetch { country { v: sum(a: x) @subtract(by: b) } } b: fetch { country { v: sum(a: x) } } }`)
+    expect(Object.getOwnPropertyDescriptor((diff as any).a, '__proto__')!.value).toEqual({ v: 0 })
+  })
+})
+
 describe('merge', () => {
   describe('plain shapes', () => {
     const rows = [d('2022-01-01', 'mobile', 1), d('2022-01-01', 'desktop', 2), d('2022-01-02', 'mobile', 10)]

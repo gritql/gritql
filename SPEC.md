@@ -119,7 +119,7 @@ pre: with(filters: $f) {
 }
 ```
 
-A join node adds a join to its fetch and is transparent in the output (its children are placed as if they were its siblings). `on` is a filter object: each key names a column of the **joined** table and a string value written `@col` names a column of the **fetch** table, so `on: { pid: "@id" }` compiles to `JOIN products ON products.pid = <fetch_table>.id`. `by: "@fetch_col:@joined_col"` (repeatable; `by_gt`, `by_gte`, `by_lt`, `by_lte`, `by_like`, `by_in` for other operators) is the shorthand for `on: { joined_col: "@fetch_col" }`. Joins may also be given as fetch arguments.
+A join node adds a join to its fetch and is transparent in the output (its children are placed as if they were its siblings). `on` is a filter object: each key names a column of the **joined** table and a string value written `@col` names a column of the **fetch** table, so `on: { pid: "@id" }` compiles to `JOIN products ON products.pid = <fetch_table>.id`. `by: "@fetch_col:@joined_col"` (repeatable) is the shorthand for `on: { joined_col: "@fetch_col" }`; `by_gt`, `by_gte`, `by_lt`, `by_lte`, `by_like` read left to right (`by_gt: "@a:@b"` means `fetch.a > joined.b`). v3's `by_in` (column IN column) is dropped and rejected as `ARGS`. Joins may also be given as fetch arguments.
 
 ---
 
@@ -359,7 +359,7 @@ Assembly runs twice when any fetch carries a directive with a `result` hook.
 - `keys` relocates: the write uses these dimension values instead of the row's. A relocated write of a number into a key that already holds a number adds to it; anything else replaces. This is how `@groupBy(by: month)` and `@groupOn` merge elements. The relocated element's identity columns are the new keys; nothing is copied into nested objects.
 - `set` writes additional `key: value` pairs on the object that receives the cell (used by `@groupOn(replacers)`).
 
-`@filter`, `@groupOn`, `@groupBy`, `@diff`, `@subtract`, `@divide`, `@indexed` and `@omit` act only once `baseline` exists (pass 2); `@parse` acts in both. A hook attached to a fetch or a dimension is **row-level**: the engine runs it once per row (for the row's first cell) and reuses its `CellResult`, including a returned `value`, for the row's other cells, so `@parse` on a dimension rewrites the row once and `@filter` on a dimension decides once per row. A dimension hook that needs the row's baseline element reads it at its own path (`ctx.at(alias, cell.keys, ctx.path)`), so `country @filter(total_gt: 5) { total device { value } }` drops the country from every grain. A hook attached to a metric runs per cell. Pruning is implicit: a container nobody writes into is never created, so `@filter` on a dimension removes the element from every grain by returning `skipAll` for each of its rows.
+`@filter`, `@groupOn`, `@groupBy`, `@diff`, `@subtract`, `@divide`, `@indexed` and `@omit` act only once `baseline` exists (pass 2); `@parse` acts in both. A hook attached to a fetch or a dimension is **row-level**: the engine runs it once per row (for the row's first cell) and reuses its `CellResult` for the row's other cells, so `@parse` on a dimension rewrites the row once and `@filter` on a dimension decides once per row. A row-level hook that returns `value` is the exception: values are per cell, so it runs again for each of the row's cells. A dimension hook that needs the row's baseline element reads it at its own path (`ctx.at(alias, cell.keys, ctx.path)`), so `country @filter(total_gt: 5) { total device { value } }` drops the country from every grain. A hook attached to a metric runs per cell. Pruning is implicit: a container nobody writes into is never created, so `@filter` on a dimension removes the element from every grain by returning `skipAll` for each of its rows.
 
 Cross-fetch reads go through `ctx.at(alias, keys, path)`, which resolves the location in `baseline` by dimension key values (Array levels by the element's key columns, Map levels by key), never by array index, and returns `undefined` when the fetch or element is missing. `@divide(byField)` reads the sibling metric from `baseline` at the same keys. Arithmetic on a missing reference yields `NaN`, as in v3.
 
@@ -373,7 +373,8 @@ Cross-fetch reads go through `ctx.at(alias, keys, path)`, which resolves the loc
 |---|---|---|
 | default (bare name) | — | `col as alias` |
 | sum / min / max / count / avg | a, by? | `SUM(a)`; with `by`: `SUM(a) OVER (PARTITION BY by)` (avg casts `::float4`) |
-| count (a optional: `COUNT(*)`; `a: "*"` too)Distinct | a | `count(distinct a)` |
+| count | a? | `COUNT(a)`; without `a` or with `a: "*"`: `COUNT(*)` |
+| countDistinct | a | `count(distinct a)` |
 | unique | a? | `col as alias`, `group: true` |
 | any | a? | `any(col)` |
 | from | a?, from! | `t.col as alias` |
@@ -398,7 +399,7 @@ Cross-fetch reads go through `ctx.at(alias, keys, path)`, which resolves the loc
 | name | args | columns / grouping |
 |---|---|---|
 | default | type, sort_*, limit, offset, having, from | `col` grouped |
-| groupBy | field!, by (date_trunc unit), alias | `date_trunc(by, field) as alias` grouped by the expression, or by the alias when it shadows the source column (ClickHouse cyclic-alias rule) |
+| groupBy | field!, by (date_trunc unit), alias | `date_trunc(by, field) as alias` grouped by the expression; on ClickHouse only, grouped by the alias when it shadows the source column (cyclic-alias rule; PostgreSQL would resolve that name to the input column) |
 | groupByEach | field!, each | bucket label `"lo-hi"` grouped by bucket index; hidden `_min`/`_max` columns are not emitted |
 | combine | fields! (names or `{name, alias, resolver, ...args}`) | each field is a column and a group key; output key per field |
 | join family | table!, on \| by | adds a join; children are lifted to the parent |

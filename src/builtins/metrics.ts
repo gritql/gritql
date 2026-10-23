@@ -95,7 +95,7 @@ export const metrics: Record<string, Resolver> = {
 
   avg: {
     args: { a: PropTypes.string.isRequired, by: PropTypes.string },
-    sql: (node, ctx) => ctx.knex.raw(`avg(??) ${over(node, ctx, undefined, 'float4')} as ??`, [a(node, ctx), node.alias]),
+    sql: (node, ctx) => ctx.knex.raw(`avg(??)${node.args.by ? ` ${over(node, ctx, undefined, 'float4')}` : '::float4'} as ??`, [a(node, ctx), node.alias]),
   },
 
   unique: {
@@ -124,12 +124,12 @@ export const metrics: Record<string, Resolver> = {
   percentile: {
     args: { a: PropTypes.string.isRequired, factor: PropTypes.number },
     sql: (node, ctx) =>
-      ctx.knex.raw('PERCENTILE_CONT(??) WITHIN GROUP(ORDER BY ??) AS ??', [parseFloat(String(node.args.factor)) || 0.5, a(node, ctx), node.alias]),
+      ctx.knex.raw('PERCENTILE_CONT(??) WITHIN GROUP(ORDER BY ??) AS ??', [node.args.factor == null ? 0.5 : Number(node.args.factor), a(node, ctx), node.alias]),
   },
 
   median: {
     args: { a: PropTypes.string.isRequired, ...partitionByTypes },
-    sql: (node, ctx) => ctx.knex.raw(`MEDIAN(??) ${over(node, ctx)} AS ??`, [node.args.a as string, node.alias]),
+    sql: (node, ctx) => ctx.knex.raw(`MEDIAN(??)${node.args.by ? ` ${over(node, ctx)}` : ''} AS ??`, [a(node, ctx), node.alias]),
   },
 
   share: {

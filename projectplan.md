@@ -45,7 +45,7 @@ Only real consumer: `peekd-sp/lib/frontend` (ClickHouse via knex dialect plugin,
 - [x] Profile and optimise until v4 ≤ v3 on every scenario.
 
 ## Phase 5 — implementation review
-- [~] Fable + Codex review of the code against SPEC.md and v3 behaviour. Fix findings. Repeat until no blocking issues (cap 2 rounds). Codex round 1: 15 blocking items, all fixed (HAVING-alias on pg documented as limitation). Codex round 2 and Fable round 1: running.
+- [~] Fable + Codex review of the code against SPEC.md and v3 behaviour. Fix findings. Repeat until no blocking issues (cap 2 rounds). Codex round 1: 15 blocking items, all fixed (HAVING-alias on pg documented as limitation). Codex round 2: 13/15 verified fixed, 6 new blocking (groupBy alias on pg, `__proto__` keys, `by_in`, untyped middleware plan errors, `percentile(factor: 0)`, `avg OVER()`), all fixed. Fable round 1: 4 blocking (row-level `value` cached per row, groupBy alias on pg, `avg OVER()`, `by_gt` inverted), all fixed; nits folded (CTE nesting, median `from`, COMPAT lines). Final verification round: running.
 - [x] `npm run build`, `tsc --noEmit`, full test run (385 tests, 13 files), bench rerun (`bench/RESULTS.md`).
 
 ## Review

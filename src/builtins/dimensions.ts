@@ -41,8 +41,9 @@ export const dimensions: Record<string, Resolver> = {
       const alias = (node.args.alias as string) ?? (node.alias !== node.name ? node.alias : (node.args.field as string))
       const expr = ctx.knex.raw('date_trunc(?, ??)', [String(node.args.by ?? 'day'), col])
       // when the alias shadows the source column (`date: groupBy(field: date)`), ClickHouse reads the inner `date`
-      // as the alias (cyclic alias); grouping by the output alias is valid on every dialect
-      const shadows = alias === (node.args.field as string) && !node.args.from
+      // as the alias (cyclic alias) and wants the alias in GROUP BY; PostgreSQL resolves that name to the input
+      // column instead, so every other dialect groups by the expression
+      const shadows = ctx.dialect === 'clickhouse' && alias === (node.args.field as string) && !node.args.from
       return {
         select: [ctx.knex.raw(`${expr.toQuery()} as ??`, [alias])],
         groupBy: [shadows ? ctx.knex.raw('??', [alias]) : expr],

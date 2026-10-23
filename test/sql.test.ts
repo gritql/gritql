@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest'
+import { fixtureAdapter, gritql } from '../src'
 import { run, sqlOf } from './harness'
 
 describe('SQL shapes not covered by the v3 suites', () => {
@@ -119,9 +120,48 @@ describe('review findings', () => {
     expect(sql).toBe('select COUNT(*) AS "n", COUNT(*) AS "m" from "t"')
   })
 
-  test('groupBy dimension whose alias shadows its column groups by the alias', async () => {
-    const [sql] = await sqlOf(`query t { fetch { date: groupBy(field: date, by: month) { v: sum(a: x) } } }`)
-    expect(sql).toBe(`select date_trunc('month', "date") as "date", SUM("x") AS "v" from "t" group by "date"`)
+  test('groupBy dimension whose alias shadows its column groups by the alias on ClickHouse only', async () => {
+    const q = `query t { fetch { date: groupBy(field: date, by: month) { v: sum(a: x) } } }`
+    const [pg] = await sqlOf(q)
+    expect(pg).toBe(`select date_trunc('month', "date") as "date", SUM("x") AS "v" from "t" group by date_trunc('month', "date")`)
+    const ch = await gritql({ adapters: { ch: fixtureAdapter([], 'clickhouse') } }).compile(q, {})
+    expect(ch.queries[0].text).toBe(`select date_trunc('month', "date") as "date", SUM("x") AS "v" from "t" group by "date"`)
+  })
+
+  test('avg and median are plain aggregates unless partitioned', async () => {
+    const [sql] = await sqlOf(`query t { fetch { d { m: avg(a: s) w: avg(a: s, by: d) md: median(a: s, from: "@") } } }`)
+    expect(sql).toContain('avg("s")::float4 as "m"')
+    expect(sql).toContain('avg("s") OVER(PARTITION BY "d")::float4 as "w"')
+    expect(sql).toContain('MEDIAN("t"."s") AS "md"')
+  })
+
+  test('percentile keeps factor 0', async () => {
+    const [sql] = await sqlOf(`query t { fetch { p: percentile(a: x, factor: 0) q: percentile(a: x) } }`)
+    expect(sql).toContain('PERCENTILE_CONT(0) WITHIN GROUP(ORDER BY "x") AS "p"')
+    expect(sql).toContain('PERCENTILE_CONT(0.5) WITHIN GROUP(ORDER BY "x") AS "q"')
+  })
+
+  test('join shorthand inequalities read left to right; by_in is rejected', async () => {
+    const [sql] = await sqlOf(`query t { fetch { join(table: c, by: "@id:@pid", by_gt: "@a:@b") { v: sum(a: x) } } }`)
+    // written on the joined column, so `fetch.a > joined.b` prints as `c.b < t.a`
+    expect(sql).toContain('JOIN "c" ON ("c"."pid" = "t"."id") AND (("c"."b" < "t"."a"))')
+    await expect(sqlOf(`query t { fetch { join(table: c, by_in: "@id:@pid") { v: sum(a: x) } } }`)).rejects.toMatchObject({ code: 'ARGS' })
+  })
+
+  test('a CTE chain lists every with once in the outer statement', async () => {
+    const [sql] = await sqlOf(`query t {
+      a: with(table: s) { d { v: sum(a: x) } }
+      b: with(table: a) { d { v: sum(a: v) } }
+      c: fetch(table: b) { d { v: sum(a: v) } }
+    }`)
+    expect(sql.match(/with "a" as/g)).toHaveLength(1)
+    expect(sql.match(/"b" as \(/g)).toHaveLength(1)
+    expect(sql.startsWith('with "a" as (select "d", SUM("x") AS "v" from "s" group by "d"), "b" as (select "d", SUM("v") AS "v" from "a" group by "d") select')).toBe(true)
+  })
+
+  test('a plan middleware error is a PLAN error', async () => {
+    const boom = { plan: () => { throw new Error('boom') } }
+    await expect(sqlOf(`query t { fetch { v: sum(a: x) } }`, {}, { middleware: [boom] })).rejects.toMatchObject({ code: 'PLAN', message: 'boom' })
   })
 
   test('typed errors: TYPE for variables, PLAN for cycles, RESULT for hooks, ARGS carries the path', async () => {

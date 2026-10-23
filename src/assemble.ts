@@ -166,15 +166,22 @@ function descend(holder: Holder, steps: Step[], keys: Record<string, unknown>): 
     } else {
       if (Array.isArray(node)) throw new Error(`Cannot use key "${mapKey(s, keys)}" on an array`)
       const key = mapKey(s, keys)
-      let child = node[key]
+      let child = hasOwn(node, key) ? node[key] : undefined
       if (child == null) {
         child = steps[i + 1]?.array ? [] : {}
-        node[key] = child
+        setOwn(node, key, child)
       }
       node = child
     }
   }
   return node
+}
+
+const hasOwn = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k)
+/** plain assignment except for `__proto__`, which must not reach the prototype chain (dimension values are raw data) */
+function setOwn(o: any, k: string, v: unknown): void {
+  if (k === '__proto__') Object.defineProperty(o, k, { value: v, enumerable: true, writable: true, configurable: true })
+  else o[k] = v
 }
 
 /** read-only walk; `undefined` when a step is missing */
@@ -189,7 +196,8 @@ function readAt(root: any, steps: Step[], keys: Record<string, unknown>): any {
       if (!Array.isArray(arr)) return undefined
       node = findKeyed(arr, s, valueKey(s.cols.map((c) => keys[c])))
     } else {
-      node = node[mapKey(s, keys)]
+      const key = mapKey(s, keys)
+      node = hasOwn(node, key) ? node[key] : undefined
     }
   }
   return node
@@ -410,7 +418,8 @@ export class Assembler {
             if (cache.has(row)) res = cache.get(row)
             else {
               res = h.resolver.result!({ value, row, keys, node: m.node, path: m.path, index: j }, ctxFor(h)) ?? null
-              cache.set(row, res)
+              // a value is per cell: a hook that rewrites values runs again for the row's other cells
+              if (!res || !('value' in res)) cache.set(row, res)
             }
           } else {
             res = h.resolver.result!({ value, row, keys, node: m.node, path: m.path, index: j }, ctxFor(h))

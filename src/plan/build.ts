@@ -130,6 +130,9 @@ function normalizeFilters(args: Record<string, unknown>): FilterExpr | null {
   return any ? out : null
 }
 
+/** join shorthand operators and their mirror when written on the joined-table side */
+const BY_OPS: Record<string, string> = { eq: 'eq', gt: 'lt', gte: 'lte', lt: 'gt', lte: 'gte', like: 'like' }
+
 function toJoin(type: JoinType, args: Record<string, unknown>, where: string): Join {
   const table = args.table
   if (typeof table !== 'string') throw new GritqlError('ARGS', "Join function requires 'table' as argument", { path: [where] })
@@ -140,6 +143,7 @@ function toJoin(type: JoinType, args: Record<string, unknown>, where: string): J
     for (const k of byKeys) {
       const pairs = Array.isArray(args[k]) ? (args[k] as string[]) : [args[k] as string]
       const op = k === 'by' ? 'eq' : k.slice(3)
+      if (!(op in BY_OPS)) throw new GritqlError('ARGS', `Join function does not support '${k}'`, { path: [where] })
       for (const pair of pairs) {
         const [left, right] = String(pair).split(':')
         if (!left || !right) {
@@ -147,7 +151,8 @@ function toJoin(type: JoinType, args: Record<string, unknown>, where: string): J
         }
         const col = right.replace(/^@/, '')
         const ref = left.startsWith('@') ? left : `@${left}`
-        on[col] = op === 'eq' ? ref : { [op]: ref }
+        // `by_gt: "@a:@b"` reads `fetch.a > joined.b`; the predicate is written on the joined column, so it flips
+        on[col] = op === 'eq' ? ref : { [BY_OPS[op]]: ref }
       }
     }
   }
