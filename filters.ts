@@ -409,7 +409,7 @@ export function buildFilter(
 
       case ops.search:
         if (_.isObject(subQuery)) {
-          if (_.every(subQuery, isOp)) {
+          if (_.every(Object.keys(subQuery), isOp)) {
             throw 'At least one property of search must be related to field'
           }
 

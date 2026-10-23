@@ -1,0 +1,89 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`SQL doesnt merge queries with same id from different queries should merge object correctly if id matches 1`] = `
+[
+  "select "date", SUM("transactionrevenue") AS "value" from "ii_transactional" where ("ii_transactional"."country" = 'US') AND (("ii_transactional"."domain" IN ('test.com','test2.com'))) AND (("ii_transactional"."date" >= '2022-01-05') AND ("ii_transactional"."date" <= '2022-01-08')) group by "date" order by "revenue" desc limit 10",
+  "select "date", SUM("transactionrevenue") AS "value1" from "ii_transactionalb" where ("ii_transactionalb"."country" = 'US') AND (("ii_transactionalb"."domain" IN ('test.com','test2.com'))) AND (("ii_transactionalb"."date" >= '2022-01-05') AND ("ii_transactionalb"."date" <= '2022-01-08')) group by "date" order by "revenue" desc limit 10",
+]
+`;
+
+exports[`SQL doesnt merge queries with same id from different queries should merge object correctly if id matches 2`] = `
+{
+  "matrix": [
+    {
+      "date": "1",
+      "value": "101",
+      "value1": "1011",
+    },
+    {
+      "date": "2",
+      "value": "107",
+      "value1": "1071",
+    },
+    {
+      "date": "3",
+      "value": "201",
+      "value1": "2011",
+    },
+    {
+      "date": "4",
+      "value": "207",
+      "value1": "2071",
+    },
+  ],
+}
+`;
+
+exports[`SQL failed with $#@# instead of . should correctly return names with dots inside like test.com.us 1`] = `
+[
+  "select "domain", SUM("transactionrevenue") AS "value" from "ii_transactional" where ("ii_transactional"."country" = 'US') AND (("ii_transactional"."domain" IN ('test.com','test2.com'))) AND (("ii_transactional"."date" >= '2022-01-05') AND ("ii_transactional"."date" <= '2022-01-08')) group by "domain" order by "revenue" desc limit 10",
+]
+`;
+
+exports[`SQL failed with $#@# instead of . should correctly return names with dots inside like test.com.us 2`] = `
+{
+  "matrix": [
+    {
+      "domain": "test.com",
+      "value": "101",
+    },
+    {
+      "domain": "test2.com",
+      "value": "107",
+    },
+    {
+      "domain": "test.com.us",
+      "value": "201",
+    },
+    {
+      "domain": "test.com.ua",
+      "value": "207",
+    },
+  ],
+}
+`;
+
+exports[`directive parse doesnt work for date field should correctly parse date 1`] = `
+[
+  "select "date", SUM("transactionrevenue") AS "value" from "ii_transactional" where ("ii_transactional"."country" = 'US') AND (("ii_transactional"."domain" IN ('test.com','test2.com'))) AND (("ii_transactional"."date" >= '2022-01-05') AND ("ii_transactional"."date" <= '2022-01-08')) group by "date" order by "date" desc",
+]
+`;
+
+exports[`directive parse doesnt work for date field should correctly parse date 2`] = `
+{
+  "matrix": [
+    {
+      "date": "2022-01-06",
+      "value": "101",
+    },
+    {
+      "date": "2022-01-07",
+      "value": "102",
+    },
+    {
+      "date": "2022-01-08",
+      "value": "103",
+    },
+  ],
+}
+`;

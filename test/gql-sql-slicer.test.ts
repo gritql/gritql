@@ -1,5 +1,7 @@
+// Make this file a module so test helpers do not clash across files
+export {}
 //@ts-ignore
-const { gqlToDb, gqlBuild } = require('./gql-sql-slicer')
+const { gqlToDb, gqlBuild } = require('../gql-sql-slicer')
 
 describe('SQL', () => {
   describe('variables && types', () => {
@@ -284,7 +286,7 @@ describe('SQL', () => {
         }
       `
 
-        Promise.all([
+        return Promise.all([
           querier(query, { limit: 2 }),
           querier(query, { limit: 10 }),
         ]).then((result) => {
@@ -345,7 +347,7 @@ describe('SQL', () => {
         }
       `
 
-        Promise.all([
+        return Promise.all([
           querier(query, { skip: true, include: true }),
           querier(query, { skip: false, include: false }),
         ]).then((result) => {
@@ -1345,7 +1347,7 @@ describe('SQL', () => {
         expect(sql).toMatchSnapshot()
       })
 
-      querier(`query ecom_benchmarking {
+      return querier(`query ecom_benchmarking {
       fetch(date: "2020-11-27", category: "Finance/Investing") {
           channels {
               share: share(a:sessions)
@@ -1359,7 +1361,7 @@ describe('SQL', () => {
         expect(sql).toMatchSnapshot()
       })
 
-      querier(`query ecom_benchmarking {
+      return querier(`query ecom_benchmarking {
       fetch(date: "2020-11-27", category: "Finance/Investing") {
           channels {
               share: share(a:sessions, by: channels)
@@ -1373,7 +1375,7 @@ describe('SQL', () => {
         expect(sql).toMatchSnapshot()
       })
 
-      querier(`query ecom_benchmarking {
+      return querier(`query ecom_benchmarking {
       fetch(date: "2020-11-27", category: "Finance/Investing") {
           channels {
               max: max(a:sessions)
@@ -1387,7 +1389,7 @@ describe('SQL', () => {
         expect(sql).toMatchSnapshot()
       })
 
-      querier(`query ecom_benchmarking {
+      return querier(`query ecom_benchmarking {
       fetch(date: "2020-11-27", category: "Finance/Investing") {
           channels {
               min: min(a:sessions)
@@ -1401,7 +1403,7 @@ describe('SQL', () => {
         expect(sql).toMatchSnapshot()
       })
 
-      querier(`query ecom_benchmarking {
+      return querier(`query ecom_benchmarking {
       fetch(date: "2020-11-27", category: "Finance/Investing") {
           count(a:channels)
       }
@@ -1413,7 +1415,7 @@ describe('SQL', () => {
         expect(sql).toMatchSnapshot()
       })
 
-      querier(`query ecom_benchmarking {
+      return querier(`query ecom_benchmarking {
       fetch(date: "2020-11-27", category: "Finance/Investing") {
           countDistinct(a:channels)
       }
@@ -1425,7 +1427,7 @@ describe('SQL', () => {
         expect(sql).toMatchSnapshot()
       })
 
-      querier(`query ecom_benchmarking {
+      return querier(`query ecom_benchmarking {
       fetch(date: "2020-11-27", category: "Finance/Investing") {
         channels {
           avg: avg(a:sessions)
@@ -1439,7 +1441,7 @@ describe('SQL', () => {
         expect(sql).toMatchSnapshot()
       })
 
-      querier(`query ecom_benchmarking {
+      return querier(`query ecom_benchmarking {
       fetch(date: "2020-11-27", category: "Finance/Investing") {
         channels {
           value: indexed(a:sessions)
@@ -1453,7 +1455,7 @@ describe('SQL', () => {
         expect(sql).toMatchSnapshot()
       })
 
-      querier(`query ecom_benchmarking {
+      return querier(`query ecom_benchmarking {
       fetch(date: "2020-11-27", category: "Finance/Investing") {
           avg: avgPerDimension(a:sessions, per:channels)
       }
@@ -1467,7 +1469,7 @@ describe('SQL', () => {
         expect(sql).toMatchSnapshot()
       })
 
-      querier(`  query ecom_benchmarking {
+      return querier(`  query ecom_benchmarking {
         fetch(category:"Travel_and_Tourism", country:"US", date_gt:"2020-10-13", date_lt:"2021-04-13") {
             channels (type: Array, sort_desc: share) {
                 share: share(a: sessions)
@@ -1480,7 +1482,7 @@ describe('SQL', () => {
         expect(sql).toMatchSnapshot()
       })
 
-      querier(`  query ecom_benchmarking {
+      return querier(`  query ecom_benchmarking {
         fetch(category:"Travel_and_Tourism", country:"US", date_gt:"2020-10-13", date_lt:"2021-04-13") {
             channels (type: Array, sort_asc: share) {
                 share: share(a: sessions)
@@ -1494,7 +1496,7 @@ describe('SQL', () => {
         expect(sql).toMatchSnapshot()
       })
 
-      querier(`  query ecom_benchmarking {
+      return querier(`  query ecom_benchmarking {
         fetch(category:"Travel_and_Tourism", country:"US", date_gt:"2020-10-13", date_lt:"2021-04-13") {
             price: groupByEach(field: price, type: Array, sort_asc: share, each: 50) {
                 share: share(a: sessions)
@@ -1508,7 +1510,7 @@ describe('SQL', () => {
         expect(sql).toMatchSnapshot()
       })
 
-      querier(`  query ecom_benchmarking {
+      return querier(`  query ecom_benchmarking {
         fetch(category:"Travel_and_Tourism", country:"US", date_gt:"2020-10-13", date_lt:"2021-04-13") {
             channels (type: Array, limit: 3) {
                 share: share(a: sessions)
@@ -1522,7 +1524,7 @@ describe('SQL', () => {
         expect(sql).toMatchSnapshot()
       })
 
-      querier(`  query ecom_benchmarking {
+      return querier(`  query ecom_benchmarking {
         fetch(category:"Travel_and_Tourism", country:"US", date_gt:"2020-10-13", date_lt:"2021-04-13") {
             channels (type: Array, offset: 5) {
                 share: share(a: sessions)
@@ -1536,7 +1538,7 @@ describe('SQL', () => {
         expect(sql).toMatchSnapshot()
       })
 
-      querier(`  query ecom_benchmarking {
+      return querier(`  query ecom_benchmarking {
         fetch(category:"Travel_and_Tourism", country:"US", date_gt:"2020-10-13", date_lt:"2021-04-13") {
             channels (type: Array, sort_desc: share, limit: 5, offset: 3) {
                 share: share(a: sessions)
@@ -1574,7 +1576,7 @@ describe('SQL', () => {
         expect(sql).toMatchSnapshot()
         return tables
       })
-      querier(`query ecom_benchmarking {
+      return querier(`query ecom_benchmarking {
 
       series: fetch(category:"Adult", country:"DE") {
               channels {
@@ -1619,7 +1621,7 @@ describe('SQL', () => {
         expect(sql).toMatchSnapshot()
         return tables
       })
-      querier(`query ecom_benchmarking {
+      return querier(`query ecom_benchmarking {
 
       series: fetch(category:"Adult", country:"DE") {
               channels {
@@ -1664,7 +1666,7 @@ describe('SQL', () => {
         expect(sql).toMatchSnapshot()
         return tables
       })
-      querier(`query ecom_benchmarking {
+      return querier(`query ecom_benchmarking {
 
       series: fetch(category:"Adult", country:"DE") {
               channels {
@@ -1709,7 +1711,7 @@ describe('SQL', () => {
         expect(sql).toMatchSnapshot()
         return tables
       })
-      querier(`query ecom_benchmarking {
+      return querier(`query ecom_benchmarking {
 
       series: fetch(category:"Adult", country:"DE") {
               channels @filter(value_gt: 1) {
@@ -1758,7 +1760,7 @@ describe('SQL', () => {
         expect(sql).toMatchSnapshot()
         return tables
       })
-      querier(`query ecom_benchmarking {
+      return querier(`query ecom_benchmarking {
 
       series: fetch(category:"Adult", country:"DE") {
               channels {
@@ -1805,7 +1807,7 @@ describe('SQL', () => {
         expect(sql).toMatchSnapshot()
         return tables
       })
-      querier(`query ecom_benchmarking {
+      return querier(`query ecom_benchmarking {
 
       series: fetch(category:"Adult", country:"DE") {
               channels @groupOn(value_gt: 0.5, replacers: { channels: "Other" }) {
@@ -1855,7 +1857,7 @@ describe('SQL', () => {
         expect(sql).toMatchSnapshot()
         return tables
       })
-      querier(`query ecom_benchmarking {
+      return querier(`query ecom_benchmarking {
 
       series: fetch(category:"Adult", country:"DE") {
               channels {
@@ -1907,7 +1909,7 @@ describe('SQL', () => {
         expect(sql).toMatchSnapshot()
         return tables
       })
-      querier(`query ecom_benchmarking {
+      return querier(`query ecom_benchmarking {
 
       series: fetch(category:"Adult", country:"DE") {
               channels(type: Array) {
@@ -1962,7 +1964,7 @@ describe('SQL', () => {
         expect(sql).toMatchSnapshot()
         return tables
       })
-      querier(`query ecom_benchmarking {
+      return querier(`query ecom_benchmarking {
 
       series: fetch(category:"Adult", country:"DE") {
               channels(type: Array) {
@@ -2020,7 +2022,7 @@ describe('SQL', () => {
         expect(sql).toMatchSnapshot()
         return tables
       })
-      querier(`query ecom_benchmarking {
+      return querier(`query ecom_benchmarking {
 
       series: fetch(category:"Adult", country:"DE") {
               channels(type: Array) {
@@ -2079,7 +2081,7 @@ describe('SQL', () => {
         expect(sql).toMatchSnapshot()
         return tables
       })
-      querier(`query ecom_benchmarking {
+      return querier(`query ecom_benchmarking {
       series: fetch {
                   date(type: Array) @groupBy(by: week) {
                     value: sum(a:sessions)

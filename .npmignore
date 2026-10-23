@@ -1,5 +1,6 @@
 test-db.ts
 coverage
-__snapshots__
-gql-sql-slicer.test.ts
+test
 jest.config.js
+bench
+.bench-build

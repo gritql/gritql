@@ -1,5 +1,6 @@
 import { argumentsToObject, transformLinkedArgs } from '../arguments'
-import type { DocumentNode } from 'graphql'
+// graphql's DocumentNode typings are stricter than the loose AST handling here
+type DocumentNode = any
 import { omit, cloneDeep } from 'lodash'
 import type { InferProps, ValidationMap } from 'prop-types'
 import { checkPropTypes, PropTypes } from '../types'

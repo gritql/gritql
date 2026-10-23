@@ -307,7 +307,7 @@ export const metricResolvers = {
         false,
       )
 
-      if (!query.search[key])
+      if (!query.search?.[key])
         throw `SearchRanking requires search query for ${key} field`
 
       return query.promise.select(
@@ -330,7 +330,7 @@ export const metricResolvers = {
         false,
       )
 
-      if (!query.search[key])
+      if (!query.search?.[key])
         throw `SearchHeadline requires search query for ${key} field`
 
       return query.promise.select(
@@ -810,6 +810,8 @@ export const metricResolvers = {
       if (!!query.dimensions && query.dimensions.length > 0) {
         promise = promise.groupBy(query.dimensions)
       }
+
+      return promise
     },
     {
       a: PropTypes.string.isRequired,

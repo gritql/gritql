@@ -1,11 +1,8 @@
-import { DocumentNode, DirectiveNode } from 'graphql'
+// graphql's AST typings are stricter than the loose AST handling here
+type DocumentNode = any
+type DirectiveNode = any
 import { argumentsToObject } from '../arguments'
-import {
-  getBatchContext,
-  iterateProgressive,
-  progressiveGet,
-  replVars,
-} from '../progressive'
+import { getByTemplate, iterateProgressive, withKey } from '../progressive'
 import { DateTime } from 'luxon'
 
 export interface PreExecutedContext {
@@ -743,13 +740,16 @@ export const preExecutedDirectives = {
       )
     }
 
-    value = Object.keys(rest).reduce((value, key) => {
-      if (resolvers[key] && value !== false) {
-        return resolvers[key](value, rest[key])
-      } else {
+    Object.keys(rest).forEach((key) => {
+      if (!resolvers[key]) {
         throw new Error(`Can't find resolver for '${key}'`)
       }
-    }, value)
+    })
+
+    const compared = value
+    value = Object.keys(rest).every((key) =>
+      resolvers[key](compared, rest[key]),
+    )
 
     context.caller.data = {
       ...context.caller.data,
@@ -794,22 +794,11 @@ export const postExecutedDirectives = {
       throw "Diff directive requires 'by' argument"
     }
 
-    const transformer = ({
-      replacedPath,
-      originFullObject,
-      value,
-      batches,
-    }) => {
+    const transformer = ({ template, vars, originFullObject, value }) => {
       if (originFullObject) {
         return {
           value:
-            value /
-              progressiveGet(
-                originFullObject[args.by],
-                replacedPath,
-                getBatchContext(batches, args.by),
-              ) -
-            1,
+            value / getByTemplate(originFullObject[args.by], template, vars) - 1,
         }
       } else {
         return { value }
@@ -833,21 +822,10 @@ export const postExecutedDirectives = {
       throw "Subtract directive requires 'by' argument"
     }
 
-    const transformer = ({
-      replacedPath,
-      originFullObject,
-      value,
-      batches,
-    }) => {
+    const transformer = ({ template, vars, originFullObject, value }) => {
       if (originFullObject) {
         return {
-          value:
-            value -
-            progressiveGet(
-              originFullObject[args.by],
-              replacedPath,
-              getBatchContext(batches, args.by),
-            ),
+          value: value - getByTemplate(originFullObject[args.by], template, vars),
         }
       } else {
         return { value }
@@ -970,11 +948,11 @@ export const postExecutedDirectives = {
 
     const transformer = ({
       value,
-      globalReplacedPath,
+      parentTemplate,
+      vars,
       originFullObject,
       row,
       batches,
-      q,
     }) => {
       if (originFullObject) {
         const argsKeys = Object.keys(args)
@@ -991,12 +969,12 @@ export const postExecutedDirectives = {
             }
           }
 
-          const globalObj = progressiveGet(
+          const globalObj = getByTemplate(
             Object.keys(batches).length > 1 || context.query.name
               ? originFullObject[context.query.name]
               : originFullObject,
-            globalReplacedPath,
-            q.hashContext,
+            parentTemplate,
+            vars,
           )
 
           if (!globalObj) {
@@ -1065,26 +1043,25 @@ export const postExecutedDirectives = {
 
     const transfomer = ({
       row,
-      path,
-      data,
+      vars,
+      parentTemplate,
+      globalPath,
       value,
       key,
-      globalReplacedPath,
       originFullObject,
       batches,
       result,
-      q,
     }) => {
       if (!originFullObject) {
         return {}
       }
 
-      const currentData = progressiveGet(
+      const currentData = getByTemplate(
         Object.keys(batches).length > 1 || context.query.name
           ? originFullObject[context.query.name]
           : originFullObject,
-        globalReplacedPath,
-        q.hashContext,
+        parentTemplate,
+        vars,
       )
 
       const isNotFirstTime = context.data.members.has(row)
@@ -1106,21 +1083,16 @@ export const postExecutedDirectives = {
       if (matched) {
         context.data.members.add(row)
 
-        const newPath = replVars(path, { ...data, ...args.replacers }).replace(
-          /:join\./g,
-          '',
-        )
-
-        const currentGroupData = progressiveGet(
-          result,
-          newPath.replace(new RegExp(`\\.${key}$`), ''),
-          q.hashContext,
-        )
+        const newVars = { ...vars, ...args.replacers }
+        const currentGroupData = getByTemplate(result, parentTemplate, newVars)
 
         const newValue =
           typeof currentGroupData?.[key] === 'number'
             ? currentGroupData?.[key] + value
             : value
+
+        // Replacers rewrite the grouped dimension's own element only
+        const isDirectChild = globalPath === context.path
 
         return {
           replacers: !isNotFirstTime
@@ -1128,10 +1100,10 @@ export const postExecutedDirectives = {
                 ...currentData,
                 ...currentGroupData,
                 [key]: newValue,
-                ...args.replacers,
+                ...(isDirectChild ? args.replacers : {}),
               }
             : null,
-          path: newPath,
+          vars: newVars,
           value: newValue,
           skip: !isNotFirstTime,
         }
@@ -1162,26 +1134,26 @@ export const postExecutedDirectives = {
 
     const transfomer = ({
       row,
-      path,
+      vars,
+      parentTemplate,
+      globalPath,
       data,
       value,
       key,
-      globalReplacedPath,
       originFullObject,
       batches,
       result,
-      q,
     }) => {
       if (!originFullObject) {
         return {}
       }
 
-      const currentData = progressiveGet(
+      const currentData = getByTemplate(
         Object.keys(batches).length > 1 || context.query.name
           ? originFullObject[context.query.name]
           : originFullObject,
-        globalReplacedPath,
-        q.hashContext,
+        parentTemplate,
+        vars,
       )
 
       const isNotFirstTime = !!context.data.checked[row]
@@ -1191,29 +1163,29 @@ export const postExecutedDirectives = {
         : context.data.checked[row]
       context.data.checked[row] = transfomeredKey
 
-      const newPath = replVars(path, { ...data, [targetKey]: transfomeredKey })
+      const newVars = { ...vars, [targetKey]: transfomeredKey }
 
-      const currentGroupData = progressiveGet(
-        result,
-        newPath.replace(new RegExp(`\\.${key}$`), ''),
-        q.hashContext,
-      )
+      const currentGroupData = getByTemplate(result, parentTemplate, newVars)
 
       const newValue =
         typeof currentGroupData?.[key] === 'number'
           ? currentGroupData?.[key] + value
           : value
 
+      // The grouped key belongs to the grouped dimension's own element; a
+      // metric nested under further dimensions must not get a copy of it.
+      const isDirectChild = globalPath === context.path
+
       return {
         replacers: !isNotFirstTime
           ? {
               ...currentData,
               ...currentGroupData,
-              [targetKey]: transfomeredKey,
+              ...(isDirectChild ? { [targetKey]: transfomeredKey } : {}),
               [key]: newValue,
             }
           : null,
-        path: newPath,
+        vars: newVars,
         value: newValue,
         skip: !isNotFirstTime,
       }
@@ -1238,29 +1210,27 @@ export const postExecutedDirectives = {
     }
 
     const transformer = ({
-      replacedPath,
+      template,
+      parentTemplate,
+      vars,
       originFullObject,
       value,
-      key,
       batches,
     }) => {
       if (originFullObject) {
+        const target = args.by
+          ? originFullObject[args.by]
+          : Object.keys(batches).length > 1 || context.query.name
+          ? originFullObject[context.query.name]
+          : originFullObject
+
+        const byTemplate = args.byField
+          ? context.data.byTemplate ||
+            (context.data.byTemplate = withKey(parentTemplate, args.byField))
+          : template
+
         return {
-          value:
-            value /
-            progressiveGet(
-              originFullObject[
-                args.by
-                  ? args.by
-                  : Object.keys(batches).length > 1 || context.query.name
-                  ? originFullObject[context.query.name]
-                  : originFullObject
-              ],
-              args.byField
-                ? replacedPath.replace(new RegExp(`\\.${key}$`), args.byField)
-                : replacedPath,
-              getBatchContext(batches, args.by ? args.by : context.query.name),
-            ),
+          value: value / getByTemplate(target, byTemplate, vars),
         }
       } else {
         return { value }
@@ -1286,16 +1256,23 @@ export const postExecutedDirectives = {
 
     const [as, desc, semi, subsemi] = args.as.split(':')
 
+    // DB drivers return Date objects for timestamp columns, SQL strings otherwise
+    const toDateTime = (value: string | Date) => {
+      if (value instanceof Date) return DateTime.fromJSDate(value)
+      const sql = DateTime.fromSQL(value)
+      return sql.isValid ? sql : DateTime.fromISO(value)
+    }
+
     const dateTransformers = {
-      'iso': (value: string) => DateTime.fromSQL(value).toISO(),
-      'iso-date': (value: string) => DateTime.fromSQL(value).toISODate(),
-      'iso-week-date': (value: string) => DateTime.fromSQL(value).toISOWeekDate(),
-      'iso-time': (value: string) => DateTime.fromSQL(value).toISOTime(),
-      'rfc2822': (value: string) => DateTime.fromSQL(value).toRFC2822(),
-      'http': (value: string) => DateTime.fromSQL(value).toHTTP(),
-      'locale': (value: string) => semi ? DateTime.fromSQL(value).setLocale(semi).toLocalString() : DateTime.fromSQL(value).toLocalString(),
-      'locale-preset': (value: string) => semi && subsemi ? DateTime.fromSQL(value).setLocale(semi).toLocalString(DateTime[subsemi]) : DateTime.fromSQL(value).toLocalString(semi),
-      'format': (value: string) => semi && subsemi ? DateTime.fromSQL(value).setLocale(semi).toFormat(subsemi) : DateTime.fromSQL(value).toFormat(semi),
+      'iso': (value: string) => toDateTime(value).toISO(),
+      'iso-date': (value: string) => toDateTime(value).toISODate(),
+      'iso-week-date': (value: string) => toDateTime(value).toISOWeekDate(),
+      'iso-time': (value: string) => toDateTime(value).toISOTime(),
+      'rfc2822': (value: string) => toDateTime(value).toRFC2822(),
+      'http': (value: string) => toDateTime(value).toHTTP(),
+      'locale': (value: string) => semi ? toDateTime(value).setLocale(semi).toLocalString() : toDateTime(value).toLocalString(),
+      'locale-preset': (value: string) => semi && subsemi ? toDateTime(value).setLocale(semi).toLocalString(DateTime[subsemi]) : toDateTime(value).toLocalString(semi),
+      'format': (value: string) => semi && subsemi ? toDateTime(value).setLocale(semi).toFormat(subsemi) : toDateTime(value).toFormat(semi),
     }
 
     if (as === 'float') {
@@ -1308,14 +1285,18 @@ export const postExecutedDirectives = {
       transformer = dateTransformers[desc || 'iso']
     }
 
-    const T: any = context.on === 'dimension' ? ({ value, path, data, keys, pathKey }) => {
-      const v = transformer(value);
+    // Rows are shared between the metrics of one row, so parse each row once
+    const parsedRows = new WeakSet()
 
-      data[keys[pathKey]] = v;
+    const T: any = context.on === 'dimension' ? ({ data }) => {
+      if (!parsedRows.has(data)) {
+        data[context.name] = transformer(data[context.name])
+        parsedRows.add(data)
+      }
 
+      // The row was changed in place; re-resolve the path from it
       return {
-        value: v,
-        path: replVars(path, data)
+        vars: data
       }
     } : ({ value }) => {
       return {

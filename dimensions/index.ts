@@ -9,7 +9,8 @@ import { parseDimension } from '../parser'
 import { combineQuery } from '../query-combiner'
 import { PropTypes } from '../types'
 import { dimensionWrapper } from './wrapper'
-import type { DocumentNode } from 'graphql'
+// graphql's DocumentNode typings are stricter than the loose AST handling here
+type DocumentNode = any
 
 export const dimensionResolvers = {
   groupBy: dimensionWrapper(

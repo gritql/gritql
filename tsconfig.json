@@ -5,7 +5,10 @@
         "moduleResolution": "node",
         "module": "CommonJS",
         "declaration": true,
-        "outDir": "dist"
+        "outDir": "dist",
+        "skipLibCheck": true
     },
-    "files": ["index.ts"]
+    "files": [
+        "index.ts"
+    ]
 }

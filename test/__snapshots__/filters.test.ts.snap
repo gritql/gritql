@@ -1,0 +1,85 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`filters having as dimension argument 1`] = `
+[
+  "select "device", SUM("sessions") AS "value" from "t" group by "device" having (("t"."value" > 10))",
+]
+`;
+
+exports[`filters having filters on aggregated values 1`] = `
+[
+  "select "device", SUM("sessions") AS "value" from "t" where ("t"."brand" = 'a') group by "device" having (("t"."value" > 10))",
+]
+`;
+
+exports[`filters logical operators nested 1`] = `
+[
+  "select "device", SUM("sessions") AS "value" from "t" where ("t"."country" = 'DE') AND (((("t"."brand" = 'a')) OR ((((("t"."brand" = 'b')) AND ((("t"."price" > 1)))))))) group by "device"",
+]
+`;
+
+exports[`filters operators eq 1`] = `
+[
+  "select "device", SUM("sessions") AS "value" from "t" where (("t"."brand" = 'Adidas')) group by "device"",
+]
+`;
+
+exports[`filters operators gt/lt 1`] = `
+[
+  "select "device", SUM("sessions") AS "value" from "t" where (("t"."price" > 1) AND ("t"."price" < 5)) group by "device"",
+]
+`;
+
+exports[`filters operators gte/lte 1`] = `
+[
+  "select "device", SUM("sessions") AS "value" from "t" where (("t"."price" >= 1) AND ("t"."price" <= 5)) group by "device"",
+]
+`;
+
+exports[`filters operators ilike 1`] = `
+[
+  "select "device", SUM("sessions") AS "value" from "t" where (("t"."brand" ILIKE 'adi%')) group by "device"",
+]
+`;
+
+exports[`filters operators in 1`] = `
+[
+  "select "device", SUM("sessions") AS "value" from "t" where (("t"."brand" IN ('a','b'))) group by "device"",
+]
+`;
+
+exports[`filters operators isNULL false 1`] = `
+[
+  "select "device", SUM("sessions") AS "value" from "t" where (("t"."brand" IS NOT NULL)) group by "device"",
+]
+`;
+
+exports[`filters operators isNULL true 1`] = `
+[
+  "select "device", SUM("sessions") AS "value" from "t" where (("t"."brand" IS NULL)) group by "device"",
+]
+`;
+
+exports[`filters operators like 1`] = `
+[
+  "select "device", SUM("sessions") AS "value" from "t" where (("t"."brand" LIKE 'adi%')) group by "device"",
+]
+`;
+
+exports[`filters operators ne 1`] = `
+[
+  "select "device", SUM("sessions") AS "value" from "t" where (("t"."brand" <> 'Adidas')) group by "device"",
+]
+`;
+
+exports[`filters operators nin 1`] = `
+[
+  "select "device", SUM("sessions") AS "value" from "t" where (("t"."brand" NOT IN('a','b'))) group by "device"",
+]
+`;
+
+exports[`filters operators shorthand eq 1`] = `
+[
+  "select "device", SUM("sessions") AS "value" from "t" where ("t"."brand" = 'Adidas') group by "device"",
+]
+`;

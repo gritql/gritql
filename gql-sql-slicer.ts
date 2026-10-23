@@ -1,6 +1,12 @@
 import { argumentsToObject } from './arguments'
 import { parseDirective, parseTypeDirective } from './directives'
-import { progressiveSet, replVars } from './progressive'
+import {
+  compilePath,
+  progressiveSet,
+  renderTemplate,
+  setByTemplate,
+  withKey,
+} from './progressive'
 import { cloneDeep, isEqual, omit, uniqWith } from 'lodash'
 import { applyFilters, withFilters } from './filters'
 import { metricResolvers } from './metrics'
@@ -12,7 +18,8 @@ import {
   parseVariableDefinition,
   processSelections,
 } from './parser'
-import type { DocumentNode } from 'graphql'
+// graphql's DocumentNode typings are stricter than the loose AST handling here
+type DocumentNode = any
 import { dimensionResolvers } from './dimensions'
 import knexConstructor, { Knex } from 'knex'
 import { disableOperationFor, Provider, providers } from './providers'
@@ -468,7 +475,7 @@ function queryBuilder(
 }
 
 export const merge = (
-  tree: Array<DocumentNode>,
+  tree: ReadonlyArray<DocumentNode>,
   data: Array<any>,
   metricResolversData,
 ): any => {
@@ -484,7 +491,6 @@ export const merge = (
     .reduce((r, q, i) => {
       const key = q.name || '___query'
       if (!r[key]) r[key] = []
-      else q.hashContext = r[key][0].hashContext
       q.bid = i
       r[key].push(q)
       return r
@@ -505,88 +511,96 @@ export const merge = (
     return quer.reduce((result, q) => {
       const resultData = data[q.bid]
       if (!resultData) return result
-      for (var j = 0; j < resultData.length; j++) {
-        const keys = Object.keys(resultData[j])
-        for (var key in keys) {
-          if (q.metrics[keys[key]]) {
-            let replacedPath = replVars(q.metrics[keys[key]], resultData[j])
+      const plan = getMergePlan(q)
+      for (let j = 0; j < resultData.length; j++) {
+        const row = resultData[j]
+        const keys = Object.keys(row)
+        for (let k = 0; k < keys.length; k++) {
+          const metric = plan[keys[k]]
+          if (metric) {
+            const key = String(k)
+            let value = row[keys[key]]
 
-            let value = resultData[j][keys[key]]
+            // No directives: write straight from the compiled template, no
+            // path strings are built or parsed for this cell.
+            if (metric.directives.length === 0) {
+              result = setByTemplate(result, metric.template, row, value)
+              continue
+            }
+
+            // The template is resolved against `vars` (the row, unless a
+            // directive returned new vars). `replacedPath` is only set when
+            // a directive returned a string path instead.
+            let vars = row
+            let replacedPath: string = null
             let skip = false
             let skipAll = false
 
-            q.directives
-              .filter((directiveFunction) => {
-                if (directiveFunction.context.on === 'metric') {
-                  return directiveFunction.context.path === q.metrics[keys[key]]
-                } else {
-                  return q.metrics[keys[key]].startsWith(
-                    directiveFunction.context.path,
-                  )
-                }
-              })
-              .forEach((directiveFunction) => {
-                const path = q.metrics[keys[key]]
-                const [globalReplacedPath, globalPath, pathKey] = [
-                  replacedPath.slice(0, replacedPath.lastIndexOf('.')),
-                  path.slice(0, path.lastIndexOf('.')),
-                  replacedPath.slice(replacedPath.lastIndexOf('.') + 1),
-                ]
-
-                const directiveResult = directiveFunction({
+            for (let d = 0; d < metric.directives.length; d++) {
+              const directiveResult = metric.directives[d](
+                new DirectiveArgs(
+                  metric,
                   value,
-                  originValue: resultData[j][keys[key]],
-                  data: resultData[j],
-                  path,
-                  key: pathKey,
-                  globalPath,
-                  globalReplacedPath,
-                  row: j,
+                  row,
+                  vars,
                   replacedPath,
+                  j,
                   result,
                   fullObject,
                   originFullObject,
-                  queries: quer,
+                  quer,
                   batches,
                   q,
                   keys,
-                  pathKey: key,
-                })
+                  key,
+                ),
+              )
 
-                // Important for directives which will not change value
-                if (directiveResult.hasOwnProperty('value')) {
-                  value = directiveResult.value
-                }
+              // Important for directives which will not change value
+              if (directiveResult.hasOwnProperty('value')) {
+                value = directiveResult.value
+              }
 
-                if (directiveResult.skipAll) {
-                  skipAll = directiveResult.skipAll
-                }
+              if (directiveResult.skipAll) {
+                skipAll = true
+              }
 
-                if (directiveResult.skip) {
-                  skip = directiveResult.skip
-                }
+              if (directiveResult.skip) {
+                skip = true
+              }
 
-                if (directiveResult.path) {
-                  replacedPath = directiveResult.path
-                }
+              if (directiveResult.vars) {
+                vars = directiveResult.vars
+                replacedPath = null
+              }
 
-                if (directiveResult.replacers) {
-                  Object.keys(directiveResult.replacers).forEach((k) => {
+              if (directiveResult.path) {
+                replacedPath = directiveResult.path
+              }
+
+              if (directiveResult.replacers) {
+                const replacers = directiveResult.replacers
+                Object.keys(replacers).forEach((name) => {
+                  if (replacedPath) {
                     result = progressiveSet(
                       result,
                       replacedPath.slice(0, replacedPath.lastIndexOf('.')) +
                         '.' +
-                        k,
-                      directiveResult.replacers[k],
-                      false,
-                      q.hashContext,
+                        name,
+                      replacers[name],
                     )
-                  })
-                }
-              })
+                  } else {
+                    const child =
+                      metric.children[name] ||
+                      (metric.children[name] = withKey(metric.parentTemplate, name))
+                    result = setByTemplate(result, child, vars, replacers[name])
+                  }
+                })
+              }
+            }
 
+            // Skip the rest of this row; the for loop moves to the next one.
             if (skipAll) {
-              j++
               break
             }
 
@@ -594,13 +608,9 @@ export const merge = (
               continue
             }
 
-            result = progressiveSet(
-              result,
-              replacedPath,
-              value,
-              false,
-              q.hashContext,
-            )
+            result = replacedPath
+              ? progressiveSet(result, replacedPath, value)
+              : setByTemplate(result, metric.template, vars, value)
           }
         }
       }
@@ -644,12 +654,117 @@ export const merge = (
     }, cloneDeep(res))
 }
 
+// What a post-executed directive receives for one cell. The legacy string
+// paths are getters on the prototype, so they cost nothing unless a
+// directive reads them.
+class DirectiveArgs {
+  value: any
+  originValue: any
+  data: any
+  vars: any
+  template: any
+  parentTemplate: any
+  path: string
+  key: string
+  globalPath: string
+  row: number
+  result: any
+  fullObject: any
+  originFullObject: any
+  queries: any
+  batches: any
+  q: any
+  keys: string[]
+  pathKey: string
+  private rendered: string
+
+  constructor(
+    metric,
+    value,
+    row,
+    vars,
+    replacedPath: string,
+    rowIndex: number,
+    result,
+    fullObject,
+    originFullObject,
+    queries,
+    batches,
+    q,
+    keys: string[],
+    pathKey: string,
+  ) {
+    this.value = value
+    this.originValue = row[keys[pathKey]]
+    this.data = row
+    this.vars = vars
+    this.template = metric.template
+    this.parentTemplate = metric.parentTemplate
+    this.path = metric.path
+    this.key = replacedPath
+      ? replacedPath.slice(replacedPath.lastIndexOf('.') + 1)
+      : metric.key
+    this.globalPath = metric.globalPath
+    this.row = rowIndex
+    this.result = result
+    this.fullObject = fullObject
+    this.originFullObject = originFullObject
+    this.queries = queries
+    this.batches = batches
+    this.q = q
+    this.keys = keys
+    this.pathKey = pathKey
+    this.rendered = replacedPath
+  }
+
+  get replacedPath(): string {
+    return (
+      this.rendered ||
+      (this.rendered = renderTemplate(this.template, this.vars))
+    )
+  }
+
+  get globalReplacedPath(): string {
+    const path = this.replacedPath
+    return path.slice(0, path.lastIndexOf('.'))
+  }
+}
+
+// Per query: compiled template and applicable directives for every metric
+// column, computed once instead of per row.
+function getMergePlan(q) {
+  if (q.mergePlan) return q.mergePlan
+
+  const plan = {}
+  Object.keys(q.metrics).forEach((name) => {
+    const path = q.metrics[name]
+    const template = compilePath(path)
+    plan[name] = {
+      path,
+      template,
+      parentTemplate: template.slice(0, -1),
+      // Resolved paths for the legacy directive contract
+      key: path.slice(path.lastIndexOf('.') + 1),
+      globalPath: path.slice(0, path.lastIndexOf('.')),
+      // Templates for replacer keys next to the metric, filled on demand
+      children: {},
+      directives: (q.directives || []).filter((directiveFunction) =>
+        directiveFunction.context.on === 'metric'
+          ? directiveFunction.context.path === path
+          : path.startsWith(directiveFunction.context.path),
+      ),
+    }
+  })
+  q.mergePlan = plan
+
+  return plan
+}
+
 function getMergeStrings(
   tree,
   queries = [],
   idx = undefined,
   metricResolversData,
-  hashContext = {},
 ) {
   if (idx !== undefined && !!~idx && !queries[idx])
     queries[idx] = { idx, name: undefined }
@@ -669,25 +784,12 @@ function getMergeStrings(
   if (Array.isArray(tree)) {
     return tree.reduce(
       (queries, t, i) =>
-        getMergeStrings(
-          t,
-          queries,
-          queries.length - 1,
-          metricResolversData,
-          !t.alias ? hashContext : {},
-        ),
+        getMergeStrings(t, queries, queries.length - 1, metricResolversData),
       queries,
     )
   }
 
   const query = queries[idx]
-  // Only seed hashContext when the query slot is fresh. When the outer
-  // Array reduce walks multiple OperationDefinitions, idx points back at
-  // the previously completed query — reassigning would make sibling
-  // queries share one hashContext, causing cross-query merge bleed.
-  if (query && query.name === undefined) {
-    query.hashContext = hashContext
-  }
 
   if (tree.kind === 'OperationDefinition' && !!tree.selectionSet) {
     return tree.selectionSet.selections.reduce((queries, t, i) => {
@@ -754,7 +856,7 @@ function getMergeStrings(
         return getMergeStrings(t, queries, newIdx, metricResolversData)
       }
 
-      return getMergeStrings(t, queries, idx, metricResolversData, hashContext)
+      return getMergeStrings(t, queries, idx, metricResolversData)
     }, queries)
   }
   mergeMetric(tree, query, metricResolversData)

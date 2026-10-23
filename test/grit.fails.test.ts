@@ -1,5 +1,7 @@
+// Make this file a module so test helpers do not clash across files
+export {}
 //@ts-ignore
-const { gqlToDb, gqlBuild } = require('./gql-sql-slicer')
+const { gqlToDb, gqlBuild } = require('../gql-sql-slicer')
 describe('SQL', () => {
   describe('failed with $#@# instead of .', () => {
     test('should correctly return names with dots inside like test.com.us', () => {
@@ -281,21 +283,23 @@ describe('SQL', () => {
   })
 })
 
-xdescribe('directive', () => {
+describe('directive', () => {
   describe('parse doesnt work for date field', () => {
     test('should correctly parse date', () => {
       const table = [
         [
+          // Date objects as returned by the pg driver; noon UTC keeps the
+          // calendar date stable across time zones
           {
-            date: 'Thu Jan 06 2022 01:00:00 GMT+0100 (Central European Standard Time)',
+            date: new Date('2022-01-06T12:00:00Z'),
             value: '101',
           },
           {
-            date: 'Thu Jan 07 2022 01:00:00 GMT+0100 (Central European Standard Time)',
+            date: new Date('2022-01-07T12:00:00Z'),
             value: '102',
           },
           {
-            date: 'Thu Jan 08 2022 01:00:00 GMT+0100 (Central European Standard Time)',
+            date: new Date('2022-01-08T12:00:00Z'),
             value: '103',
           },
         ],
@@ -335,7 +339,7 @@ xdescribe('directive', () => {
         
         query ii_transactional($filters: Filters) {
           matrix: fetch(filters: $filters) {
-            date(type:Array, sort_desc: date) @parse(as: "date:iso"){
+            date(type:Array, sort_desc: date) @parse(as: "date:iso-date"){
               value: sum(a:transactionrevenue)
             }
           }
