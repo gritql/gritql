@@ -29,6 +29,8 @@ export interface FilterContext {
   inherited?: boolean
   /** when true, a string value starting with `@` is a column of `table` (join `on` clauses) */
   fieldRefs?: boolean
+  /** false for HAVING: aggregate aliases are not table-qualified */
+  qualify?: boolean
   /** collects `search: { col: text }` so search metrics can find their query */
   search?: Record<string, string>
 }
@@ -63,6 +65,7 @@ const OPERATORS = new Set([
 const isOp = (k: string) => OPERATORS.has(k)
 
 function qualify(ctx: FilterContext, field: string): string {
+  if (ctx.qualify === false && !ctx.from) return field.replace(/^@/, '')
   const table = ctx.from ?? ctx.table
   return `${table}.${field.replace(/^@/, '')}`
 }

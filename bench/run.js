@@ -2,7 +2,7 @@
 // Measures the assembly phase (SQL rows -> result object) on synthetic data,
 // plus parse+plan+sql compilation. Same scenarios and row generator as
 // v3's bench/merge.bench.js so the numbers compare directly.
-// Usage: npm run bench [-- <rows>]   (default 200000)
+// Usage: npm run bench [-- <rows>]   (default 200000). Reports the median of 5 timed runs per scenario.
 const path = require('path')
 const { execSync } = require('child_process')
 
@@ -55,9 +55,16 @@ const pad = (s, n) => String(s).padEnd(n)
     const tables = query.includes('prev:') ? [rows, rows] : [rows]
     const run = () => gritql({ adapters: { pg: fixtureAdapter(tables) } }).run(query, {})
     await run() // warm up
-    const [ms, result] = await time(run)
+    const samples = []
+    let result
+    for (let i = 0; i < 5; i++) {
+      const [ms, r] = await time(run)
+      samples.push(ms)
+      result = r
+    }
+    samples.sort((a, b) => a - b)
     const size = Array.isArray(result) ? `${result.length} elements` : `${Object.keys(result).length} keys`
-    console.log(`${pad(label, 24)}${pad(ms.toFixed(0), 10)}${size}`)
+    console.log(`${pad(label, 24)}${pad(samples[2].toFixed(0), 10)}${size}   (median of 5; min ${samples[0].toFixed(0)}, max ${samples[4].toFixed(0)})`)
   }
 
   // compilation only: parse + plan + lower + sql, no rows

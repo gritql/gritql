@@ -120,7 +120,7 @@ export function compilePhysical(physical: Physical, env: CompileEnv): Knex.Query
   const inFilters = (fetch.filters?.search as Record<string, unknown> | undefined) ?? {}
   const argSearch = Object.fromEntries(Object.entries(fetch.search).filter(([k]) => !(k in inFilters)))
   const searchOnly = Object.keys(argSearch).length ? buildFilter({ search: argSearch }, filterCtx) : null
-  const having = fetch.filters?.having ? buildFilter(fetch.filters.having as any, { ...filterCtx, qualify: false } as any) : null
+  const having = fetch.filters?.having ? buildFilter(fetch.filters.having as any, { ...filterCtx, qualify: false }) : null
 
 
   // --- collect parts from resolvers -------------------------------------
@@ -154,7 +154,7 @@ export function compilePhysical(physical: Physical, env: CompileEnv): Knex.Query
     if (a.sort_asc) orderBys.push({ by: columnName(a.sort_asc as string, table), dir: 'asc' })
     if (a.sort && a.field) orderBys.push({ by: columnName(a.field as string, table), dir: a.sort as 'asc' | 'desc' })
     if (a.having) {
-      const h = buildFilter(a.having as any, { ...filterCtx, qualify: false } as any)
+      const h = buildFilter(a.having as any, { ...filterCtx, qualify: false })
       if (h.sql) havings.push(raw(knex, h))
     }
     if (a.limit !== undefined || a.offset !== undefined) {
@@ -222,30 +222,27 @@ export function compilePhysical(physical: Physical, env: CompileEnv): Knex.Query
   if (uniqueGroupBys.length) qb = qb.groupBy(uniqueGroupBys as any)
   for (const h of havings) qb = qb.having(h)
   if (having?.sql) qb = qb.having(raw(knex, having))
-  for (const o of orderBys) qb = qb.orderBy(o.by, o.dir)
 
-  // --- limit / offset ---------------------------------------------------
+  // --- order / limit / offset -------------------------------------------
   if (nestedLimitDim) {
+    // per-parent limit: rank the grouped rows inside each outer-dimension partition, then keep a window of ranks.
+    // Window and ORDER BY see output columns only, so the grouped statement is wrapped first.
     const idx = physical.grain.indexOf(nestedLimitDim)
-    const partition = grainGroups.slice(0, idx).flat()
-    const order = orderBys.length
-      ? knex.raw(orderBys.map(() => `?? ${''}`).join(', ').replace(/ $/, ''), orderBys.map((o) => o.by))
-      : null
-    const orderSql = orderBys.map((o, i) => `?? ${o.dir}`).join(', ')
-    const over = knex.raw(
-      `row_number() over (${partition.length ? `partition by ${partition.map(() => '?').join(', ')}` : ''}${orderSql ? ` order by ${orderSql}` : ''}) as ??`,
-      [...partition, ...orderBys.map((o) => o.by), '__rn'],
-    )
-    void order
-    const ranked = qb.clone().select(over)
-    const outputs = outputAliases(physical, registry, env)
-    let outer = knex.select(outputs).from(ranked.as('__ranked'))
+    const partition = physical.grain.slice(0, idx).flatMap((d) => dimColumns(d, physical, env))
+    const orderCols = orderBys.map((o) => ({ by: o.by.slice(o.by.lastIndexOf('.') + 1), dir: o.dir }))
+    const over =
+      (partition.length ? `partition by ${partition.map(() => '??').join(', ')}` : '') +
+      (orderCols.length ? `${partition.length ? ' ' : ''}order by ${orderCols.map((o) => `?? ${o.dir}`).join(', ')}` : '')
+    const rn = knex.raw(`row_number() over (${over}) as ??`, [...partition, ...orderCols.map((o) => o.by), '__rn'])
+    const ranked = knex.select('*').select(rn).from(qb.as('__g'))
+    let outer = knex.select(outputAliases(physical, registry, env)).from(ranked.as('__r'))
     const lo = Number(nestedLimitDim.args.offset ?? 0)
     if (lo > 0) outer = outer.where('__rn', '>', lo)
     if (nestedLimitDim.args.limit !== undefined) outer = outer.where('__rn', '<=', lo + Number(nestedLimitDim.args.limit))
-    for (const o of orderBys) outer = outer.orderBy(o.by, o.dir)
+    for (const o of orderCols) outer = outer.orderBy(o.by, o.dir)
     qb = outer
   } else {
+    for (const o of orderBys) qb = qb.orderBy(o.by, o.dir)
     if (limit !== undefined) qb = qb.limit(limit)
     if (offset !== undefined) qb = qb.offset(offset)
   }
@@ -261,6 +258,11 @@ export function compilePhysical(physical: Physical, env: CompileEnv): Knex.Query
   }
 
   return qb
+}
+
+function dimColumns(dim: Node, physical: Physical, env: CompileEnv): string[] {
+  const r = env.registry.dimension(dim.name)
+  return r.columns ? r.columns(dim, env.makeCtx(physical, dim)) : [dim.alias]
 }
 
 /** Every output column alias of a statement (dimension columns, then metric columns). */

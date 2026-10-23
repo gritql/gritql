@@ -60,13 +60,6 @@ interface Holder {
 }
 
 const SEP = '\u0000'
-/** one state bag per middleware per assembler run, so its result hooks behave like a directive occurrence */
-const mwStates = new WeakMap<Resolver, Record<string, unknown>>()
-const mwState = (mw: Resolver) => {
-  let st = mwStates.get(mw)
-  if (!st) mwStates.set(mw, (st = {}))
-  return st
-}
 const groupKey = (f: Fetch) => f.alias ?? ''
 
 // ---------------------------------------------------------------------------
@@ -224,6 +217,8 @@ function iterate(node: any, steps: Step[], i: number, cb: (value: unknown) => vo
 
 export class Assembler {
   private stepCache = new Map<string, Step[]>()
+  /** one state bag per middleware per assembler run, so its result hooks behave like a directive occurrence */
+  private mwStates = new Map<Resolver, Record<string, unknown>>()
 
   constructor(private env: AssembleEnv) {}
 
@@ -279,7 +274,10 @@ export class Assembler {
     }
     const shared: Hook[] = []
     for (const mw of this.env.registry.middleware) {
-      if (mw.result) shared.push({ use: { name: 'middleware', args: {}, state: mwState(mw) }, resolver: mw, owner: undefined, ownerPath: [], rowLevel: true })
+      if (!mw.result) continue
+      let state = this.mwStates.get(mw)
+      if (!state) this.mwStates.set(mw, (state = {}))
+      shared.push({ use: { name: 'middleware', args: {}, state }, resolver: mw, owner: undefined, ownerPath: [], rowLevel: true })
     }
     shared.push(...hooksOf(fetch.directives, undefined, [], true))
     grain.forEach((d, i) => shared.push(...hooksOf(d.directives, d, grainPath.slice(0, i + 1), true)))

@@ -38,6 +38,7 @@ All differences below were reviewed against the v3 snapshots; the semantics are 
 - **Numeric literals stay numeric.** `price_gt: 126` compiles to `> 126`; v3 stringified it to `> '126'`.
 - **List values in filters are `IN`.** `categories: [1, 11, 6]` compiles to `IN (1,11,6)`; v3 produced `= 1 AND = 11 AND = 6` (*fixed*).
 - **`count` / `countDistinct` without an alias** are aliased by their name; v3 produced `as "undefined"` (*fixed*).
+- **`having`** (fetch `filters.having` and dimension `having:`) compiles with unqualified names (`"value" > 1`), since it addresses aggregate aliases; v3 qualified them with the table.
 - **Search metrics** read the search term by the bare column name (`title`), whether it came from `search: {}` or `filters: { search: {} }`. Defining the same field in both is an `ARGS` error, as in v3.
 - **Identical select expressions are emitted once** (`brand { brand }`), as v3 did through statement deduplication.
 
@@ -58,6 +59,6 @@ All differences below were reviewed against the v3 snapshots; the semantics are 
 | `grit.fails.test.ts` (4) | ported as `test/regressions.test.ts`. |
 | `merge.test.ts` (19) | rewritten on the v4 API (`test/merge.test.ts`); the v3 string-path custom-directive test became a `keys`/`set` test. |
 | `directives.test.ts` (10) | rewritten on the v4 API; luxon oracle replaced by local-offset arithmetic; adds @groupOn/@indexed/@omit/fetch-level @include cases. |
-| `progressive.test.ts` | not applicable (tests v3's string-path writer); its behaviours are covered by `merge.test.ts`. |
+| `progressive.test.ts` (53) | tests v3's string-path writer (`progressiveSet`, `[@k=v]` grammar, `$#@#` escaping, `compilePath`), which v4 does not have. Its observable behaviours map to `merge.test.ts`: keyed Array elements → "Array dimension nested under an object dimension" and "@diff across Array dimensions" (lookup by key, not position); `;`-joined keys → the `combine` tests; pruning of empty containers → the "@filter on a dimension" block; dot/special characters in keys → "dimension values with special characters"; sum-on-collision → the `@groupBy` tests. |
 | `providers.test.ts` | not applicable (v3 provider objects); replaced by `test/adapters.test.ts`. |
 | `types.test.ts` | ported (`test/types.test.ts`). |
