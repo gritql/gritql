@@ -9,7 +9,7 @@ Same machine, same synthetic rows (`bench/run.js` here, `bench/merge.bench.js` i
 | array dim + @filter (two passes, baseline lookups) | 239 | 151 | 0.63 |
 | two queries + @diff (two fetches, cross-fetch reads) | 117 | 84 | 0.72 |
 | compile only (types + 2 fetches + directive), per call | n/a | 0.10 | |
-| heap retained after GC (rows + last result) | n/a | 43 MB | |
+| heap retained after GC (rows + last result) | n/a | 39 MB | |
 
 Spread across the five runs was within ±5% for both versions (v4 `@filter`: 149–164 ms; v3: 235–247 ms). v3's script prints heap at the end of the run without a GC (150 MB), which measures uncollected garbage rather than memory held, so the heap rows are not comparable and v4 reports the retained figure instead. Run-to-run medians move by a few ms (object dims measured 34–39 ms across sessions).
 
