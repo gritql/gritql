@@ -1,15 +1,17 @@
 # Benchmark: v4 vs v3
 
-Same machine, same synthetic rows (`bench/run.js` here, `bench/merge.bench.js` in v3), 200 000 rows per statement, one warm-up run, then one timed run end to end (parse → plan → sql → fixture execute → assemble). Node 22, Apple Silicon.
+Same machine, same synthetic rows (`bench/run.js` here, `bench/merge.bench.js` in v3), 200 000 rows per statement, one warm-up run, then the **median of five** timed runs end to end (parse → plan → sql → fixture execute → assemble). v3 numbers are the median of five separate runs of its script. Node 22, Apple Silicon.
 
 | scenario | v3 ms | v4 ms | v4 / v3 |
 |---|---|---|---|
-| object dims (3 Map levels, 2 metrics) | 50 | 34 | 0.68 |
-| array date dim (Array + 2 Map levels) | 69 | 47 | 0.68 |
-| array dim + @filter (two passes, baseline lookups) | 263 | 232 | 0.88 |
-| two queries + @diff (two fetches, cross-fetch reads) | 130 | 101 | 0.78 |
+| object dims (3 Map levels, 2 metrics) | 44 | 34 | 0.77 |
+| array date dim (Array + 2 Map levels) | 61 | 44 | 0.72 |
+| array dim + @filter (two passes, baseline lookups) | 239 | 214 | 0.90 |
+| two queries + @diff (two fetches, cross-fetch reads) | 117 | 101 | 0.86 |
 | compile only (types + 2 fetches + directive), per call | n/a | 0.10 | |
-| heap after the run | 150 MB | 129 MB | |
+| heap after the run | 150 MB | 116 MB | |
+
+Spread across the five runs was within ±4% for both versions (v4 `@filter`: 211–230 ms; v3: 235–247 ms).
 
 v4 is faster in every scenario. Where the time goes in v4 (`ctx.timings`): assembly dominates; parse+plan+sql is ~0.1 ms per query.
 
