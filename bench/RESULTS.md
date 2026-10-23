@@ -4,14 +4,14 @@ Same machine, same synthetic rows (`bench/run.js` here, `bench/merge.bench.js` i
 
 | scenario | v3 ms | v4 ms | v4 / v3 |
 |---|---|---|---|
-| object dims (3 Map levels, 2 metrics) | 44 | 39 | 0.89 |
-| array date dim (Array + 2 Map levels) | 61 | 47 | 0.77 |
-| array dim + @filter (two passes, baseline lookups) | 239 | 160 | 0.67 |
-| two queries + @diff (two fetches, cross-fetch reads) | 117 | 81 | 0.69 |
+| object dims (3 Map levels, 2 metrics) | 44 | 40 | 0.91 |
+| array date dim (Array + 2 Map levels) | 61 | 48 | 0.79 |
+| array dim + @filter (two passes, baseline lookups) | 239 | 151 | 0.63 |
+| two queries + @diff (two fetches, cross-fetch reads) | 117 | 84 | 0.72 |
 | compile only (types + 2 fetches + directive), per call | n/a | 0.10 | |
-| heap after the run | 150 MB | 129 MB | |
+| heap retained after GC (rows + last result) | n/a | 43 MB | |
 
-Spread across the five runs was within ±5% for both versions (v4 `@filter`: 158–174 ms; v3: 235–247 ms). Run-to-run medians move by a few ms (object dims measured 34–39 ms across sessions).
+Spread across the five runs was within ±5% for both versions (v4 `@filter`: 149–164 ms; v3: 235–247 ms). v3's script prints heap at the end of the run without a GC (150 MB), which measures uncollected garbage rather than memory held, so the heap rows are not comparable and v4 reports the retained figure instead. Run-to-run medians move by a few ms (object dims measured 34–39 ms across sessions).
 
 v4 is faster in every scenario. Where the time goes in v4 (`ctx.timings`): assembly dominates; parse+plan+sql is ~0.1 ms per query.
 

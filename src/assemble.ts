@@ -420,8 +420,8 @@ export class Assembler {
             if (cache.has(row)) res = cache.get(row)
             else {
               res = h.resolver.result!({ value, row, keys, node: m.node, path: m.path, index: j }, ctxFor(h)) ?? null
-              // a value is per cell: a hook that rewrites values runs again for the row's other cells
-              if (!res || !('value' in res)) cache.set(row, res)
+              // a value is per cell, and a no-op may be cell-dependent: only row-wide decisions are reused
+              if (res && !('value' in res)) cache.set(row, res)
             }
           } else {
             res = h.resolver.result!({ value, row, keys, node: m.node, path: m.path, index: j }, ctxFor(h))

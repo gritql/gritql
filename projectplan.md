@@ -45,7 +45,7 @@ Only real consumer: `peekd-sp/lib/frontend` (ClickHouse via knex dialect plugin,
 - [x] Profile and optimise until v4 ≤ v3 on every scenario.
 
 ## Phase 5 — implementation review
-- [~] Fable + Codex review of the code against SPEC.md and v3 behaviour. Fix findings. Repeat until no blocking issues (cap 2 rounds). Codex round 1: 15 blocking items, all fixed (HAVING-alias on pg documented as limitation). Codex round 2: 13/15 verified fixed, 6 new blocking (groupBy alias on pg, `__proto__` keys, `by_in`, untyped middleware plan errors, `percentile(factor: 0)`, `avg OVER()`), all fixed. Fable round 1: 4 blocking (row-level `value` cached per row, groupBy alias on pg, `avg OVER()`, `by_gt` inverted), all fixed; nits folded (CTE nesting, median `from`, COMPAT lines). Final verification round: running.
+- [~] Fable + Codex review of the code against SPEC.md and v3 behaviour. Fix findings. Repeat until no blocking issues (cap 2 rounds). Codex round 1: 15 blocking items, all fixed (HAVING-alias on pg documented as limitation). Codex round 2: 13/15 verified fixed, 6 new blocking (groupBy alias on pg, `__proto__` keys, `by_in`, untyped middleware plan errors, `percentile(factor: 0)`, `avg OVER()`), all fixed. Fable round 1: 4 blocking (row-level `value` cached per row, groupBy alias on pg, `avg OVER()`, `by_gt` inverted), all fixed; nits folded (CTE nesting, median `from`, COMPAT lines). Codex rounds 3–4: `by_like` dropped, prototype-safe fetch aliases; round 4 SATISFIED. Fable final round: four blockers confirmed fixed, one new (no-op row-level result cached) fixed plus join-shorthand AND; confirmation pending.
 - [x] `npm run build`, `tsc --noEmit`, full test run (385 tests, 13 files), bench rerun (`bench/RESULTS.md`).
 
 ## Review
@@ -61,10 +61,10 @@ Only real consumer: `peekd-sp/lib/frontend` (ClickHouse via knex dialect plugin,
 ### Performance (median of 5, 200k rows/statement, same machine)
 | scenario | v3 | v4 |
 |---|---|---|
-| object dims | 44 ms | 39 ms |
-| array date dim | 61 ms | 47 ms |
-| array dim + @filter | 239 ms | 160 ms |
-| two queries + @diff | 117 ms | 81 ms |
+| object dims | 44 ms | 40 ms |
+| array date dim | 61 ms | 48 ms |
+| array dim + @filter | 239 ms | 151 ms |
+| two queries + @diff | 117 ms | 84 ms |
 | compile | n/a | 0.10 ms |
 v4 is faster everywhere; the review-fix commit briefly regressed `@filter` to 294 ms (dimension-level filter scanning every key of its object), caught by the bench rerun and fixed by precomputing field conditions per directive occurrence.
 

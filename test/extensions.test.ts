@@ -147,16 +147,21 @@ describe('extensions', () => {
       expect(seen).toEqual([['A', 1], ['B', 2]])
     })
 
-    test('a result hook on a dimension runs once per row', async () => {
+    test('a result hook on a dimension that decides for the row runs once per row; a no-op runs per cell', async () => {
       let calls = 0
       const once: Resolver = {
         result: (_c, ctx) => {
           if (ctx.baseline) calls++
-          return undefined
+          return { skip: false }
         },
       }
-      await run([[{ device: 'm', a: 1, b: 2 }, { device: 'd', a: 3, b: 4 }]], `query t { fetch { device @once { a: sum(a: x) b: sum(a: y) } } }`, {}, { directives: { once } })
+      const rows = [{ device: 'm', a: 1, b: 2 }, { device: 'd', a: 3, b: 4 }]
+      await run([rows], `query t { fetch { device @once { a: sum(a: x) b: sum(a: y) } } }`, {}, { directives: { once } })
       expect(calls).toBe(2)
+      calls = 0
+      const noop: Resolver = { result: (_c, ctx) => void (ctx.baseline && calls++) }
+      await run([rows], `query t { fetch { device @noop { a: sum(a: x) b: sum(a: y) } } }`, {}, { directives: { noop } })
+      expect(calls).toBe(4)
     })
   })
 
@@ -224,6 +229,12 @@ describe('review findings', () => {
     }
     const out = await run([[{ device: 'm', a: 10, b: 2 }]], `query t { fetch { device { a: sum(a: x) @divide(byField: b) b: sum(a: y) @hide } } }`, {}, { directives: { hide } })
     expect(out).toEqual({ m: { a: 5 } })
+  })
+
+  test('a row-level hook that returns nothing for one cell still runs for the next', async () => {
+    const onlyB: Resolver = { result: (cell, ctx) => (ctx.baseline && cell.node.alias === 'b' ? { value: 0 } : undefined) }
+    const q = `query t { fetch { device { a: sum(a: x) s: any(a: s) b: sum(a: y) } } }`
+    await expect(run([[{ device: 'm', a: 1, s: 'str', b: 10 }]], q, {}, { middleware: [onlyB] })).resolves.toEqual({ m: { a: 1, s: 'str', b: 0 } })
   })
 
   test('a row-level hook that returns a value runs for every cell of the row', async () => {

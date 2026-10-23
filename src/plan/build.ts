@@ -151,8 +151,12 @@ function toJoin(type: JoinType, args: Record<string, unknown>, where: string): J
         }
         const col = right.replace(/^@/, '')
         const ref = left.startsWith('@') ? left : `@${left}`
-        // `by_gt: "@a:@b"` reads `fetch.a > joined.b`; the predicate is written on the joined column, so it flips
-        on[col] = op === 'eq' ? ref : { [BY_OPS[op]]: ref }
+        // `by_gt: "@a:@b"` reads `fetch.a > joined.b`; the predicate is written on the joined column, so it flips.
+        // several shorthands on one joined column are ANDed
+        const prev = on[col]
+        const next = { [BY_OPS[op]]: ref }
+        if (prev === undefined) on[col] = op === 'eq' ? ref : next
+        else on[col] = { ...(typeof prev === 'string' ? { eq: prev } : (prev as object)), ...next }
       }
     }
   }

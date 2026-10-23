@@ -92,7 +92,9 @@ const pad = (s, n) => String(s).padEnd(n)
   })
   console.log(`${pad('compile x1000', 24)}${pad(compileMs.toFixed(0), 10)}${(compileMs / ITER).toFixed(3)} ms/compile`)
 
-  console.log(`\nheap used: ${(process.memoryUsage().heapUsed / 1e6).toFixed(0)} MB`)
+  // the end-of-run figure is mostly uncollected garbage; report what the last result retains
+  if (global.gc) global.gc()
+  console.log(`\nheap retained after GC: ${(process.memoryUsage().heapUsed / 1e6).toFixed(0)} MB (rows + last result)`)
 })().catch((e) => {
   console.error(e)
   process.exit(1)
