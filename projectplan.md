@@ -29,7 +29,7 @@ Only real consumer: `peekd-sp/lib/frontend` (ClickHouse via knex dialect plugin,
 
 ## Phase 2 — SPEC.md and review loop
 - [x] Write `SPEC.md`: query language (fetch/with/fetchPlain/unionall, dimension args `type|sort_asc|sort_desc|limit|offset|having`, variables + `input` types, fragments), plan model (`Plan/Fetch/Node`), lowering rules (grain split, DAG → CTE, per-parent limit via window, joins, unionall), stage contracts (`Resolver`, `Ctx`, `Adapter`), ordering + baseline semantics, error semantics, built-in catalogue with one-line semantics (metrics, dimensions, directives, filter operators), extension API with examples, v3 compatibility notes.
-- [~] Review round with Fable + Codex subagents (round 1: both reported blocking items, all folded; round 2: Codex SATISFIED, Fable pending) (brief: pragmatic, block only on real defects/ambiguities). Fix. Repeat until both report no blocking issues (cap 3 rounds; residual nits listed in SPEC appendix).
+- [x] Review round with Fable + Codex subagents (round 1: both reported blocking items, all folded; round 2: Codex SATISFIED, Fable one blocking item (join `on` sides) folded with its nits) (brief: pragmatic, block only on real defects/ambiguities). Fix. Repeat until both report no blocking issues (cap 3 rounds; residual nits listed in SPEC appendix).
 
 ## Phase 3 — implementation (TDD, each slice: port v3 tests → make green)
 - [x] 3a `parse/`: graphql.web + `input` block parser + variables/args coercion + fragments. Port `test/types.test.ts` (30).
@@ -45,8 +45,38 @@ Only real consumer: `peekd-sp/lib/frontend` (ClickHouse via knex dialect plugin,
 - [x] Profile and optimise until v4 ≤ v3 on every scenario.
 
 ## Phase 5 — implementation review
-- [ ] Fable + Codex review of the code against SPEC.md and v3 behaviour. Fix findings. Repeat until no blocking issues (cap 2 rounds).
-- [ ] `npm run build`, `tsc --noEmit`, full test run, bench rerun.
+- [~] Fable + Codex review of the code against SPEC.md and v3 behaviour. Fix findings. Repeat until no blocking issues (cap 2 rounds). Codex round 1: 15 blocking items, all fixed (HAVING-alias on pg documented as limitation). Codex round 2 and Fable round 1: running.
+- [x] `npm run build`, `tsc --noEmit`, full test run (385 tests, 13 files), bench rerun (`bench/RESULTS.md`).
 
 ## Review
-(filled at the end)
+
+### What was built
+- `src/` (~3.6k lines TypeScript, `dist/` 260 KB): `parse/` (graphql.web + own `input` block parser + variables/fragments), `plan/` (AST → `Plan{fetches,nodes}`, directive/resolver/middleware `plan` hooks), `lower.ts` (grain split, CTE dependency order, cycle detection), `sql/` (knex printing, filter compiler, nested limit via `row_number`), `assemble.ts` (two-pass streaming writer with keyed Array index and row-level hook cache), `engine.ts` (`gritql()` → `compile`/`run`/`use`), `adapters.ts` (knex/pg/clickhouse/fixture), `builtins/` (metrics, dimensions, directives, dates without luxon).
+- Runtime dependencies: `knex`, `@0no-co/graphql.web`. v3 had 9 (graphql, graphql-tag, lodash, luxon, deepmerge, tiny-emitter, prop-types, postgres, snowflake-sdk).
+- Documents: `SPEC.md` (contract, 2 review rounds each with Fable and Codex), `COMPAT.md` (every v3 difference, SQL snapshot diffs, test-port table), `bench/RESULTS.md`.
+
+### Tests
+385 tests in 13 files (vitest). v3 suites ported through a `gqlToDb()` shim (`test/v3compat.ts`): gql-sql-slicer (66 of 67; `@map/@tuple` dropped), metrics (15), filters (9), grit.fails (4), types (30); merge (27) and directives (73) rewritten on the v4 API; new: sql shapes (18), adapters (10), extensions (20), parse/plan/filter units. `progressive.test.ts` was v3-internal (string-path writer) and its behaviours are covered in merge tests (see COMPAT.md).
+
+### Performance (median of 5, 200k rows/statement, same machine)
+| scenario | v3 | v4 |
+|---|---|---|
+| object dims | 44 ms | 39 ms |
+| array date dim | 61 ms | 47 ms |
+| array dim + @filter | 239 ms | 160 ms |
+| two queries + @diff | 117 ms | 81 ms |
+| compile | n/a | 0.10 ms |
+v4 is faster everywhere; the review-fix commit briefly regressed `@filter` to 294 ms (dimension-level filter scanning every key of its object), caught by the bench rerun and fixed by precomputing field conditions per directive occurrence.
+
+### v3 bugs fixed rather than preserved (all in COMPAT.md)
+`@groupBy` double-counting sibling metrics; list filter values compiled to `= a AND = b` instead of `IN`; `count` without alias → `as "undefined"`; numeric literals stringified; empty `IN ()`; nested `limit` applied globally instead of per parent; `from null` for anonymous operations; repeated arguments nested on the third occurrence.
+
+### Known limitations
+- `having` on output aliases works on ClickHouse/MySQL, not PostgreSQL (documented).
+- Baseline is shared by reference, not frozen: hooks must not mutate it.
+- Pass 2 re-reads every row set when any fetch has result hooks.
+
+### Follow-ups (not done)
+- GA adapter (dropped by decision), `@filter` pushdown (opt-in), skipping pass 2 for hook-free fetches.
+- Fold remaining Fable/Codex implementation-review findings when they arrive (see Phase 5).
+
