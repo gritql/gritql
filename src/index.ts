@@ -1,6 +1,8 @@
 export { gritql, Gritql, builtins } from './engine'
 export type { GritqlOptions, RunOptions, Compiled, CompiledQuery } from './engine'
 export { knexAdapter, pgAdapter, clickhouseAdapter, fixtureAdapter } from './adapters'
+/** the knex factory gritql builds with, so dialect plugins and adapters share one knex version (v3 exported it too) */
+export { default as knex } from 'knex'
 export { Registry } from './registry'
 export { GritqlError } from './errors'
 export type { ErrorCode } from './errors'

@@ -370,7 +370,8 @@ function renameFields(expr: unknown, names: Record<string, string>): unknown {
  */
 function arithmeticLayer(core: Knex.QueryBuilder, physical: Physical, lowered: Node[], outputs: string[], env: CompileEnv): Knex.QueryBuilder {
   const { knex } = env
-  const FLOAT = env.dialect === 'clickhouse' ? 'Float64' : 'float'
+  // ClickHouse: non-Nullable casts reject NULL (Code 349), and unmatched join rows are NULL (join_use_nulls)
+  const FLOAT = env.dialect === 'clickhouse' ? 'Nullable(Float64)' : 'float'
   const grainCols = physical.grain.flatMap((d) => dimColumns(d, physical, env))
   const joins = new Map<string | null, string | null>()
   const operand = (m: Node): string | null => {

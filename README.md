@@ -184,7 +184,8 @@ npm run bench     # assembly and compile timings on synthetic data, see bench/RE
 ## Documents
 
 - [SPEC.md](SPEC.md): the full language and engine specification.
-- [COMPAT.md](COMPAT.md): what changed from v3 and how to migrate.
+- [MIGRATION.md](MIGRATION.md): step-by-step guide from v3 to v4.
+- [COMPAT.md](COMPAT.md): every difference from v3 and why.
 - [bench/RESULTS.md](bench/RESULTS.md): performance against v3.
 
 MIT license.

@@ -233,10 +233,10 @@ describe('@filter is lowered to HAVING (SPEC §6.7)', () => {
     await expect(sqlOf(`query t { cur: fetch { d { v: sum(a: x) @divide(byField: w) } } }`)).rejects.toMatchObject({ code: 'PLAN', message: "cur.d.v: no sibling 'w' at 'd'" })
   })
 
-  test('ClickHouse: Float64 casts and NULLs for unmatched join rows', async () => {
+  test('ClickHouse: Nullable(Float64) casts and NULLs for unmatched join rows', async () => {
     const ch = gritql({ adapters: { ch: clickhouseAdapter({ query: async () => ({ json: async () => [] }) }) } })
     const { queries } = await ch.compile(`query t { cur: fetch { d { v: sum(a: x) @diff(by: prev) } } prev: fetch { d { v: sum(a: x) } } }`)
-    expect(queries[0].text).toContain(`cast("__cur"."v" as Float64) / NULLIF(cast("__ref_0"."v" as Float64), 0) - 1 as "v"`)
+    expect(queries[0].text).toContain(`cast("__cur"."v" as Nullable(Float64)) / NULLIF(cast("__ref_0"."v" as Nullable(Float64)), 0) - 1 as "v"`)
     // the adapter's compile adds the setting to the statement it executes (`sql`), not to the printed `text`
     expect(queries[0].sql.endsWith(' SETTINGS join_use_nulls = 1')).toBe(true)
     expect(queries[1].sql).not.toContain('SETTINGS')
