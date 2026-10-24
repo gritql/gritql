@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { PropTypes, Resolver, Node, fetchOf, nodeAt, insertNode, cloneNode, builtins } from '../src'
+import { PropTypes, Resolver, Node, fetchOf, nodeAt, insertNode, cloneNode, builtins, gritql, fixtureAdapter } from '../src'
 import { run, sqlOf } from './harness'
 
 describe('extensions', () => {
@@ -276,5 +276,15 @@ describe('review findings', () => {
     await expect(run([[{ year: '2026', price: 2 }]], `query t { fetch { year @parse(as: "int") { price: distinct(type: Array) } } }`)).resolves.toEqual([
       { year: 2026, price: [{ price: 2 }] },
     ])
+  })
+})
+
+describe('run options', () => {
+  test('timings: the caller gets per-stage durations for its own call', async () => {
+    const g = gritql({ adapters: { pg: fixtureAdapter([[{ d: 'a', v: 1 }]]) } })
+    const timings: Record<string, number> = {}
+    await g.run(`query t { fetch { d { v: sum(a: x) } } }`, {}, { timings })
+    expect(Object.keys(timings).sort()).toEqual(['assemble', 'execute', 'lower', 'parse', 'plan', 'sql'])
+    for (const ms of Object.values(timings)) expect(ms).toBeGreaterThanOrEqual(0)
   })
 })

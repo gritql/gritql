@@ -34,6 +34,8 @@ export interface GritqlOptions {
 
 export interface RunOptions {
   adapter?: string
+  /** filled with per-stage durations in ms (`parse`, `plan`, `lower`, `sql`, `execute`, `assemble`) as the run progresses; per call, so safe under concurrency */
+  timings?: Record<string, number>
 }
 
 export interface CompiledQuery {
@@ -99,7 +101,7 @@ export class Gritql {
   async compile(text: string, variables: Record<string, unknown> = {}, opts: RunOptions = {}): Promise<Compiled> {
     const adapter = this.adapter(opts.adapter)
     const knex = this.knexFor(adapter)
-    const timings: Record<string, number> = {}
+    const timings: Record<string, number> = opts.timings ?? {}
     const t0 = now()
     const doc = parseDocument(text)
     timings.parse = now() - t0

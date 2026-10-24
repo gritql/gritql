@@ -28,7 +28,7 @@ output
 
 Instance options: `gritql({ adapters, default, strict, output })`. `strict` (default `true`) makes the planner reject the v3 string grammars and unknown fetch arguments with an error that names the replacement (§2.3, §2.4, §2.7, §8.3); `strict: false` accepts both forms. `output` (default `'records'`) sets the shape of a dimension without `type:` (§7); `'keyed'` is v3's shape.
 
-Timings for each step are written to `ctx.timings` (ms) and are available to `result`-stage middleware.
+Timings for each step are written to `ctx.timings` (ms) and are available to middleware. A caller that wants them passes its own object, `run(text, variables, { timings })`, which the engine fills for that call only.
 
 ---
 

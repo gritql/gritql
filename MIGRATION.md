@@ -95,7 +95,7 @@ The bundled `clickhouseAdapter(client, { knex })` does the same without the `flo
 | `beforeDbFetch(fn)` to log SQL | an `execute` middleware (below), or `g.compile()` |
 | `beforeDbFetch` returning `null` to get SQL without running it | `g.compile(query, variables, { adapter })`, no connection touched |
 | `afterDbFetch(fn)` to transform rows | an `execute` middleware that awaits `next(req)` and returns new rows |
-| `emitter.once('fetchStart')` and friends | `ctx.timings` with `parse`, `plan`, `lower`, `sql`, `execute`, `assemble` in ms |
+| `emitter.once('fetchStart')` and friends | `g.run(q, v, { adapter, timings })`: pass an object and v4 fills it with `parse`, `plan`, `lower`, `sql`, `execute`, `assemble` in ms, per call. Middleware sees the same numbers as `ctx.timings` |
 | `useResolver`, `useDimensionResolver`, `useDataResolver` | `g.use({ metrics, dimensions })` with one resolver object (below) |
 
 Middleware wraps every statement. It sees the SQL actually sent, and the shared context:
