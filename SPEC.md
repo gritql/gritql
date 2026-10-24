@@ -26,6 +26,8 @@ output
 
 `compile()` runs steps 1–4 and returns the requests without touching an adapter connection. `run()` runs all six.
 
+Instance options: `gritql({ adapters, default, strict, output })`. `strict` (default `true`) makes the planner reject the v3 string grammars and unknown fetch arguments with an error that names the replacement (§2.3, §2.4, §2.7, §8.3); `strict: false` accepts both forms. `output` (default `'records'`) sets the shape of a dimension without `type:` (§7); `'keyed'` is v3's shape.
+
 Timings for each step are written to `ctx.timings` (ms) and are available to `result`-stage middleware.
 
 ---
@@ -55,7 +57,7 @@ query ii_transactional($filters: Filters, $limit: Number) {
 
 Supported definitions: `input`, `type`, `enum`, `union`. Field types: `Name`, `[Name]`, with `!` on the name or the list. Base types: `Any`, `Number`, `String`, `Bool`, `Object`, `Array`. `type` is validated as an exact shape (no extra keys), `input` as a loose shape. `@inherits(name: Other)` on a type prepends the fields of `Other`. `@map` and `@tuple` from v3 are not supported (no known usage).
 
-Variables are validated against their declared type before planning (`TYPE` error). A `$var` that is undefined removes the innermost argument, object field or list item whose value it is (`limit: $limit` with no value means no limit; `filters: { id: $id, domain: $domain }` with `$domain` undefined becomes `filters: { id: ... }`). Default values in variable definitions apply. A `$var` that is not declared by the operation is substituted from `variables` without type checking (v3 behaviour; consumers rely on it).
+Variables are validated against their declared type before planning (`TYPE` error). A `$var` that is undefined removes the innermost argument, object field or list item whose value it is (`limit: $limit` with no value means no limit; `filters: { id: $id, domain: $domain }` with `$domain` undefined becomes `filters: { id: ... }`). Default values in variable definitions apply. A `$var` that is not declared by the operation (or by the fragment it appears in) is a `TYPE` error naming the operation or fragment; with `strict: false` it is substituted from `variables` without type checking (v3 behaviour).
 
 ### 2.3 Fetch forms
 
@@ -71,9 +73,11 @@ Fetch arguments:
 
 - `table: name` — source table or `with` alias. Default is the operation name.
 - `filters: { ... }` — filter object, see 2.6.
+- `where: { ... }` — column predicates. Same grammar as `filters`, except that every top-level key is a column, including `from`, `having`, `search` and `inherited`, which `filters` reads as keywords (`where: { from: "web" }` is `"t"."from" = 'web'`). Per-column modifiers (`price: { gt: 1, from: catalog }`) and `and`/`or`/`nor`/`not` keep their meaning. `where` and `filters` combine with AND.
+- `having: { ... }` — predicates on aggregated output aliases, see 2.6; the same as `filters: { having: {...} }`, and giving both is an `ARGS` error.
 - `search: { field: "text" }` — full text search (dialects that support it).
-- `join | leftJoin | rightJoin | fullJoin | innerJoin | leftOuterJoin | rightOuterJoin | fullOuterJoin: { table, on | by }` — see 2.7.
-- legacy inline filters: `fetch(brand: Adidas, date_gt: "2020-1-1")`. A bare `name: value` is `eq`; suffixes `_gt _gte _lt _lte _like _in` map to the operator; `_in` takes a `|`-separated string (`category_in: "1|11"`). Enum literals are strings.
+- `join | leftJoin | rightJoin | fullJoin | innerJoin | leftOuterJoin | rightOuterJoin | fullOuterJoin: { table, on }` — see 2.7.
+- Any other argument is an `ARGS` error in strict mode. The message names the nearest known argument when one is within two edits (`fetch(filter: ...)` → "did you mean 'filters'?") and otherwise says where the argument belongs (`where: { x: ... }` for a column predicate; `limit`/`offset`/`sort` belong on a dimension). With `strict: false` the v3 inline filters apply: `fetch(brand: Adidas, date_gt: "2020-1-1")`, where a bare `name: value` is `eq`, suffixes `_gt _gte _lt _lte _like _in` map to the operator and `_in` takes a `|`-separated string (`category_in: "1|11"`). Enum literals are strings.
 
 Several fetches MAY share an alias; their trees merge into one output tree by dimension keys. A fetch dropped by `@include`/`@skip` contributes nothing. Two surviving `with` fetches under one alias are a `PLAN` error (consumers pair them with exclusive `@include`/`@skip`). `fetchPlain` rows are returned as they come: no `result` hook runs on them.
 
@@ -90,9 +94,9 @@ device(type: Array, sort_desc: value, limit: 5) {       # dimension: default res
 }
 ```
 
-Dimension arguments common to every dimension: `type: Map | Array` (default Map), `sort_asc: name`, `sort_desc: name`, `sort: asc|desc` with `field`, `limit`, `offset`, `having: { ... }`, `from: table`. A metric's `sort` orders by the metric's output alias.
+Dimension arguments common to every dimension: `type: Map | Array` (default: the instance's `output` option, records unless `output: 'keyed'`), `sort_asc: name`, `sort_desc: name`, `sort: asc|desc` with `field`, `limit`, `offset`, `having: { ... }`, `from: table`. A metric's `sort` orders by the metric's output alias.
 
-Metric argument conventions: `a` is the measured column, `by` a partition or second operand, `from: table` qualifies the column. A column written `@name` is qualified with the fetch table. Arithmetic metrics accept `"fn|column"` to pick the aggregate (`"count|sessions"`) or `"|column"` for the raw column. Every metric also accepts `sort: asc|desc`, `limit`, `offset`, which apply to the statement that selects it (`distinct(limit: 5)`, `updated(limit: 1, sort: desc)` orders by the metric itself), and `type: Array`, which assembles the metric like an Array dimension keyed by its own value (`country: distinct(type: Array)` → `[{country: 'FR'}, ...]`). `sort` without `field` on a dimension is a no-op, as in v3.
+Metric argument conventions: `a` is the measured column, `by` a partition or second operand, `from: table` qualifies the column. A column written `@name` is qualified with the fetch table. Arithmetic metrics (`divide`, `diff`, `subtract`, `multiply`, ...) take each operand as a bare column (aggregated with the metric's default function), a number, `{ fn: column }` to pick the aggregate (`{ count: sessions }`), or `{ field: column }` for the raw column. The v3 strings `"count|sessions"` / `"|column"` are accepted only with `strict: false`; strict rejects them with the object form in the message. Every metric also accepts `sort: asc|desc`, `limit`, `offset`, which apply to the statement that selects it (`distinct(limit: 5)`, `updated(limit: 1, sort: desc)` orders by the metric itself), and `type: Array`, which assembles the metric like an Array dimension keyed by its own value (`country: distinct(type: Array)` → `[{country: 'FR'}, ...]`). `sort` without `field` on a dimension is a no-op, as in v3.
 
 ### 2.5 Directives
 
@@ -107,7 +111,7 @@ Op          := eq ne gt gte lt lte in nin like ilike isNULL search hasAny hasAll
 Logical     := and: [Filter] | or: [Filter] | nor: [Filter] | not: Filter | having: Filter | from: table
 ```
 
-A scalar predicate is `eq`; a list is `in` (an empty list matches nothing; an empty `nin` matches everything). An operator key without a field (`or: [{ gte: 1 }]`) is an `ARGS` error. `having` holds predicates on aggregated aliases and is compiled without table qualification; it works where the dialect accepts output aliases in HAVING (ClickHouse, MySQL) and for real columns on PostgreSQL. `from` qualifies the following fields with a table. A value string starting with `@` is a column reference (used in join `on`). Operators with non-GraphQL names (`RegExp~`) are reachable only through variables. `hasAny`/`hasAll` are ClickHouse only; `search` and the search metrics are PostgreSQL only.
+A scalar predicate is `eq`; a list is `in` (an empty list matches nothing; an empty `nin` matches everything). An operator key without a field (`or: [{ gte: 1 }]`) is an `ARGS` error. `having` holds predicates on output aliases (metric aliases and dimension output keys). A `having` that names only real columns and aggregate expressions compiles to HAVING; one that names an output alias wraps the grouped statement as a derived table and filters it (§6.4), so it works the same on every dialect. `from` qualifies the following fields with a table. A value string starting with `@` is a column reference (used in join `on`). Operators with non-GraphQL names (`RegExp~`) are reachable only through variables. `hasAny`/`hasAll` are ClickHouse only; `search` and the search metrics are PostgreSQL only.
 
 ### 2.7 Joins
 
@@ -119,7 +123,7 @@ pre: with(filters: $f) {
 }
 ```
 
-A join node adds a join to its fetch and is transparent in the output (its children are placed as if they were its siblings). `on` is a filter object: each key names a column of the **joined** table and a string value written `@col` names a column of the **fetch** table, so `on: { pid: "@id" }` compiles to `JOIN products ON products.pid = <fetch_table>.id`. `by: "@fetch_col:@joined_col"` (repeatable) is the shorthand for `on: { joined_col: "@fetch_col" }`; `by_gt`, `by_gte`, `by_lt`, `by_lte` read left to right (`by_gt: "@a:@b"` means `fetch.a > joined.b`). v3's `by_in` (column IN column) and `by_like` (not reversible onto the joined column; write it as `on`) are dropped and rejected as `ARGS`. Joins may also be given as fetch arguments.
+A join node adds a join to its fetch and is transparent in the output (its children are placed as if they were its siblings). `on` is a filter object: each key names a column of the **joined** table and a string value written `@col` names a column of the **fetch** table, so `on: { pid: "@id" }` compiles to `JOIN products ON products.pid = <fetch_table>.id`. The v3 shorthands `by: "@fetch_col:@joined_col"` and `by_gt`/`by_gte`/`by_lt`/`by_lte` (left to right: `by_gt: "@a:@b"` means `fetch.a > joined.b`) are accepted only with `strict: false`; strict rejects them with the equivalent `on:` object in the message. v3's `by_in` and `by_like` are dropped in both modes (`ARGS`). Joins may also be given as fetch arguments.
 
 ---
 
@@ -314,7 +318,9 @@ Each dimension contributes `columns()` (default: its own column aliased to `node
 
 ### 6.4 WHERE / HAVING
 
-Fetch `filters` compile to one predicate, legacy inline args compile to `AND`ed predicates, `search` to the dialect's full text predicate. `having` from `filters.having` and from dimension `having` args compile to HAVING. A filter object carrying `inherited: false` drops its predicates whose `from: t` names neither the fetch table nor a joined table (v3 behaviour, kept for filter objects written for a `with` and reused on a fetch reading it). `from: "@"` means the fetch table.
+Fetch `filters` and `where` compile to one predicate each (ANDed), legacy inline args (`strict: false`) to `AND`ed predicates, `search` to the dialect's full text predicate. `having` from `filters.having`, the `having:` fetch argument and dimension `having:` args compile to HAVING when they name real columns or aggregate expressions. When a `having` names an **output alias**, the grouped statement is wrapped: `select <output columns> from (<grouped statement>) as "__h" where <predicates on the aliases>`, which every dialect accepts (PostgreSQL rejects aliases in HAVING). Both kinds may appear in one statement.
+
+**Output names vs SQL names.** A dimension's output key may equal its source column while its expression differs (`date: groupBy(field: date, by: month)` → `date_trunc('month', "date") as "date"`). Grouping or filtering by that alias would be ambiguous (or, on ClickHouse, cyclic), so when an output name shadows its own source column the dimension resolver asks `ctx.out(name, source)` for the SELECT alias, which returns an internal name `__d<i>` (`i` = position in the grain) and records it in `node.sqlNames`. Everything downstream maps through it: `GROUP BY`, `ORDER BY`, nested-limit partitions, the `__h` wrapper, the arithmetic layer, and the assembler, which reads `__d0` from the row and writes `date` to the output. `CompiledQuery.columns` lists the mapping for consumers of `compile()`. Names that do not shadow a column are used as written. A filter object carrying `inherited: false` drops its predicates whose `from: t` names neither the fetch table nor a joined table (v3 behaviour, kept for filter objects written for a `with` and reused on a fetch reading it). `from: "@"` means the fetch table.
 
 ### 6.5 ORDER / LIMIT / OFFSET
 
@@ -324,7 +330,32 @@ Fetch `filters` compile to one predicate, legacy inline args compile to `AND`ed 
 
 A `with` fetch is lowered at its finest grain (all its dimensions grouped) into one CTE. A statement lists in `ctes` every `with` alias it depends on, discovered recursively through its source, each `unionall` branch and each join target (a `with` that joins another `with`, then a `unionall` over both, needs all three). Dependencies are emitted in topological order; a cycle is a `PLAN` error. `unionall` sources become a derived table `(select * from a union all select * from b) as unionall_a_b`. Joins become `JOIN table ON <predicate>` with `@` references qualified as described in 2.7; the joined table's columns are selectable with `from: table`.
 
-### 6.7 fetchPlain
+### 6.7 Arithmetic and filter lowering
+
+`@diff`, `@subtract`, `@divide` and `@filter` are computed by the database, not by the assembler.
+
+**Cross-fetch arithmetic.** `@diff(by: other)`, `@subtract(by: other)` and `@divide(by: other)` on a metric set `node.lowered = { op, ref: { alias: other, column } }` in the plan stage; `@divide(byField: b)` sets `{ op: 'divide', byField: 'b' }`. When a physical query has lowered metrics, compile adds an outermost **arithmetic layer**:
+
+```sql
+select "__cur"."domain", "__cur"."revenue",
+       cast("__cur"."growth" as float) / NULLIF(cast("__ref_0"."growth" as float), 0) - 1 as "growth"
+from (<grouped statement of this grain>) as "__cur"
+left join (<grouped statement of other at the same grain>) as "__ref_0"
+       on "__cur"."domain" = "__ref_0"."domain"
+order by "revenue" desc limit 10
+```
+
+- The **reference** is the physical query of the fetch `other` whose grain has the same dimension aliases, joined on every grain column (through `sqlNames`). Several fetches may share the alias; the one with the matching grain is used. One join per distinct referenced alias (`__ref_0`, `__ref_1`, ...), shared by every metric that references it.
+- A `with` target is joined by its CTE name (`left join "prev" as "__ref_0"`) and its dependencies bubble into the statement's `ctes`. A `fetch` target is embedded as a derived table in **reference mode**: its grouped statement without an arithmetic layer of its own, which is what v3 compared against (the other fetch's baseline) and which makes mutual (`series` ↔ `prev`) and self references terminate. A `fetch` that is also emitted therefore executes twice (once for its output, once inside the join); a baseline that is not output belongs in a `with`.
+- Expressions: `diff` → `cast(a as float) / NULLIF(cast(b as float), 0) - 1`; `divide` → the same without `- 1`; `subtract` → `a - b`. A missing row on the reference side yields `NULL` (LEFT JOIN), as does a zero divisor; v3 produced `NaN`/`Infinity` there.
+- A reference removed from the plan (`@include`/`@skip`) compiles to `NULL as alias`. A reference fetch without the grain is a `PLAN` error (`'prev' has no 'domain' level to compare with`); one without the column too (`'prev' has no 'growth' at 'domain'`). A metric carrying more than one of the three is an `ARGS` error. A lowered metric under a dimension with `@groupBy`/`@groupOn` is a `PLAN` error: the regrouped rows would sum a ratio or a difference; compute it on a `with` over the grouped result instead.
+- The layer is the outermost one: `ORDER BY`, `LIMIT`/`OFFSET` and alias `having` (including lowered `@filter` predicates) apply on it, so they can name the computed column. Statements of other grains of the same fetch are untouched.
+
+**`@filter`.** Conditions whose operator SQL can express (`eq neq gt gte lt lte in nin`) are folded into `having:` of the dimension the directive sits on (a metric filter into its parent dimension's, a root metric's into the fetch's `filters.having`), merged with any `having:` already written there, so the database drops the rows and `limit` applies to the survivors. The plan hook then marks its occurrence as lowered (`use.state.lowered = true`) and the assembler attaches no result hook for it; a document whose directives are all lowered assembles in a single pass. A condition with an array operator (`contains`, `of`, `startsWith`, ...) cannot be expressed and keeps the result-time hook of §7.1 for the whole occurrence.
+
+**`@omit`.** Sets `emit: false` on the node (`full: true` removes it from the plan). The column stays in the statement, so it can be referenced (`@divide(byField: rank)` with `rank @omit`), and the assembler leaves it out of the output.
+
+### 6.8 fetchPlain
 
 Lowered as a single physical query with all dimensions grouped and all metrics selected. Its result is an array of row arrays, one per physical query (so always `[rows]` for the single-statement case), exactly as v3 returned it.
 
@@ -336,8 +367,9 @@ Assembly is a streaming write: physical queries are visited in execution order, 
 
 Location rules (these are the v3 `progressive` path semantics restated):
 
-- A **Map** dimension (default) steps into the object under the key that is the row's value for that column, creating it when missing. Keys are the raw string form; special characters are not escaped.
-- An **Array** dimension steps into the element whose identity columns equal the row's values (compared by string form), creating it when missing with those columns stamped on it under their output keys. Elements appear in the order they were first created. Where the array lives: the array **is** the parent value when the Array dimension is the only thing written there so far (`date { device(type: Array) {...} }` → `'2022-01-01': [...]`; at the fetch root the tree itself becomes the array); when the parent location already holds a non-empty object (a sibling metric wrote first, or the parent is an Array element carrying its own key columns), the array is stored in that object under the dimension's output keys joined with `;` (`total: 3, device: [...]`; `{channels: 'Social', country: [...]}`). Metric grains are executed before child-dimension grains, which is what makes these cases deterministic.
+- A dimension without `type:` is an **array of records** (`output: 'records'`, the default): `[{ date: '2022-01-01', value: 3, device: [...] }, ...]`. This is the `Array` rule below; `type: Map` opts a dimension back to the keyed object, and `output: 'keyed'` on the instance makes `Map` the default (v3's shape).
+- A **Map** dimension steps into the object under the key that is the row's value for that column, creating it when missing. Keys are the raw string form; special characters are not escaped.
+- An **Array** dimension steps into the element whose identity columns equal the row's values (compared by string form), creating it when missing with those columns stamped on it under their output keys. Elements appear in the order they were first created. A nested dimension of a record is stored under the dimension's alias (`{ date: '2022-01-01', device: [...] }`), a `combine` under its alias too. Where the array lives inside a keyed tree: the array **is** the parent value when the Array dimension is the only thing written there so far (`date { device(type: Array) {...} }` → `'2022-01-01': [...]`; at the fetch root the tree itself becomes the array); when the parent location already holds a non-empty object (a sibling metric wrote first, or the parent is an Array element carrying its own key columns), the array is stored in that object under the dimension's output keys joined with `;` (`total: 3, device: [...]`; `{channels: 'Social', country: [...]}`). Metric grains are executed before child-dimension grains, which is what makes these cases deterministic.
 - `combine` is an Array or Map dimension with several identity columns.
 - Metrics are written as `alias: value` on the object reached by their dimension path. A metric's `columns()` may name several keys; each is written.
 - `type: Array` at the root makes the fetch result an array.
@@ -348,7 +380,7 @@ The output object maps fetch aliases to trees. An unaliased fetch's tree is the 
 
 ### 7.1 Two passes, baseline and result hooks
 
-Assembly runs twice when any fetch carries a directive with a `result` hook.
+Assembly runs twice when any fetch carries a directive with a `result` hook that is not lowered (§6.7). Without one, a single pass writes the output directly and leaves `emit: false` nodes out.
 
 **Pass 1** assembles every fetch with `ctx.baseline` undefined. `result` hooks run in this pass too; a hook that needs the other fetches returns nothing (or `{ value }`) until `baseline` exists, so a hook such as `@parse` applies in both passes while `@diff` applies only in pass 2. The pass-1 output, keyed by fetch alias, is exposed to pass 2 as `baseline`.
 
@@ -359,9 +391,9 @@ Assembly runs twice when any fetch carries a directive with a `result` hook.
 - `keys` relocates: the write uses these dimension values instead of the row's. A relocated write of a number into a key that already holds a number adds to it; anything else replaces. This is how `@groupBy(by: month)` and `@groupOn` merge elements. The relocated element's identity columns are the new keys; nothing is copied into nested objects.
 - `set` writes additional `key: value` pairs on the object that receives the cell (used by `@groupOn(replacers)`).
 
-`@filter`, `@groupOn`, `@groupBy`, `@diff`, `@subtract`, `@divide`, `@indexed` and `@omit` act only once `baseline` exists (pass 2); `@parse` acts in both. A hook attached to a fetch or a dimension is **row-level**: the engine runs it once per row (for the row's first cell) and reuses its `CellResult` for the row's other cells, so `@parse` on a dimension rewrites the row once and `@filter` on a dimension decides once per row. Only a result that decides something for the row (`skip`, `keys`, `set`, or an empty `{}`) is reused; a hook that returns `value` or nothing runs again for the row's other cells, since both may depend on the cell. A dimension hook that needs the row's baseline element reads it at its own path (`ctx.at(alias, cell.keys, ctx.path)`), so `country @filter(total_gt: 5) { total device { value } }` drops the country from every grain. A hook attached to a metric runs per cell. Pruning is implicit: a container nobody writes into is never created, so `@filter` on a dimension removes the element from every grain by returning `skipAll` for each of its rows.
+`@groupOn`, `@groupBy`, `@indexed` and `@filter` with an array operator act only once `baseline` exists (pass 2); `@parse` acts in both. `@diff`, `@subtract`, `@divide`, `@omit` and `@filter` with SQL operators have no result hook (§6.7). A hook attached to a fetch or a dimension is **row-level**: the engine runs it once per row (for the row's first cell) and reuses its `CellResult` for the row's other cells, so `@parse` on a dimension rewrites the row once and `@filter` on a dimension decides once per row. Only a result that decides something for the row (`skip`, `keys`, `set`, or an empty `{}`) is reused; a hook that returns `value` or nothing runs again for the row's other cells, since both may depend on the cell. A dimension hook that needs the row's baseline element reads it at its own path (`ctx.at(alias, cell.keys, ctx.path)`), so `country @filter(total_gt: 5) { total device { value } }` drops the country from every grain. A hook attached to a metric runs per cell. Pruning is implicit: a container nobody writes into is never created, so `@filter` on a dimension removes the element from every grain by returning `skipAll` for each of its rows.
 
-Cross-fetch reads go through `ctx.at(alias, keys, path)`, which resolves the location in `baseline` by dimension key values (Array levels by the element's key columns, Map levels by key), never by array index, and returns `undefined` when the fetch or element is missing. `@divide(byField)` reads the sibling metric from `baseline` at the same keys. Arithmetic on a missing reference yields `NaN`, as in v3.
+Cross-fetch reads from extension hooks go through `ctx.at(alias, keys, path)`, which resolves the location in `baseline` by dimension key values (Array levels by the element's key columns, Map levels by key), never by array index, and returns `undefined` when the fetch or element is missing (`test/merge.test.ts` keeps a `@ratio` extension that does what `@diff` did before lowering).
 
 ---
 
@@ -410,15 +442,15 @@ Cross-fetch reads go through `ctx.at(alias, keys, path)`, which resolves the loc
 |---|---|---|
 | include(if) / skip(if) | plan | drop the node or fetch when the condition says so; accept the value produced by a preceding `@compare` |
 | compare(value?, eq\|neq\|gt\|gte\|lt\|lte\|in\|nin\|of\|nof\|contains\|ncontains\|startsWith\|endsWith\|nStartsWith\|nEndsWith) | plan | computes a boolean passed to the next directive on the node; chained operators all compare the original value |
-| omit(full?) | result | `skip` in pass 2, so the value is present in baseline but not in the output; `full` skips in both passes |
-| diff(by) | result | `value / at(by, keys, path) - 1` once baseline exists; `NaN` when the reference is missing |
-| subtract(by) | result | as diff with `value - ref` |
-| divide(by \| byField) | result | `value / ref`, ref from another fetch at the same keys, or the sibling metric `byField` in baseline |
+| omit(full?) | plan | `emit: false`: the column stays in the statement and in the baseline, not in the output; `full` removes the node |
+| diff(by) | plan → SQL | `cast(value as float) / NULLIF(cast(ref as float), 0) - 1` on the arithmetic layer, ref = the metric of fetch `by` at the same grain (§6.7); `NULL` when the reference row is missing |
+| subtract(by) | plan → SQL | `value - ref` |
+| divide(by \| byField) | plan → SQL | `cast(value as float) / NULLIF(cast(ref as float), 0)`, ref from fetch `by` at the same grain or the sibling column `byField` |
 | indexed(to \| group) | result | `value / max` over the members: the node's own fetch plus `to`, or every node in any fetch tagged with the same `group`; max is computed over baseline once per directive occurrence |
-| filter(<metric>_<op>: v on a dimension; <op>: v on a metric) | result | on a metric: `skip` when the value fails; on a dimension: `skipAll` for every row whose baseline element fails, so the element disappears from every grain; ops `eq gt gte lt lte in nin of nof contains ncontains startsWith endsWith nStartsWith nEndsWith` |
-| groupOn(<metric>_<op>: v, replacers) | result | rows whose baseline element matches are relocated with `keys` = `replacers` merged over the row's keys; numbers add up, strings last-wins; `set: replacers` is written on the grouped element when the metric is its direct child (`channels: "Other"` inside the `Other` entry) |
+| filter(where: { field: pred } on a dimension; <op>: v on a metric) | plan → SQL, result | `where` is a filter object (scalar = `eq`, list = `in`, `{ op: v }` otherwise); `eq neq gt gte lt lte in nin` become `having:` on the dimension / parent dimension / fetch (§6.7); an occurrence using `of nof contains ncontains startsWith endsWith nStartsWith nEndsWith` stays result-time: on a metric `skip` when the value fails, on a dimension `skipAll` for every row whose baseline element fails. The v3 `<metric>_<op>: v` keys need `strict: false` |
+| groupOn(where: { field: pred }, replacers) | result | (v3 `<metric>_<op>: v` keys need `strict: false`) rows whose baseline element matches are relocated with `keys` = `replacers` merged over the row's keys; numbers add up, strings last-wins; `set: replacers` is written on the grouped element when the metric is its direct child (`channels: "Other"` inside the `Other` entry) |
 | groupBy(by: day\|week\|month\|quarter\|year) | result | relocates every row to `keys` with the date truncated to the unit's start (`2022-01-05` → `2022-01-01` for month; weeks start Monday, `2022-06-19` → `2022-06-13`); numbers add up; the truncated date replaces the element's key column and is never copied into nested objects (`{ date: '2022-01-01', mobile: {...} }`). v3 double-counted sibling metrics here; v4 sums each once (COMPAT) |
-| parse(as) | result | on a metric replaces the value; on a dimension rewrites the row's dimension value once per row and relocates with it. `int[:radix]`, `float[:precision]` (returns the `toFixed` string, as v3), `date[:iso\|iso-date\|iso-week-date\|iso-time\|format:<pattern>]`; implemented without luxon; `date` accepts `Date` objects, ISO strings and SQL `YYYY-MM-DD HH:mm:ss` strings |
+| parse(as) | result | on a metric replaces the value; on a dimension rewrites the row's dimension value once per row and relocates with it. `as` is an enum or an object: `int`, `{ int: radix }`, `float`, `{ float: precision }` (returns the `toFixed` string, as v3), `date`, `{ date: "iso" \| "iso-date" \| "iso-week-date" \| "iso-time" }`, `{ date: { format: "<pattern>" } }`; the v3 colon strings (`"int:16"`, `"date:format:yyyy"`) need `strict: false`; implemented without luxon; `date` accepts `Date` objects, ISO strings and SQL `YYYY-MM-DD HH:mm:ss` strings |
 
 ### 8.4 Filter operators
 
@@ -509,6 +541,10 @@ Changed:
 - `@groupBy` directive sums each metric once (v3 double-counted sibling metrics of the grouped rows).
 - Array elements are stamped with the raw column value; v3 stamped its string form.
 - No console logging; errors are typed.
+- **Strict mode** (default): unknown fetch arguments, `"fn|column"` operands, join `by`/`by_*`, `@filter`/`@groupOn` `field_op` keys, `@parse` colon strings and undeclared `$variables` are errors naming the replacement (`where:`, `{ fn: column }`, `on:`, `where: {}`, `{ int: 16 }`, a variable declaration). `strict: false` restores v3 behaviour for all of them.
+- **Records** are the default dimension shape (`output: 'records'`); `type: Map` or `output: 'keyed'` gives v3's keyed objects.
+- **`having` on output aliases** compiles to a derived table (`__h`) on every dialect; an output name that shadows its source column is selected under an internal `__d<i>` name and mapped back in the assembler.
+- **`@diff`/`@subtract`/`@divide`/`@filter` are computed in SQL** (§6.7): a LEFT JOIN of the referenced fetch at the same grain, `NULL` instead of `NaN`/`Infinity` for missing references and zero divisors, `having:` instead of post-assembly dropping. An emitted fetch used as a baseline executes twice. `@omit` is `emit: false`.
 
 ---
 
@@ -520,4 +556,4 @@ Round 2 (Fable: one blocking item, §2.7 join sides, fixed; nits folded into §2
 
 Accepted nits: `from: "@"` means the fetch table; two surviving `with` fetches under one alias are a `PLAN` error; redefining an `input` is allowed (last wins); error messages of the v3 directives are kept verbatim where tests match on them.
 
-Declined for v1: `@filter` pushdown to SQL, `@map`/`@tuple`, Google Analytics adapter, luxon `format:` tokens beyond `yyyy yy MM M dd d HH H mm m ss s SSS`.
+Declined for v1: `@map`/`@tuple`, Google Analytics adapter, luxon `format:` tokens beyond `yyyy yy MM M dd d HH H mm m ss s SSS`. `@filter` pushdown, declined in round 2, became §6.7 in Phase 6 (language proposals 1–5, 2026-10-24: lowering, output names, object forms, strict mode, records). Proposal 6 (typed schema / introspection) is tracked as gritql/gritql#62.
