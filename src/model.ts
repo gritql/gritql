@@ -100,6 +100,8 @@ export interface Lowered {
 export interface Plan {
   fetches: Fetch[]
   variables: Record<string, unknown>
+  /** aliases of emitted fetches dropped by @include/@skip (compat output keeps them as `{}`) */
+  removed?: string[]
 }
 
 // ---------------------------------------------------------------------------

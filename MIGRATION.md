@@ -50,6 +50,22 @@ const data = await g.run(query, variables, { adapter: 'pg' })
 
 `strict: false` and `output: 'keyed'` are what make stage 1 safe: v3 documents compile and results keep their v3 shape. Without them, v4 rejects the v3 string grammars and returns arrays of records.
 
+Together they also keep two v3 output details: `type: Array` dimension values come back as strings (a date as `Date.toString()` text), and a fetch excluded by `@include`/`@skip` comes back as `{}` instead of being absent. Screens that destructure an optional fetch keep working.
+
+v3's `pg` provider ran statements on the `postgres` (postgres.js) driver. `pgAdapter` runs them through knex and node-postgres, which can parse some column types differently. To keep values identical, run the statement on the driver v3 used:
+
+```ts
+import { gritql, knex, knexAdapter } from 'gritql'
+const sql = require('postgres')(connectionString, { max: 30 })
+const pg = knexAdapter({
+  name: 'pg',
+  dialect: 'pg',
+  knex: knex({ client: 'pg' }),          // prints SQL only
+  compile: (qb) => { const n = qb.toSQL().toNative(); return { sql: n.sql, params: n.bindings } },
+  execute: async ({ sql: text, params }) => Array.from(await sql.unsafe(text, params)),
+})
+```
+
 ### Providers become adapters
 
 An adapter is a name, a dialect, an optional knex builder, and a function that runs one statement.

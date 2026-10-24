@@ -166,6 +166,7 @@ export class Gritql {
       plan,
       registry: this.registry,
       keyed: this.options.output === 'keyed',
+      stringValues: !this.strict && this.options.output === 'keyed',
       columns: (node, physical) => this.columns(node, physical, base),
       names: (node, physical) => this.names(node, physical, base),
       makeCtx: (physical, node, use, over) => this.makeCtx(base, physical, node, use, over),
@@ -173,6 +174,10 @@ export class Gritql {
     let output: Output
     try {
       output = assembler.assemble(rowSets)
+      // v3 returned `{}` under the alias of a fetch excluded by @include/@skip
+      if (!this.strict && output && typeof output === 'object' && !Array.isArray(output)) {
+        for (const alias of plan.removed ?? []) if (!Object.prototype.hasOwnProperty.call(output, alias)) output[alias] = {}
+      }
     } catch (e) {
       throw toGritqlError('RESULT', e)
     }
@@ -193,7 +198,10 @@ export class Gritql {
     }
     const kept: Fetch[] = []
     for (const fetch of plan.fetches) {
-      if (!(await this.runDirectives(fetch, fetch.directives, base, fetch, undefined, []))) continue
+      if (!(await this.runDirectives(fetch, fetch.directives, base, fetch, undefined, []))) {
+        if (fetch.emit && fetch.alias) (plan.removed ??= []).push(fetch.alias)
+        continue
+      }
       fetch.tree = await this.planNodes(fetch.tree, base, fetch, [])
       kept.push(fetch)
     }

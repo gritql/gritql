@@ -39,10 +39,12 @@ export const dimensions: Record<string, Resolver> = {
     sql: (node, ctx) => {
       const col = ctx.col(node.args.field as string, node.args.from as string | undefined)
       const name = (node.args.alias as string) ?? (node.alias !== node.name ? node.alias : (node.args.field as string))
-      const expr = ctx.knex.raw('date_trunc(?, ??)', [String(node.args.by ?? 'day'), col])
+      // the unit is inlined (escaped) in SELECT and GROUP BY alike: as a bound `$n` in GROUP BY only,
+      // Postgres sees two different expressions and rejects the grouped column
+      const expr = ctx.knex.raw('date_trunc(?, ??)', [String(node.args.by ?? 'day'), col]).toQuery()
       // `date: groupBy(field: date)`: the output name shadows the source column, so the SQL alias is internal and
       // GROUP BY repeats the expression on every dialect (ClickHouse would otherwise read the inner `date` as the alias)
-      return { select: [ctx.knex.raw(`${expr.toQuery()} as ??`, [ctx.out(name, col)])], groupBy: [expr] }
+      return { select: [ctx.knex.raw(`${expr} as ??`, [ctx.out(name, col)])], groupBy: [ctx.knex.raw(expr)] }
     },
   },
 

@@ -45,7 +45,7 @@ Metric-level `@filter(gt: 1)` (bare operators compare the value) is unchanged in
 
 ## Output shape
 
-A dimension without `type:` is an array of records (`[{ date: '2022-01-01', value: 3, device: [...] }]`) instead of a keyed object (`{ '2022-01-01': { value: 3, device: {...} } }`). `type: Map` on a dimension or `output: 'keyed'` on the instance gives the v3 shape; `type: Array` is unchanged. Nested dimensions and `combine` under a record are stored under their alias. The v3 harness tests run with `output: 'keyed'`; the v4 suites were rewritten to records. Cost: records assemble about 1.6× slower than keyed objects on three nested levels (bench/RESULTS.md).
+A dimension without `type:` is an array of records (`[{ date: '2022-01-01', value: 3, device: [...] }]`) instead of a keyed object (`{ '2022-01-01': { value: 3, device: {...} } }`). `type: Map` on a dimension or `output: 'keyed'` on the instance gives the v3 shape; `type: Array` is unchanged. Nested dimensions and `combine` under a record are stored under their alias. The v3 harness tests run with `output: 'keyed'`; the v4 suites were rewritten to records. With `strict: false` and `output: 'keyed'` together, two v3 details are kept: a `type: Array` dimension's value is written as `String(value)` (v3 read it back from an object key, so a date arrives as `Date.toString()` text and a number as a string), and a fetch excluded by `@include`/`@skip` appears as `{}` under its alias. v3 also split a decimal dimension value at the dot into nested keys; that is not reproduced. Cost: records assemble about 1.6× slower than keyed objects on three nested levels (bench/RESULTS.md).
 
 ## Generated SQL (snapshot differences)
 

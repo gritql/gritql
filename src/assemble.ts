@@ -19,6 +19,8 @@ export interface AssembleEnv {
   registry: Registry
   /** `output: 'keyed'`: dimensions without `type:` are objects keyed by value instead of arrays of records */
   keyed: boolean
+  /** v3 compat: an Array dimension's value is written as `String(value)` (v3 read it back from an object key) */
+  stringValues?: boolean
   /** ctx for a result hook; `over` carries baseline/output/path/at */
   makeCtx(physical: Physical, node: Node | undefined, use: DirectiveUse | undefined, over: Partial<Ctx>): Ctx
   /** SQL columns of a node (row keys) */
@@ -38,6 +40,8 @@ interface Step {
   array: boolean
   /** plain object key (metric or unknown segment) */
   plain?: boolean
+  /** write non-null element values as strings (AssembleEnv.stringValues) */
+  stringify?: boolean
 }
 
 interface Hook {
@@ -181,7 +185,10 @@ function descend(holder: Holder, steps: Step[], keys: Record<string, unknown>): 
       let el = findKeyed(arr, s, vk)
       if (el === undefined) {
         el = {}
-        for (let k = 0; k < s.names.length; k++) setOwn(el, s.names[k], keys[s.names[k]])
+        for (let k = 0; k < s.names.length; k++) {
+          const v = keys[s.names[k]]
+          setOwn(el, s.names[k], s.stringify && v != null ? String(v) : v)
+        }
         appendKeyed(arr, el)
       }
       node = el
@@ -295,7 +302,8 @@ export class Assembler {
   private dimStep(node: Node, fetch: Fetch): Step {
     const cols = this.env.columns(node, { fetch } as Physical)
     const names = this.env.names(node, { fetch } as Physical)
-    return { cols, names, keySpec: names.join(';'), name: node.alias, array: this.isArray(node) }
+    const array = this.isArray(node)
+    return { cols, names, keySpec: names.join(';'), name: node.alias, array, stringify: array && this.env.stringValues }
   }
 
   /** `type:` on the dimension wins; otherwise the instance output shape */

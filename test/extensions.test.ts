@@ -287,4 +287,28 @@ describe('run options', () => {
     expect(Object.keys(timings).sort()).toEqual(['assemble', 'execute', 'lower', 'parse', 'plan', 'sql'])
     for (const ms of Object.values(timings)) expect(ms).toBeGreaterThanOrEqual(0)
   })
+  test('compat: a fetch excluded by @include returns {} under its alias, as v3 did', async () => {
+    const q = `query t($p: Boolean!) { cur: fetch { v: sum(a: x) } prev: fetch @include(if: $p) { v: sum(a: x) } }`
+    const loose = gritql({ adapters: { pg: fixtureAdapter([[{ v: 1 }]]) }, strict: false, output: 'keyed' })
+    expect(await loose.run(q, { p: false })).toEqual({ cur: { v: 1 }, prev: {} })
+    const strict = gritql({ adapters: { pg: fixtureAdapter([[{ v: 1 }]]) } })
+    expect(await strict.run(q, { p: false })).toEqual({ cur: { v: 1 } })
+  })
+  test('pg: groupBy(by:) puts the same date_trunc text in SELECT and GROUP BY (no bound unit)', async () => {
+    const { pgAdapter } = await import('../src')
+    const knex = (await import('knex')).default
+    const g = gritql({ adapters: { pg: pgAdapter(knex({ client: 'pg' })) }, strict: false })
+    const { queries } = await g.compile(`query t { fetch { date: groupBy(field: date, by: quarter) { v: sum(a: x) } } }`)
+    expect(queries[0].sql).toContain(`group by date_trunc('quarter', "date")`)
+    expect(queries[0].params).toEqual([])
+  })
+  test('compat: an Array dimension value is String(value), as v3 returned it', async () => {
+    const d = new Date(Date.UTC(2026, 0, 1))
+    const rows = [[{ date: d, n: 7, v: 1 }]]
+    const q = `query t { fetch { date(type: Array) { n(type: Array) { v: sum(a: x) } } } }`
+    const loose = gritql({ adapters: { pg: fixtureAdapter(rows) }, strict: false, output: 'keyed' })
+    expect(await loose.run(q)).toEqual([{ date: String(d), n: [{ n: '7', v: 1 }] }])
+    const strict = gritql({ adapters: { pg: fixtureAdapter(rows) } })
+    expect(await strict.run(q)).toEqual([{ date: d, n: [{ n: 7, v: 1 }] }])
+  })
 })
