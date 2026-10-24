@@ -168,10 +168,10 @@ function descend(holder: Holder, steps: Step[], keys: Record<string, unknown>): 
         arr = []
         setOwn(holder.obj, holder.key, arr)
       } else {
-        arr = node[s.name]
+        arr = own(node, s.name)
         if (arr == null) {
           arr = []
-          node[s.name] = arr
+          setOwn(node, s.name, arr)
         } else if (!Array.isArray(arr)) {
           throw new Error(`Cannot write an Array dimension at "${s.name}": the key holds a value`)
         }
@@ -181,7 +181,7 @@ function descend(holder: Holder, steps: Step[], keys: Record<string, unknown>): 
       let el = findKeyed(arr, s, vk)
       if (el === undefined) {
         el = {}
-        for (let k = 0; k < s.names.length; k++) el[s.names[k]] = keys[s.names[k]]
+        for (let k = 0; k < s.names.length; k++) setOwn(el, s.names[k], keys[s.names[k]])
         appendKeyed(arr, el)
       }
       node = el
@@ -200,6 +200,8 @@ function descend(holder: Holder, steps: Step[], keys: Record<string, unknown>): 
 }
 
 const hasOwn = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k)
+/** own property or undefined: a dimension named `__proto__` must not read the prototype */
+const own = (o: any, k: string) => (hasOwn(o, k) ? o[k] : undefined)
 /** plain assignment except for `__proto__`, which must not reach the prototype chain (dimension values are raw data) */
 function setOwn(o: any, k: string, v: unknown): void {
   if (k === '__proto__') Object.defineProperty(o, k, { value: v, enumerable: true, writable: true, configurable: true })
@@ -212,9 +214,9 @@ function readAt(root: any, steps: Step[], keys: Record<string, unknown>): any {
   for (const s of steps) {
     if (node == null || typeof node !== 'object') return undefined
     if (s.plain) {
-      node = node[s.name]
+      node = own(node, s.name)
     } else if (s.array) {
-      const arr = Array.isArray(node) ? node : node[s.name]
+      const arr = Array.isArray(node) ? node : own(node, s.name)
       if (!Array.isArray(arr)) return undefined
       node = findKeyed(arr, s, valueKey(s.names.map((c) => keys[c])))
     } else {
@@ -232,9 +234,9 @@ function iterate(node: any, steps: Step[], i: number, cb: (value: unknown) => vo
   }
   if (node == null || typeof node !== 'object') return
   const s = steps[i]
-  if (s.plain) iterate(node[s.name], steps, i + 1, cb)
+  if (s.plain) iterate(own(node, s.name), steps, i + 1, cb)
   else if (s.array) {
-    const arr = Array.isArray(node) ? node : node[s.name]
+    const arr = Array.isArray(node) ? node : own(node, s.name)
     if (Array.isArray(arr)) for (const el of arr) iterate(el, steps, i + 1, cb)
   } else if (!Array.isArray(node)) {
     for (const k of Object.keys(node)) iterate(node[k], steps, i + 1, cb)
@@ -432,7 +434,7 @@ export class Assembler {
     for (let j = 0; j < rows.length; j++) {
       const row = rows[j]
       const rowKeys: Record<string, unknown> = {}
-      for (const [col, name] of keyCols) rowKeys[name] = row[col]
+      for (const [col, name] of keyCols) setOwn(rowKeys, name, row[col])
 
       for (const m of cells) {
         if (!(m.col in row)) continue

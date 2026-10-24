@@ -126,7 +126,8 @@ export function compilePhysical(physical: Physical, env: CompileEnv, asCte = fal
   const inFilters = (fetch.filters?.search as Record<string, unknown> | undefined) ?? {}
   const argSearch = Object.fromEntries(Object.entries(fetch.search).filter(([k]) => !(k in inFilters)))
   const searchOnly = Object.keys(argSearch).length ? buildFilter({ search: argSearch }, filterCtx) : null
-  const having = fetch.filters?.having ? buildFilter(fetch.filters.having as any, { ...filterCtx, qualify: false }) : null
+  /** `having:` objects on output aliases (fetch filters + dimension args), compiled once the internal names are known */
+  const havingArgs: unknown[] = []
 
 
   // --- collect parts from resolvers -------------------------------------
@@ -148,6 +149,7 @@ export function compilePhysical(physical: Physical, env: CompileEnv, asCte = fal
 
   physical.grain.forEach((dim, i) => {
     const resolver = registry.dimension(dim.name)
+    if (i === physical.grain.length - 1) named.add(physical)
     validateArgs(resolver, dim, DIMENSION_COMMON_ARGS)
     const ctx = env.makeCtx(physical, dim)
     const parts = resolveSql(resolver, dim, ctx)
@@ -162,10 +164,7 @@ export function compilePhysical(physical: Physical, env: CompileEnv, asCte = fal
     if (a.sort_desc) orderBys.push({ by: columnName(a.sort_desc as string, table), dir: 'desc' })
     if (a.sort_asc) orderBys.push({ by: columnName(a.sort_asc as string, table), dir: 'asc' })
     if (a.sort && a.field) orderBys.push({ by: columnName(a.field as string, table), dir: a.sort as 'asc' | 'desc' })
-    if (a.having) {
-      const h = buildFilter(a.having as any, { ...filterCtx, qualify: false })
-      if (h.sql) aliasHavings.push(raw(knex, h))
-    }
+    if (a.having) havingArgs.push(a.having)
     if (a.limit !== undefined || a.offset !== undefined) {
       if (i === 0 || fetch.kind === 'fetchPlain' || fetch.kind === 'with') {
         if (a.limit !== undefined) limit = Number(a.limit)
@@ -231,13 +230,17 @@ export function compilePhysical(physical: Physical, env: CompileEnv, asCte = fal
   else qb = qb.select(...uniqueSelects)
   if (uniqueGroupBys.length) qb = qb.groupBy(uniqueGroupBys as any)
   for (const h of havings) qb = qb.having(h)
-  if (having?.sql) aliasHavings.push(raw(knex, having))
 
-  // an output name that got an internal SQL alias (`date: groupBy(field: date)` → `__d0`) is sorted by that alias
+  // an output name that got an internal SQL alias (`date: groupBy(field: date)` → `__d0`) is sorted and filtered by that alias
   const sqlNames: Record<string, string> = Object.assign({}, ...physical.grain.map((d) => d.sqlNames ?? {}))
   for (const o of orderBys) {
     const bare = o.by.slice(o.by.lastIndexOf('.') + 1)
     if (sqlNames[bare]) o.by = sqlNames[bare]
+  }
+  if (fetch.filters?.having) havingArgs.push(fetch.filters.having)
+  for (const h of havingArgs) {
+    const f = buildFilter(renameFields(h, sqlNames) as any, { ...filterCtx, qualify: false })
+    if (f.sql) aliasHavings.push(raw(knex, f))
   }
   // wrapped statements see output columns only
   const orderCols = orderBys.map((o) => ({ by: o.by.slice(o.by.lastIndexOf('.') + 1), dir: o.dir }))
@@ -246,9 +249,15 @@ export function compilePhysical(physical: Physical, env: CompileEnv, asCte = fal
   const lowered = reference ? [] : physical.metrics.filter((m) => m.lowered)
   let wrapped = false
 
-  // having on output aliases: WHERE on a derived table. With an arithmetic layer the predicates move onto it,
-  // since they may name a lowered column.
-  if (aliasHavings.length && !lowered.length) {
+  // --- lowered arithmetic (SPEC §6.7): directly over the grouped rows, so having, ranking and ORDER BY see the computed columns ---
+  if (lowered.length) {
+    qb = arithmeticLayer(qb, physical, lowered, outputs, env)
+    wrapped = true
+  }
+
+  // having on output aliases: WHERE on a derived table (PostgreSQL rejects aliases in HAVING, and after the
+  // arithmetic join a bare alias would be ambiguous)
+  if (aliasHavings.length) {
     qb = knex.select(outputs).from(qb.as('__h'))
     for (const h of aliasHavings) qb = qb.where(h)
     wrapped = true
@@ -274,13 +283,6 @@ export function compilePhysical(physical: Physical, env: CompileEnv, asCte = fal
     }
   }
 
-  // --- lowered arithmetic (SPEC §6.7): outermost layer, so ORDER BY / LIMIT see the computed columns ---
-  if (lowered.length) {
-    qb = arithmeticLayer(qb, physical, lowered, outputs, env)
-    for (const h of aliasHavings) qb = qb.where(h)
-    wrapped = true
-  }
-
   // --- order / limit / offset -------------------------------------------
   for (const o of wrapped ? orderCols : orderBys) qb = qb.orderBy(o.by, o.dir)
   if (limit !== undefined) qb = qb.limit(limit)
@@ -303,6 +305,22 @@ export function compilePhysical(physical: Physical, env: CompileEnv, asCte = fal
 }
 
 const CUR = '__cur'
+
+/** physicals whose dimension resolvers have run, so their `sqlNames` are known */
+const named = new WeakSet<Physical>()
+
+const LOGICAL = new Set(['and', 'or', 'nor'])
+/** a `having` object with its output names replaced by the internal SQL names the statement selects */
+function renameFields(expr: unknown, names: Record<string, string>): unknown {
+  if (!expr || typeof expr !== 'object' || Array.isArray(expr)) return expr
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(expr as Record<string, unknown>)) {
+    if (LOGICAL.has(k) && Array.isArray(v)) out[k] = v.map((x) => renameFields(x, names))
+    else if (k === 'not') out[k] = renameFields(v, names)
+    else out[names[k] ?? k] = v
+  }
+  return out
+}
 
 /**
  * `select cur.*, cur.a <op> other.a as a from (grouped) as __cur left join (other fetch at the same grain) on grain`.
@@ -329,11 +347,14 @@ function arithmeticLayer(core: Knex.QueryBuilder, physical: Physical, lowered: N
     }
     const name = `__ref_${joins.size}`
     joins.set(ref.alias, name)
+    // compile the target first: its internal column names (`__d0`) exist only once its dimension resolvers ran
+    const sub = compilePhysical(target, env, true, true)
     const targetCols = target.grain.flatMap((d) => dimColumns(d, target, env))
     const on = function (this: Knex.JoinClause) {
+      if (!grainCols.length) this.on(knex.raw('1') as any, '=', knex.raw('1') as any) // root level: one row each side
       grainCols.forEach((c, i) => this.on(`${CUR}.${c}`, '=', `${name}.${targetCols[i]}`))
     }
-    qb = target.fetch.kind === 'with' ? qb.leftJoin({ [name]: target.fetch.alias as string }, on) : qb.leftJoin(compilePhysical(target, env, true, true).as(name), on)
+    qb = target.fetch.kind === 'with' ? qb.leftJoin({ [name]: target.fetch.alias as string }, on) : qb.leftJoin(sub.as(name), on)
   }
   const byAlias = new Map(lowered.map((m) => [m.alias, m]))
   const selects = outputs.map((c) => {

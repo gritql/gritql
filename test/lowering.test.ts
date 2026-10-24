@@ -50,6 +50,33 @@ describe('cross-fetch arithmetic is computed in SQL (SPEC §6.7)', () => {
     expect(sql.match(/with "prev" as/g)).toHaveLength(1)
   })
 
+  test('internal dimension names are used on both sides of the join, whichever fetch compiles first', async () => {
+    const cur = `cur: fetch { date: groupBy(field: date, by: month) { v: sum(a: x) @subtract(by: prev) } }`
+    const prev = `prev: fetch { date: groupBy(field: date, by: month) { v: sum(a: x) } }`
+    for (const q of [`query t { ${cur} ${prev} }`, `query t { ${prev} ${cur} }`]) {
+      const sql = await sqlOf(q)
+      const s = sql.find((x) => x.includes('__cur'))!
+      expect(s).toContain(`on "__cur"."__d0" = "__ref_0"."__d0"`)
+      expect(s).toContain(`select date_trunc('month', "date") as "__d0", SUM("x") AS "v" from "t" group by date_trunc('month', "date")) as "__ref_0"`)
+    }
+  })
+
+  test('a root-level comparison joins the single rows on 1 = 1', async () => {
+    const [sql] = await sqlOf(`query t { cur: fetch { v: sum(a: x) @subtract(by: prev) } prev: fetch { v: sum(a: x) } }`)
+    expect(sql).toBe(`select "__cur"."v" - "__ref_0"."v" as "v" from (select SUM("x") AS "v" from "t") as "__cur" left join (select SUM("x") AS "v" from "t") as "__ref_0" on 1 = 1`)
+  })
+
+  test('a with() that compares against another with() carries that dependency to its consumers', async () => {
+    const [sql] = await sqlOf(`query t { b: with { c { v: sum(a: x) } } a: with { c { v: sum(a: x) @subtract(by: b) } } fetch(table: a) { c { v: sum(a: v) } } }`)
+    expect(sql.startsWith(`with "b" as (select "c", SUM("x") AS "v" from "t" group by "c"), "a" as (select "__cur"."c"`)).toBe(true)
+    expect(sql.endsWith(`select "c", SUM("v") AS "v" from "a" group by "c"`)).toBe(true)
+    // a fetch baseline that reads a with() brings that with() along too
+    const [viaFetch] = await sqlOf(`query t { b: with { c { v: sum(a: x) } } p: fetch(table: b) { c { v: sum(a: v) } } cur: fetch { c { v: sum(a: x) @subtract(by: p) } } }`)
+    expect(viaFetch.startsWith(`with "b" as (`)).toBe(true)
+    // two with() comparing against each other is a real cycle
+    await expect(sqlOf(`query t { a: with { c { v: sum(a: x) @subtract(by: b) } } b: with { c { v: sum(a: x) @subtract(by: a) } } fetch(table: a) { c { v: sum(a: v) } } }`)).rejects.toThrow(/Circular with dependency/)
+  })
+
   test('nested grains join on every dimension column', async () => {
     const [sql] = await sqlOf(`query t {
       cur: fetch { date { domain { v: sum(a: x) @diff(by: prev) } } }
@@ -141,13 +168,22 @@ describe('@filter is lowered to HAVING (SPEC §6.7)', () => {
     expect(root).toBe(`select "value" from (select SUM("x") AS "value" from "t") as "__h" where (("value" >= 10))`)
   })
 
-  test('with an arithmetic layer the predicates apply after the join, so they can name the computed column', async () => {
+  test('with an arithmetic layer the predicates wrap the join, so they name the computed column unambiguously', async () => {
     const [sql] = await sqlOf(`query t {
       cur: fetch { c @filter(where: { growth: { gt: 0 } }) { v: sum(a: x) growth: sum(a: x) @diff(by: prev) } }
       prev: fetch { c { growth: sum(a: x) } }
     }`)
-    expect(sql).not.toContain('__h')
-    expect(sql).toMatch(/as "__ref_0" on "__cur"\."c" = "__ref_0"\."c" where \(\("growth" > 0\)\)$/)
+    // a bare `where "growth" > 0` after the join would be ambiguous (__cur.growth and __ref_0.growth both exist)
+    expect(sql).toMatch(/^select "c", "v", "growth" from \(select "__cur"\."c".*as "__ref_0" on "__cur"\."c" = "__ref_0"\."c"\) as "__h" where \(\("growth" > 0\)\)$/)
+    const [metric] = await sqlOf(`query t { cur: fetch { c { v: sum(a: x) @diff(by: prev) @filter(gt: 0) } } prev: fetch { c { v: sum(a: x) } } }`)
+    expect(metric).toMatch(/\) as "__h" where \(\("v" > 0\)\)$/)
+  })
+
+  test('nested limits rank the computed column, not the raw one', async () => {
+    const [sql] = await sqlOf(`query t { fetch { country { device(limit: 1, sort_desc: v) { v: sum(a: x) @divide(byField: w) w: sum(a: y) } } } }`)
+    expect(sql).toBe(
+      `select "country", "device", "v", "w" from (select *, row_number() over (partition by "country" order by "v" desc) as "__rn" from (select "__cur"."country", "__cur"."device", cast("__cur"."v" as float) / NULLIF(cast("__cur"."w" as float), 0) as "v", "__cur"."w" from (select "country", "device", SUM("x") AS "v", SUM("y") AS "w" from "t" group by "country", "device") as "__cur") as "__g") as "__r" where "__rn" <= 1 order by "v" desc`,
+    )
   })
 
   test('explicit having: and @filter conditions on one dimension are merged', async () => {

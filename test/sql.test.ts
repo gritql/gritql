@@ -144,6 +144,13 @@ describe('review findings', () => {
       { date: '2024-02-01', v: 2 },
     ])
     await expect(run([rows], `query t { fetch { date: groupBy(field: date, by: month) @groupBy(by: year) { v: sum(a: x) } } }`)).resolves.toEqual([{ date: '2024-01-01', v: 3 }])
+    // having on the output name addresses the internal column, including inside and/or
+    const [having] = await sqlOf(`query t { fetch { date: groupBy(field: date, by: month, having: { or: [{ date: { gt: "2024-01-01" } }, { v: { gt: 5 } }] }) { v: sum(a: x) } } }`)
+    expect(having).toBe(
+      `select "__d0", "v" from (select date_trunc('month', "date") as "__d0", SUM("x") AS "v" from "t" group by date_trunc('month', "date")) as "__h" where ((((("__d0" > '2024-01-01'))) OR ((("v" > 5)))))`,
+    )
+    const [root] = await sqlOf(`query t { fetch(having: { date: { gt: "2024-01-01" } }) { date: groupBy(field: date, by: month) { v: sum(a: x) } } }`)
+    expect(root).toContain(`as "__h" where (("__d0" > '2024-01-01'))`)
   })
 
   test('avg and median are plain aggregates unless partitioned', async () => {

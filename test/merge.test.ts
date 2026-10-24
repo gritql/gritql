@@ -22,6 +22,18 @@ describe('dimension values named like prototype members', () => {
     expect(Object.getOwnPropertyDescriptor((diff as any).a, '__proto__')!.value).toEqual({ v: 2 })
   })
 
+  test('dimension aliases named like prototype members are ordinary record keys', async () => {
+    const rows = JSON.parse('[{"__proto__":"a","v":1,"n":1},{"__proto__":"b","v":2,"n":2}]')
+    const out = (await run([rows], `query t { fetch { __proto__: groupBy(field: c) { v: sum(a: x) } } }`)) as object[]
+    expect(JSON.stringify(out)).toBe('[{"__proto__":"a","v":1},{"__proto__":"b","v":2}]')
+    expect(out.map((r) => Object.getOwnPropertyDescriptor(r, '__proto__')!.value)).toEqual(['a', 'b'])
+    // nested under a record, and the prototype is untouched
+    const nested = JSON.parse('[{"d":"x","__proto__":"a","v":1},{"d":"x","__proto__":"b","v":2}]')
+    const two = (await run([nested], `query t { fetch { d { __proto__: groupBy(field: c) { v: sum(a: x) } } } }`)) as any[]
+    expect(JSON.stringify(two)).toBe('[{"d":"x","__proto__":[{"__proto__":"a","v":1},{"__proto__":"b","v":2}]}]')
+    expect(({} as any).v).toBeUndefined()
+  })
+
   test('fetch aliases named like prototype members are ordinary keys', async () => {
     const out = await run([[{ v: 2 }], [{ v: 3 }], [[{ v: 4 }]].flat()], `query t { __proto__: fetch { v: sum(a: x) } constructor: fetch { v: sum(a: x) } toString: fetchPlain { v } }`)
     expect(Object.keys(out as object).sort()).toEqual(['__proto__', 'constructor', 'toString'])

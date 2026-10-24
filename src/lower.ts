@@ -25,18 +25,20 @@ export function lower(plan: Plan): Physical[] {
     const ctes = dependencies(fetch, plan, withAliases)
     for (let i = before; i < out.length; i++) out[i].ctes = ctes
   }
-  // a lowered metric joins another fetch: that fetch's with dependencies (and itself, when it is a with) join the flat WITH list
-  for (const p of out) {
-    for (const m of p.metrics) {
-      const alias = m.lowered?.ref?.alias
-      if (alias === undefined) continue
-      for (const target of plan.fetches.filter((f) => f.alias === alias)) {
-        const extra = dependencies(target, plan, withAliases)
-        if (target.kind === 'with' && target.alias) extra.push(target.alias)
-        for (const c of extra) if (!p.ctes.includes(c)) p.ctes = [...p.ctes, c]
-      }
+  return out
+}
+
+/** aliases of the fetches that lowered metrics of this fetch compare against (SPEC §6.7) */
+function arithmeticRefs(fetch: Fetch): string[] {
+  const out: string[] = []
+  const walk = (nodes: Node[]) => {
+    for (const n of nodes) {
+      const alias = n.lowered?.ref?.alias
+      if (alias != null && !out.includes(alias)) out.push(alias)
+      walk(n.children)
     }
   }
+  walk(fetch.tree)
   return out
 }
 
@@ -61,15 +63,23 @@ function flatten(nodes: Node[], grain: Node[], metrics: Node[]): void {
   }
 }
 
-/** `with` aliases a fetch depends on, transitively, in dependency order. */
+/**
+ * `with` aliases a fetch depends on, transitively, in dependency order: its source, its joins, the `with` fetches
+ * its lowered metrics compare against, and everything an embedded `fetch` baseline depends on in turn.
+ */
 export function dependencies(fetch: Fetch, plan: Plan, withAliases: Set<string>): string[] {
   const order: string[] = []
   const seen = new Set<string>()
   const visiting = new Set<string>()
+  const visited = new Set<Fetch>()
   const byAlias = new Map(plan.fetches.filter((f) => f.kind === 'with' && f.alias).map((f) => [f.alias as string, f]))
 
   const visit = (f: Fetch, from: string) => {
-    const refs = [...(Array.isArray(f.source) ? f.source : [f.source]), ...f.joins.map((j) => j.table)]
+    if (visited.has(f)) return // mutual fetch baselines (series ↔ prev) are embedded, not cyclic
+    visited.add(f)
+    const arithmetic = arithmeticRefs(f)
+    const refs = [...(Array.isArray(f.source) ? f.source : [f.source]), ...f.joins.map((j) => j.table), ...arithmetic]
+    for (const alias of arithmetic) if (!withAliases.has(alias)) for (const t of plan.fetches) if (t.alias === alias) visit(t, alias)
     for (const ref of refs) {
       if (!withAliases.has(ref)) continue
       if (seen.has(ref)) continue

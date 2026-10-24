@@ -124,3 +124,14 @@ Follow-ups:
 - peekd-sp migration: `buildFullName` is not exported by v4 (imported from `gritql/dist/filters`); the seven custom ClickHouse metrics use `metricWrapper`; GA provider still registered in `pages/api/v3.ts` / `executeQuery.ts` with no caller found.
 - Records assembly is 1.6× keyed; the remaining cost is one hash lookup per level per row. A per-step "last element" cache would help sorted row sets only; not done.
 - Review verdicts: see below (6.8).
+
+### 6.8 Review round (Codex adversarial review, `.review/codex-phase6.md`)
+
+Verdict "needs-attention", seven findings, all reproduced and fixed in one commit, each with a regression test:
+1. `@filter` on a lowered metric produced `where "v" > 0` directly after the join: ambiguous between `__cur.v` and `__ref_0.v` on PostgreSQL. Alias havings now always wrap the current layer as `__h`.
+2. Join keys were read before the target compiled, so a `date: groupBy(field: date)` target joined on `"__ref_0"."date"` while selecting `__d0`; the result depended on fetch order. The target is compiled first.
+3. Root-level `@subtract` emitted `left join (...) as "__ref_0"` without ON. Now `on 1 = 1`.
+4. `a: with { ... @subtract(by: b) }` consumed by `fetch(table: a)` listed only `a` in WITH. `dependencies()` now follows arithmetic references (with targets as edges, fetch targets recursively) with the existing cycle detection.
+5. Nested limits ranked the raw metric before `@divide(byField)`; the arithmetic layer now sits directly over the grouped rows, under having, ranking and ORDER BY.
+6. `having: { date: ... }` on a `__d0` dimension addressed the output name inside `__h`; having keys are renamed through `sqlNames` (and/or/not recursed).
+7. Records mode lost `__proto__` dimension values (prototype setter). Record and key writes use own-property assignment; reads use own-property lookup.
