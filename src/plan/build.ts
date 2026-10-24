@@ -36,7 +36,13 @@ interface BuildContext {
   path: string[]
 }
 
-export function buildPlan(doc: ParsedDocument, variables: Variables): Plan {
+export interface BuildOptions {
+  /** reject unknown fetch arguments, undeclared variables and legacy string forms (default true) */
+  strict?: boolean
+}
+
+export function buildPlan(doc: ParsedDocument, variables: Variables, opts: BuildOptions = {}): Plan {
+  const strict = opts.strict !== false
   const plan: Plan = { fetches: [], variables }
   for (const op of doc.operations) {
     const vars = resolveVariables(op, variables, doc.types)

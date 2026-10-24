@@ -14,7 +14,8 @@ export const gqlToDb = () => {
   let after: (plan: any, tables: Row[][]) => void = () => {}
   const exts: Extension[] = []
   const make = (tables: Row[][], dialect: string) => {
-    const g = gritql({ adapters: { [dialect]: fixtureAdapter(tables, dialect) } })
+    // v3's suites run as v3: loose arguments and keyed output
+    const g = gritql({ adapters: { [dialect]: fixtureAdapter(tables, dialect) }, strict: false, output: 'keyed' })
     for (const e of exts) g.use(e)
     return g
   }

@@ -28,10 +28,16 @@ describe('SQL shapes not covered by the v3 suites', () => {
       { date: 'd1', device: 'b', value: 2 },
       { date: 'd2', device: 'c', value: 9 },
     ]
-    await expect(run([rows], `query t { fetch { date { device(limit: 2, sort_desc: value) { value: sum(a: x) } } } }`)).resolves.toEqual({
-      d1: { a: { value: 3 }, b: { value: 2 } },
-      d2: { c: { value: 9 } },
-    })
+    await expect(run([rows], `query t { fetch { date { device(limit: 2, sort_desc: value) { value: sum(a: x) } } } }`)).resolves.toEqual([
+      {
+        date: 'd1',
+        device: [
+          { device: 'a', value: 3 },
+          { device: 'b', value: 2 },
+        ],
+      },
+      { date: 'd2', device: [{ device: 'c', value: 9 }] },
+    ])
   })
 
   test('having addresses aggregate aliases unqualified', async () => {

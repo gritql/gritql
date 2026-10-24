@@ -109,17 +109,15 @@ describe('directives', () => {
     const parse = (field: string, rows: any[]) => run([rows], `query t { fetch { ${field} } }`)
 
     test('int on a metric', async () => {
-      await expect(parse('device { a: sum(a: x) @parse(as: "int") }', [{ device: 'mobile', a: '42.7' }])).resolves.toEqual({ mobile: { a: 42 } })
+      await expect(parse('device { a: sum(a: x) @parse(as: "int") }', [{ device: 'mobile', a: '42.7' }])).resolves.toEqual([{ device: 'mobile', a: 42 }])
     })
 
     test('int with radix on a metric', async () => {
-      await expect(parse('device { a: sum(a: x) @parse(as: "int:16") }', [{ device: 'mobile', a: 'ff' }])).resolves.toEqual({ mobile: { a: 255 } })
+      await expect(parse('device { a: sum(a: x) @parse(as: "int:16") }', [{ device: 'mobile', a: 'ff' }])).resolves.toEqual([{ device: 'mobile', a: 255 }])
     })
 
     test('float with precision on a metric', async () => {
-      await expect(parse('device { a: sum(a: x) @parse(as: "float:2") }', [{ device: 'mobile', a: '1.23456' }])).resolves.toEqual({
-        mobile: { a: '1.23' },
-      })
+      await expect(parse('device { a: sum(a: x) @parse(as: "float:2") }', [{ device: 'mobile', a: '1.23456' }])).resolves.toEqual([{ device: 'mobile', a: '1.23' }])
     })
 
     // `iso` and `iso-time` carry the machine's UTC offset, as luxon did in v3.
@@ -221,8 +219,11 @@ describe('directives', () => {
           }`,
         ),
       ).resolves.toEqual({
-        series: { Other: { channels: 'Other', value: 4 } },
-        prevSeries: { Other: { channels: 'Other', value: 2 }, Organic: { value: 5 } },
+        series: [{ channels: 'Other', value: 4 }],
+        prevSeries: [
+          { channels: 'Other', value: 2 },
+          { channels: 'Organic', value: 5 },
+        ],
       })
     })
   })
@@ -239,8 +240,14 @@ describe('directives', () => {
       ],
     ]
     const expected = {
-      series: { Social: { value: 0.2 }, Organic: { value: 0.6 } },
-      prevSeries: { Social: { value: 0.4 }, Organic: { value: 1 } },
+      series: [
+        { channels: 'Social', value: 0.2 },
+        { channels: 'Organic', value: 0.6 },
+      ],
+      prevSeries: [
+        { channels: 'Social', value: 0.4 },
+        { channels: 'Organic', value: 1 },
+      ],
     }
 
     test('to: another query', async () => {
@@ -280,7 +287,10 @@ describe('directives', () => {
           ],
           `query t { fetch { channels { value: sum(a: x) @divide(byField: rank) rank @omit } } }`,
         ),
-      ).resolves.toEqual({ Social: { value: 0.5 }, Organic: { value: 1.5 } })
+      ).resolves.toEqual([
+        { channels: 'Social', value: 0.5 },
+        { channels: 'Organic', value: 1.5 },
+      ])
     })
   })
 

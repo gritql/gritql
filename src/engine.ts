@@ -19,6 +19,17 @@ export interface GritqlOptions {
   adapters: Record<string, Adapter>
   /** adapter used when `run`/`compile` name none; default: the first registered */
   default?: string
+  /**
+   * `true` (default): unknown fetch arguments, undeclared `$variables` and the v3 string
+   * grammars (`by: "@a:@b"`, `"sum|field"`, `field_gt:`, `"date:format:..."`) are errors.
+   * `false`: v3 behaviour for old documents.
+   */
+  strict?: boolean
+  /**
+   * `'records'` (default): a dimension is an array of records carrying its own value.
+   * `'keyed'`: a dimension is an object keyed by its value (v3 shape). `type: Array`/`type: Map` on a dimension overrides either.
+   */
+  output?: 'records' | 'keyed'
 }
 
 export interface RunOptions {
@@ -47,7 +58,10 @@ export class Gritql {
   readonly registry = new Registry()
   private knexByDialect = new Map<string, Knex>()
 
+  readonly strict: boolean
+
   constructor(private options: GritqlOptions) {
+    this.strict = options.strict !== false
     this.registry.use(builtins)
     this.registry.use({ adapters: options.adapters })
   }
@@ -89,8 +103,8 @@ export class Gritql {
     timings.parse = now() - t0
 
     const t1 = now()
-    const plan = buildPlan(doc, variables)
-    const base = { plan, adapter, knex, dialect: adapter.dialect, variables: plan.variables, timings }
+    const plan = buildPlan(doc, variables, { strict: this.strict })
+    const base = { plan, adapter, knex, dialect: adapter.dialect, variables: plan.variables, timings, strict: this.strict }
     await this.planStage(plan, base)
     timings.plan = now() - t1
 
@@ -129,7 +143,7 @@ export class Gritql {
     const compiled = await this.compile(text, variables, opts)
     const { plan, queries, timings } = compiled
     const knex = this.knexFor(adapter)
-    const base = { plan, adapter, knex, dialect: adapter.dialect, variables: plan.variables, timings }
+    const base = { plan, adapter, knex, dialect: adapter.dialect, variables: plan.variables, timings, strict: this.strict }
 
     const t4 = now()
     const rowSets: RowSet[] = await Promise.all(
@@ -145,6 +159,7 @@ export class Gritql {
     const assembler = new Assembler({
       plan,
       registry: this.registry,
+      keyed: this.options.output === 'keyed',
       columns: (node, physical) => this.columns(node, physical, base),
       makeCtx: (physical, node, use, over) => this.makeCtx(base, physical, node, use, over),
     })
@@ -260,6 +275,7 @@ export class Gritql {
         throw new GritqlError('PLAN', 'remove() is only available in plan hooks')
       },
       variables: base.variables,
+      strict: base.strict,
       adapter: base.adapter,
       dialect: base.dialect,
       knex,
@@ -285,6 +301,7 @@ interface BaseCtx {
   dialect: string
   variables: Record<string, unknown>
   timings: Record<string, number>
+  strict: boolean
 }
 
 function withPath(e: GritqlError, path: string[]): GritqlError {

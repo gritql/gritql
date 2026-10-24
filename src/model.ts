@@ -196,6 +196,8 @@ export interface Ctx {
   /** plan stage: drop the node or fetch the directive is attached to */
   remove(): void
   variables: Record<string, unknown>
+  /** instance `strict` option: legacy string forms and loose arguments are rejected when true */
+  strict: boolean
   adapter: Adapter
   dialect: string
   knex: Knex

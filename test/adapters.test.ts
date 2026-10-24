@@ -9,7 +9,7 @@ describe('adapters', () => {
     const execute = vi.fn(async () => rows)
     const g = gritql({ adapters: { custom: knexAdapter({ dialect: 'pg', execute }) } })
 
-    await expect(g.run(query)).resolves.toEqual({ mobile: { value: 1 } })
+    await expect(g.run(query)).resolves.toEqual([{ device: 'mobile', value: 1 }])
     expect(execute).toHaveBeenCalledTimes(1)
     const [req] = execute.mock.calls[0] as unknown as [{ sql: string; params: unknown[] }]
     expect(req.sql).toContain('SUM("sessions")')

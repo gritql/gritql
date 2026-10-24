@@ -79,3 +79,30 @@ v4 is faster everywhere; the review-fix commit briefly regressed `@filter` to 29
 ### Follow-ups (not done)
 - GA adapter (dropped by decision), `@filter` pushdown (opt-in), skipping pass 2 for hook-free fetches.
 
+
+## Phase 6 — language proposals 1–5 (2026-10-24)
+
+Source: the proposals page (six conceptual changes, before/after on real peekd-sp queries). Proposal 6 (catalog) is **not** implemented; it is filed as a GitHub issue and listed under follow-ups. Branch `v4`, one commit per proposal, no push.
+
+### Decisions beyond what the page showed
+- Two instance options carry every behaviour change: `strict` (default `true`) and `output` (`'records'` default, `'keyed'` = today's shape). Check-in decision: harness-based tests are rewritten to the new defaults (records + strict); only `test/v3compat.ts` keeps `strict: false, output: 'keyed'`, since its job is to run v3's suites as v3.
+- Check-in decisions: internal SQL names only when shadowing; a `fetch` baseline executes twice (documented); `@diff` under `@groupBy`/`@groupOn` is a PLAN error.
+- Bare leaf = column stays in both modes (fetchPlain in peekd-sp is nothing but bare columns; `brand { brand }` is v3-tested). The "revenu is not a metric" rule from the page is dropped.
+- `from: "@"` and `@column` sigils stay; they are references, not grammars.
+- No `@baseline` directive: `by:` naming a fetch alias is enough to plan the join; the grain is the key.
+- Internal SQL column names only where the alias would shadow a source column the expression references (`date: groupBy(field: date)`); plain aliases otherwise, so `compile()` output stays readable and exportable. HAVING on output aliases is always wrapped in a derived table (every dialect).
+- A `fetch` used as a baseline is embedded as a derived table and therefore executes twice (once for its own output). Documented; `with` is the recommended form when the baseline is not output.
+- Missing baseline (target removed by `@include`) → `NULL AS alias`, not an error (kpisSection pattern).
+- `@diff`/`@subtract`/`@divide`/`@filter` lowered to SQL; `@indexed`, `@groupOn`, `@groupBy`, `@parse`, `@omit` stay result-time (`@omit` becomes `emit: false` at plan time). A lowered directive on a metric under a dimension carrying `@groupBy`/`@groupOn` is a PLAN error (summing a ratio after regrouping is wrong).
+- Lowered divisions cast to float and `NULLIF(denominator, 0)` (pg integer division, division by zero → NULL where JS gave NaN/Infinity).
+
+### Todo
+- [ ] 6.0 Options `strict`/`output` on `GritqlOptions`; harness + v3compat set legacy values; GitHub issue for proposal 6
+- [ ] 6.1 P5 records: `type: Array` is the default dimension shape, `type: Map` opts back in; `records.test.ts`; unaliased `''` and fetchPlain unchanged
+- [ ] 6.2 P4 strict: unknown fetch args → ARGS with suggestion; `where:` (pure columns) + `having:` + `search:` as fetch args, `filters:` kept as legacy; undeclared `$var` → TYPE (op + fragment declarations); `strict.test.ts`
+- [ ] 6.3 P3 object forms: join `on` only (strict rejects `by`/`by_*`), `{ sum: field }`/`{ field: x }` for `fn|field`, `@filter(where:)`/`@groupOn(where:)` for suffix ops, `@parse(as: { date: { format } })`; strict rejects string forms pointing at the object form; variables allowed in every position
+- [ ] 6.4 P2 names: HAVING on output aliases via derived-table wrapper on all dialects; dimension internal column when alias shadows its source column; delete the ClickHouse branch in dimensions.ts; Step/MetricCell carry SQL column and output name; `CompiledQuery.columns` map
+- [ ] 6.5 P1 lowering: `Fetch.refs` (target alias, grain key, physical); `@diff`/`@subtract`/`@divide(by: alias)` and `diff/subtract/divide(a:, by: alias.col)` compile to an outer `LEFT JOIN` on the grain with order/limit on the outermost layer; CTEs of the target bubble into the current physical; `@filter` on dimension/metric → `having`; `@omit` → `emit:false`; single pass when no fetch has result hooks; `lowering.test.ts`
+- [ ] 6.6 Bench: rerun all scenarios; add records-vs-keyed A/B on one data set; state that lowered scenarios now measure compile + assemble only (fixture adapter runs no SQL)
+- [ ] 6.7 SPEC.md (§2 options, `where`, object forms, refs, output shape) and COMPAT.md (strict/legacy table, every rejected string form, twice-executed baselines, NULL baseline, float cast)
+- [ ] 6.8 One Fable round + one Codex round on the finished diff; fix real defects; record verdicts

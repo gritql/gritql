@@ -11,12 +11,14 @@ describe('dimension values named like prototype members', () => {
       { country: 'constructor', v: 3 },
       { country: 'toString', v: 4 },
     ]
-    const out = (await run([rows], `query t { fetch { country { v: sum(a: x) } } }`)) as Record<string, { v: number }>
+    const records = (await run([rows], `query t { fetch { country { v: sum(a: x) } } }`)) as { country: string; v: number }[]
+    expect(records).toEqual(rows.map(({ country, v }) => ({ country, v })))
+    const out = (await run([rows], `query t { fetch { country(type: Map) { v: sum(a: x) } } }`)) as Record<string, { v: number }>
     expect(Object.keys(out).sort()).toEqual(['__proto__', 'constructor', 'toString'])
     expect(Object.getOwnPropertyDescriptor(out, '__proto__')!.value).toEqual({ v: 2 })
     expect(out.constructor).toEqual({ v: 3 })
     expect(({} as any).v).toBeUndefined()
-    const diff = await run([rows, rows], `query t { a: fetch { country { v: sum(a: x) @subtract(by: b) } } b: fetch { country { v: sum(a: x) } } }`)
+    const diff = await run([rows, rows], `query t { a: fetch { country(type: Map) { v: sum(a: x) @subtract(by: b) } } b: fetch { country(type: Map) { v: sum(a: x) } } }`)
     expect(Object.getOwnPropertyDescriptor((diff as any).a, '__proto__')!.value).toEqual({ v: 0 })
   })
 
@@ -34,22 +36,29 @@ describe('merge', () => {
   describe('plain shapes', () => {
     const rows = [d('2022-01-01', 'mobile', 1), d('2022-01-01', 'desktop', 2), d('2022-01-02', 'mobile', 10)]
 
-    test('object dimensions', async () => {
-      await expect(run([rows], `query t { fetch { date { device { value: sum(a: x) } } } }`)).resolves.toEqual({
-        '2022-01-01': { mobile: { value: 1 }, desktop: { value: 2 } },
-        '2022-01-02': { mobile: { value: 10 } },
-      })
-    })
-
-    test('Array dimension at the root', async () => {
-      await expect(run([rows], `query t { fetch { date(type: Array) { device { value: sum(a: x) } } } }`)).resolves.toEqual([
-        { date: '2022-01-01', mobile: { value: 1 }, desktop: { value: 2 } },
-        { date: '2022-01-02', mobile: { value: 10 } },
+    test('nested dimensions are arrays of records in row order', async () => {
+      await expect(run([rows], `query t { fetch { date { device { value: sum(a: x) } } } }`)).resolves.toEqual([
+        {
+          date: '2022-01-01',
+          device: [
+            { device: 'mobile', value: 1 },
+            { device: 'desktop', value: 2 },
+          ],
+        },
+        { date: '2022-01-02', device: [{ device: 'mobile', value: 10 }] },
       ])
     })
 
-    test('Array dimension nested under an object dimension', async () => {
-      await expect(run([rows], `query t { fetch { date { device(type: Array) { value: sum(a: x) } } } }`)).resolves.toEqual({
+    test('type: Map opts a dimension back into an object keyed by value', async () => {
+      await expect(run([rows], `query t { fetch { date(type: Map) { device(type: Map) { value: sum(a: x) } } } }`)).resolves.toEqual({
+        '2022-01-01': { mobile: { value: 1 }, desktop: { value: 2 } },
+        '2022-01-02': { mobile: { value: 10 } },
+      })
+      await expect(run([rows], `query t { fetch { date { device(type: Map) { value: sum(a: x) } } } }`)).resolves.toEqual([
+        { date: '2022-01-01', mobile: { value: 1 }, desktop: { value: 2 } },
+        { date: '2022-01-02', mobile: { value: 10 } },
+      ])
+      await expect(run([rows], `query t { fetch { date(type: Map) { device { value: sum(a: x) } } } }`)).resolves.toEqual({
         '2022-01-01': [
           { device: 'mobile', value: 1 },
           { device: 'desktop', value: 2 },
@@ -58,23 +67,22 @@ describe('merge', () => {
       })
     })
 
-    test('metric and Array dimension as siblings', async () => {
+    test('metric and dimension as siblings', async () => {
       const totals = [
         { date: '2022-01-01', total: 3 },
         { date: '2022-01-02', total: 10 },
       ]
-      await expect(
-        run([totals, rows], `query t { fetch { date { total: sum(a: x) device(type: Array) { value: sum(a: x) } } } }`),
-      ).resolves.toEqual({
-        '2022-01-01': {
+      await expect(run([totals, rows], `query t { fetch { date { total: sum(a: x) device { value: sum(a: x) } } } }`)).resolves.toEqual([
+        {
+          date: '2022-01-01',
           total: 3,
           device: [
             { device: 'mobile', value: 1 },
             { device: 'desktop', value: 2 },
           ],
         },
-        '2022-01-02': { total: 10, device: [{ device: 'mobile', value: 10 }] },
-      })
+        { date: '2022-01-02', total: 10, device: [{ device: 'mobile', value: 10 }] },
+      ])
     })
 
     test('combine as Array at the root', async () => {
@@ -85,28 +93,34 @@ describe('merge', () => {
       ])
     })
 
-    test('combine as Array under a dimension that shares a field', async () => {
-      await expect(
-        run([rows], `query t { fetch { date { combine(fields: [date, device], type: Array) { value: sum(a: x) } } } }`),
-      ).resolves.toEqual({
+    test('combine under a dimension that shares a field hangs off its alias', async () => {
+      await expect(run([rows], `query t { fetch { date(type: Map) { combine(fields: [date, device]) { value: sum(a: x) } } } }`)).resolves.toEqual({
         '2022-01-01': [
           { date: '2022-01-01', device: 'mobile', value: 1 },
           { date: '2022-01-01', device: 'desktop', value: 2 },
         ],
         '2022-01-02': [{ date: '2022-01-02', device: 'mobile', value: 10 }],
       })
+      await expect(run([rows], `query t { fetch { date { pairs: combine(fields: [date, device]) { value: sum(a: x) } } } }`)).resolves.toEqual([
+        {
+          date: '2022-01-01',
+          pairs: [
+            { date: '2022-01-01', device: 'mobile', value: 1 },
+            { date: '2022-01-01', device: 'desktop', value: 2 },
+          ],
+        },
+        { date: '2022-01-02', pairs: [{ date: '2022-01-02', device: 'mobile', value: 10 }] },
+      ])
     })
 
     test('a metric column missing from a row is not written', async () => {
-      await expect(run([[{ device: 'mobile', a: 1 }]], `query t { fetch { device { a: sum(a: x) b: sum(a: y) } } }`)).resolves.toEqual({
-        mobile: { a: 1 },
-      })
+      await expect(run([[{ device: 'mobile', a: 1 }]], `query t { fetch { device { a: sum(a: x) b: sum(a: y) } } }`)).resolves.toEqual([{ device: 'mobile', a: 1 }])
     })
 
     test('aliased and unaliased fetches share the output root', async () => {
       await expect(
         run([[{ device: 'mobile', a: 1 }], [{ device: 'mobile', b: 2 }]], `query t { fetch { device { a: sum(a: x) } } other: fetch { device { b: sum(a: y) } } }`),
-      ).resolves.toEqual({ '': { mobile: { a: 1 } }, other: { mobile: { b: 2 } } })
+      ).resolves.toEqual({ '': [{ device: 'mobile', a: 1 }], other: [{ device: 'mobile', b: 2 }] })
     })
 
     test('fetchPlain returns the raw row sets', async () => {
@@ -128,14 +142,14 @@ describe('merge', () => {
     const values = ['a=b;c', 'x[1]', '@at', '12:30:00', 'with.dot', '$&', 'plain']
     const rows = values.map((domain, i) => ({ domain, value: i + 1 }))
 
-    test('as object keys', async () => {
-      const result = await run([rows], `query t { fetch { domain { value: sum(a: x) } } }`)
+    test('as Map keys', async () => {
+      const result = await run([rows], `query t { fetch { domain(type: Map) { value: sum(a: x) } } }`)
       expect(Object.keys(result)).toEqual(values)
       values.forEach((v, i) => expect(result[v]).toEqual({ value: i + 1 }))
     })
 
-    test('as Array keys', async () => {
-      const result = await run([rows], `query t { fetch { domain(type: Array) { value: sum(a: x) } } }`)
+    test('as record values', async () => {
+      const result = await run([rows], `query t { fetch { domain { value: sum(a: x) } } }`)
       expect(result).toEqual(values.map((domain, i) => ({ domain, value: i + 1 })))
     })
   })
@@ -149,30 +163,39 @@ describe('merge', () => {
       ['keep, drop, keep', [row('Organic', 3), row('Social', 1), row('Direct', 4)]],
       ['keep, keep, drop', [row('Organic', 3), row('Direct', 4), row('Social', 1)]],
     ])('%s keeps every passing row', async (_, rows) => {
-      await expect(run([rows], query)).resolves.toEqual({ Organic: { value: 3 }, Direct: { value: 4 } })
+      await expect(run([rows], query)).resolves.toEqual([
+        { channels: 'Organic', value: 3 },
+        { channels: 'Direct', value: 4 },
+      ])
     })
 
-    test('dropping the whole first Array element', async () => {
+    test('dropping the whole first element', async () => {
       const rows = [d('2022-01-01', 'mobile', 1), d('2022-01-01', 'desktop', 1), d('2022-01-02', 'mobile', 10), d('2022-01-02', 'desktop', 20), d('2022-01-03', 'mobile', 100)]
-      await expect(run([rows], `query t { fetch { date(type: Array) { device @filter(value_gt: 1) { value: sum(a: x) } } } }`)).resolves.toEqual([
-        { date: '2022-01-02', mobile: { value: 10 }, desktop: { value: 20 } },
-        { date: '2022-01-03', mobile: { value: 100 } },
+      await expect(run([rows], `query t { fetch { date { device @filter(value_gt: 1) { value: sum(a: x) } } } }`)).resolves.toEqual([
+        {
+          date: '2022-01-02',
+          device: [
+            { device: 'mobile', value: 10 },
+            { device: 'desktop', value: 20 },
+          ],
+        },
+        { date: '2022-01-03', device: [{ device: 'mobile', value: 100 }] },
       ])
     })
 
     test('a late row for an earlier key lands in its own element', async () => {
       const rows = [d('2022-01-01', 'mobile', 1), d('2022-01-02', 'mobile', 10), d('2022-01-03', 'mobile', 100), d('2022-01-01', 'tablet', 3)]
-      await expect(run([rows], `query t { fetch { date(type: Array) { device @filter(value_gt: 1) { value: sum(a: x) } } } }`)).resolves.toEqual([
-        { date: '2022-01-02', mobile: { value: 10 } },
-        { date: '2022-01-03', mobile: { value: 100 } },
-        { date: '2022-01-01', tablet: { value: 3 } },
+      await expect(run([rows], `query t { fetch { date { device @filter(value_gt: 1) { value: sum(a: x) } } } }`)).resolves.toEqual([
+        { date: '2022-01-02', device: [{ device: 'mobile', value: 10 }] },
+        { date: '2022-01-03', device: [{ device: 'mobile', value: 100 }] },
+        { date: '2022-01-01', device: [{ device: 'tablet', value: 3 }] },
       ])
     })
 
     test('on a metric drops only that value', async () => {
       const rows = [d('2022-01-01', 'mobile', 1), d('2022-01-01', 'desktop', 2)]
-      await expect(run([rows], `query t { fetch { date(type: Array) { device { value: sum(a: x) @filter(gt: 1) } } } }`)).resolves.toEqual([
-        { date: '2022-01-01', desktop: { value: 2 } },
+      await expect(run([rows], `query t { fetch { date { device { value: sum(a: x) @filter(gt: 1) } } } }`)).resolves.toEqual([
+        { date: '2022-01-01', device: [{ device: 'desktop', value: 2 }] },
       ])
     })
   })
@@ -257,11 +280,9 @@ describe('merge', () => {
         result: (cell, ctx) => (ctx.baseline ? { keys: { ...cell.keys, device: 'all' }, set: { marker: (cell.value as number) * 10 } } : undefined),
       }
       const rows = [d('2022-01-01', 'test.com', 1), d('2022-01-02', 'mobile', 2)]
-      await expect(
-        run([rows], `query t { fetch { date(type: Array) { device { value: sum(a: x) @rename } } } }`, {}, { directives: { rename } }),
-      ).resolves.toEqual([
-        { date: '2022-01-01', all: { value: 1, marker: 10 } },
-        { date: '2022-01-02', all: { value: 2, marker: 20 } },
+      await expect(run([rows], `query t { fetch { date { device { value: sum(a: x) @rename } } } }`, {}, { directives: { rename } })).resolves.toEqual([
+        { date: '2022-01-01', device: [{ device: 'all', value: 1, marker: 10 }] },
+        { date: '2022-01-02', device: [{ device: 'all', value: 2, marker: 20 }] },
       ])
     })
 
@@ -285,10 +306,10 @@ describe('merge', () => {
     ]
 
     test('byField divides by a sibling metric of the same query', async () => {
-      await expect(run([rows], `query t { fetch { device { a: sum(a: x) @divide(byField: b) b: sum(a: y) } } }`)).resolves.toEqual({
-        mobile: { a: 5, b: 2 },
-        desktop: { a: 3, b: 3 },
-      })
+      await expect(run([rows], `query t { fetch { device { a: sum(a: x) @divide(byField: b) b: sum(a: y) } } }`)).resolves.toEqual([
+        { device: 'mobile', a: 5, b: 2 },
+        { device: 'desktop', a: 3, b: 3 },
+      ])
     })
 
     test('by another query', async () => {
@@ -301,8 +322,14 @@ describe('merge', () => {
           }`,
         ),
       ).resolves.toEqual({
-        cur: { mobile: { a: 1 }, desktop: { a: 1 } },
-        prev: { mobile: { a: 10 }, desktop: { a: 9 } },
+        cur: [
+          { device: 'mobile', a: 1 },
+          { device: 'desktop', a: 1 },
+        ],
+        prev: [
+          { device: 'mobile', a: 10 },
+          { device: 'desktop', a: 9 },
+        ],
       })
     })
   })
@@ -310,9 +337,15 @@ describe('merge', () => {
   describe('@groupBy on an Array dimension', () => {
     test('sums rows into their month and keeps other dates apart', async () => {
       const rows = [d('2022-01-05', 'mobile', 1), d('2022-01-20', 'mobile', 2), d('2022-02-03', 'mobile', 4), d('2022-01-05', 'desktop', 8)]
-      await expect(run([rows], `query t { fetch { date(type: Array) @groupBy(by: month) { device { value: sum(a: x) } } } }`)).resolves.toEqual([
-        { date: '2022-01-01', mobile: { value: 3 }, desktop: { value: 8 } },
-        { date: '2022-02-01', mobile: { value: 4 } },
+      await expect(run([rows], `query t { fetch { date @groupBy(by: month) { device { value: sum(a: x) } } } }`)).resolves.toEqual([
+        {
+          date: '2022-01-01',
+          device: [
+            { device: 'mobile', value: 3 },
+            { device: 'desktop', value: 8 },
+          ],
+        },
+        { date: '2022-02-01', device: [{ device: 'mobile', value: 4 }] },
       ])
     })
 

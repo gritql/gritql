@@ -17,14 +17,19 @@ export interface RowSet {
 export interface AssembleEnv {
   plan: Plan
   registry: Registry
+  /** `output: 'keyed'`: dimensions without `type:` are objects keyed by value instead of arrays of records */
+  keyed: boolean
   /** ctx for a result hook; `over` carries baseline/output/path/at */
   makeCtx(physical: Physical, node: Node | undefined, use: DirectiveUse | undefined, over: Partial<Ctx>): Ctx
   columns(node: Node, physical: Physical): string[]
 }
 
 interface Step {
+  /** row columns the step reads */
   cols: string[]
   keySpec: string
+  /** output property an Array step hangs off (the node alias) */
+  name: string
   array: boolean
   /** plain object key (metric or unknown segment) */
   plain?: boolean
@@ -146,12 +151,12 @@ function descend(holder: Holder, steps: Step[], keys: Record<string, unknown>): 
         arr = []
         setOwn(holder.obj, holder.key, arr)
       } else {
-        arr = node[s.keySpec]
+        arr = node[s.name]
         if (arr == null) {
           arr = []
-          node[s.keySpec] = arr
+          node[s.name] = arr
         } else if (!Array.isArray(arr)) {
-          throw new Error(`Cannot write an Array dimension at "${s.keySpec}": the key holds a value`)
+          throw new Error(`Cannot write an Array dimension at "${s.name}": the key holds a value`)
         }
       }
       const vals = s.cols.map((c) => keys[c])
@@ -190,9 +195,9 @@ function readAt(root: any, steps: Step[], keys: Record<string, unknown>): any {
   for (const s of steps) {
     if (node == null || typeof node !== 'object') return undefined
     if (s.plain) {
-      node = node[s.cols[0]]
+      node = node[s.name]
     } else if (s.array) {
-      const arr = Array.isArray(node) ? node : node[s.keySpec]
+      const arr = Array.isArray(node) ? node : node[s.name]
       if (!Array.isArray(arr)) return undefined
       node = findKeyed(arr, s, valueKey(s.cols.map((c) => keys[c])))
     } else {
@@ -210,9 +215,9 @@ function iterate(node: any, steps: Step[], i: number, cb: (value: unknown) => vo
   }
   if (node == null || typeof node !== 'object') return
   const s = steps[i]
-  if (s.plain) iterate(node[s.cols[0]], steps, i + 1, cb)
+  if (s.plain) iterate(node[s.name], steps, i + 1, cb)
   else if (s.array) {
-    const arr = Array.isArray(node) ? node : node[s.keySpec]
+    const arr = Array.isArray(node) ? node : node[s.name]
     if (Array.isArray(arr)) for (const el of arr) iterate(el, steps, i + 1, cb)
   } else if (!Array.isArray(node)) {
     for (const k of Object.keys(node)) iterate(node[k], steps, i + 1, cb)
@@ -260,8 +265,8 @@ export class Assembler {
         }
       }
       if (node && node.kind === 'dimension') steps.push(this.dimStep(node, owner!))
-      else if (node && node.args.type === 'Array') steps.push({ cols: [node.alias], keySpec: node.alias, array: true }, { cols: [node.alias], keySpec: node.alias, array: false, plain: true })
-      else steps.push({ cols: [path[i]], keySpec: path[i], array: false, plain: true })
+      else if (node && node.args.type === 'Array') steps.push({ cols: [node.alias], keySpec: node.alias, name: node.alias, array: true }, { cols: [node.alias], keySpec: node.alias, name: node.alias, array: false, plain: true })
+      else steps.push({ cols: [path[i]], keySpec: path[i], name: path[i], array: false, plain: true })
     }
     this.stepCache.set(cacheKey, steps)
     byAlias.set(alias, steps)
@@ -270,7 +275,12 @@ export class Assembler {
 
   private dimStep(node: Node, fetch: Fetch): Step {
     const cols = this.env.columns(node, { fetch } as Physical)
-    return { cols, keySpec: cols.join(';'), array: node.args.type === 'Array' }
+    return { cols, keySpec: cols.join(';'), name: node.alias, array: this.isArray(node) }
+  }
+
+  /** `type:` on the dimension wins; otherwise the instance output shape */
+  private isArray(node: Node): boolean {
+    return node.args.type ? node.args.type === 'Array' : !this.env.keyed
   }
 
   /** `ctx.at` bound to a baseline */
@@ -326,7 +336,7 @@ export class Assembler {
       const hooks = [...shared, ...resolverHook(m, path, false), ...hooksOf(m.directives, m, path, false)]
       for (const col of this.env.columns(m, physical)) {
         const cell: MetricCell = { node: m, col, path, hooks }
-        if (m.args.type === 'Array') cell.allSteps = [...steps, { cols: [col], keySpec: col, array: true }]
+        if (m.args.type === 'Array') cell.allSteps = [...steps, { cols: [col], keySpec: col, name: col, array: true }]
         cells.push(cell)
       }
       if (m.args.type === 'Array') keyCols.push(...this.env.columns(m, physical))

@@ -47,7 +47,7 @@ describe('extensions', () => {
         {},
         { metrics: { groupArray } },
       )
-      expect(result).toEqual({ mobile: { a: [1, 2], b: ['x'] } })
+      expect(result).toEqual([{ device: 'mobile', a: [1, 2], b: ['x'] }])
     })
 
     test('overriding a built-in for one dialect keeps the built-in elsewhere', async () => {
@@ -112,7 +112,7 @@ describe('extensions', () => {
         {},
         { directives: { mirror } },
       )
-      expect(result).toEqual({ cur: { m: { a: 3 } }, prev: { m: { b: 1, a: 2 } } })
+      expect(result).toEqual({ cur: [{ device: 'm', a: 3 }], prev: [{ device: 'm', b: 1, a: 2 }] })
     })
 
     test('plan hook can remove the node it sits on', async () => {
@@ -212,7 +212,7 @@ describe('review findings', () => {
     const sql = await sqlOf(`query t { fetch { device { v: doubled(a: x) } } }`, {}, { metrics: { doubled } })
     expect(sql[0]).toContain('SUM("x_src") AS "v"')
     const out = await run([[{ device: 'm', v: 2 }]], `query t { fetch { device { v: doubled(a: x) } } }`, {}, { metrics: { doubled }, dimensions: { device: upper } })
-    expect(out).toEqual({ M: { v: 4 } })
+    expect(out).toEqual([{ device: 'M', v: 4 }])
   })
 
   test('middleware query hook sees every builder', async () => {
@@ -228,22 +228,22 @@ describe('review findings', () => {
       },
     }
     const out = await run([[{ device: 'm', a: 10, b: 2 }]], `query t { fetch { device { a: sum(a: x) @divide(byField: b) b: sum(a: y) @hide } } }`, {}, { directives: { hide } })
-    expect(out).toEqual({ m: { a: 5 } })
+    expect(out).toEqual([{ device: 'm', a: 5 }])
   })
 
   test('a row-level hook that returns nothing for one cell still runs for the next', async () => {
     const onlyB: Resolver = { result: (cell, ctx) => (ctx.baseline && cell.node.alias === 'b' ? { value: 0 } : undefined) }
     const q = `query t { fetch { device { a: sum(a: x) s: any(a: s) b: sum(a: y) } } }`
-    await expect(run([[{ device: 'm', a: 1, s: 'str', b: 10 }]], q, {}, { middleware: [onlyB] })).resolves.toEqual({ m: { a: 1, s: 'str', b: 0 } })
+    await expect(run([[{ device: 'm', a: 1, s: 'str', b: 10 }]], q, {}, { middleware: [onlyB] })).resolves.toEqual([{ device: 'm', a: 1, s: 'str', b: 0 }])
   })
 
   test('a row-level hook that returns a value runs for every cell of the row', async () => {
     const dbl: Resolver = { result: (cell, ctx) => (ctx.baseline ? { value: (cell.value as number) * 2 } : undefined) }
     const q = `query t { fetch @dbl { device { a: sum(a: x) b: sum(a: y) } } }`
-    await expect(run([[{ device: 'm', a: 1, b: 10 }]], q, {}, { directives: { dbl } })).resolves.toEqual({ m: { a: 2, b: 20 } })
-    await expect(run([[{ device: 'm', a: 1, b: 10 }]], `query t { fetch { device { a: sum(a: x) b: sum(a: y) } } }`, {}, { middleware: [dbl] })).resolves.toEqual({
-      m: { a: 2, b: 20 },
-    })
+    await expect(run([[{ device: 'm', a: 1, b: 10 }]], q, {}, { directives: { dbl } })).resolves.toEqual([{ device: 'm', a: 2, b: 20 }])
+    await expect(run([[{ device: 'm', a: 1, b: 10 }]], `query t { fetch { device { a: sum(a: x) b: sum(a: y) } } }`, {}, { middleware: [dbl] })).resolves.toEqual([
+      { device: 'm', a: 2, b: 20 },
+    ])
   })
 
   test('ctx.at resolves the shape through every fetch sharing the alias', async () => {
@@ -259,8 +259,8 @@ describe('review findings', () => {
   })
 
   test('a relocated type: Array metric keeps its identity value', async () => {
-    await expect(run([[{ year: '2026', price: 2 }]], `query t { fetch { year @parse(as: "int") { price: distinct(type: Array) } } }`)).resolves.toEqual({
-      '2026': [{ price: 2 }],
-    })
+    await expect(run([[{ year: '2026', price: 2 }]], `query t { fetch { year @parse(as: "int") { price: distinct(type: Array) } } }`)).resolves.toEqual([
+      { year: 2026, price: [{ price: 2 }] },
+    ])
   })
 })
