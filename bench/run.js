@@ -26,17 +26,25 @@ for (let i = 0; i < N; i++) {
   })
 }
 
+// v3-comparable scenarios run with v3's output shape (keyed objects) and legacy argument forms.
+// Since proposal 1, @filter and @diff are computed in SQL: the fixture adapter returns the rows as
+// given, so those two scenarios measure compile + single-pass assembly, not the directive work.
+const compat = { strict: false, output: 'keyed' }
 const scenarios = [
-  ['object dims', `query t { fetch { date { device { country { value: sum(a: x) other: sum(a: y) } } } } }`],
-  ['array date dim', `query t { fetch { date(type: Array) { device { country { value: sum(a: x) other: sum(a: y) } } } } }`],
-  ['array dim + @filter', `query t { fetch { date(type: Array) { device @filter(value_gt: 100) { country { value: sum(a: x) other: sum(a: y) } } } } }`],
+  ['object dims', `query t { fetch { date { device { country { value: sum(a: x) other: sum(a: y) } } } } }`, compat],
+  ['array date dim', `query t { fetch { date(type: Array) { device { country { value: sum(a: x) other: sum(a: y) } } } } }`, compat],
+  ['array dim + @filter', `query t { fetch { date(type: Array) { device @filter(value_gt: 100) { country { value: sum(a: x) other: sum(a: y) } } } } }`, compat],
   [
     'two queries + @diff',
     `query t {
     series: fetch { date(type: Array) { device { value: sum(a: x) @diff(by: prev) } } }
     prev: fetch { date(type: Array) { device { value: sum(a: x) } } }
   }`,
+    compat,
   ],
+  // the same three levels as 'object dims', in v4's default shape (arrays of records) vs keyed objects
+  ['records (default)', `query t { fetch { date { device { country { value: sum(a: x) other: sum(a: y) } } } } }`, {}],
+  ['keyed (type: Map)', `query t { fetch { date(type: Map) { device(type: Map) { country(type: Map) { value: sum(a: x) other: sum(a: y) } } } } }`, {}],
 ]
 
 const time = async (fn) => {
@@ -51,9 +59,9 @@ const pad = (s, n) => String(s).padEnd(n)
   console.log(`${N} rows per query\n`)
   console.log(`${pad('scenario', 24)}${pad('ms', 10)}result`)
 
-  for (const [label, query] of scenarios) {
+  for (const [label, query, opts] of scenarios) {
     const tables = query.includes('prev:') ? [rows, rows] : [rows]
-    const run = () => gritql({ adapters: { pg: fixtureAdapter(tables) } }).run(query, {})
+    const run = () => gritql({ adapters: { pg: fixtureAdapter(tables) }, ...opts }).run(query, {})
     await run() // warm up
     const samples = []
     let result

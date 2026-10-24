@@ -81,7 +81,13 @@ interface Bucket {
   cols: string[]
   map: Map<string, any>
 }
-const indexes = new WeakMap<any[], Map<string, Bucket>>()
+// kept on the array as a non-enumerable symbol property: invisible to JSON, keys and equality, and
+// much cheaper than a WeakMap lookup per row (measured: records output 94 ms -> see bench/RESULTS.md)
+const INDEX = Symbol('gritql.index')
+const indexes = {
+  get: (arr: any[]): Map<string, Bucket> | undefined => (arr as any)[INDEX],
+  set: (arr: any[], buckets: Map<string, Bucket>) => Object.defineProperty(arr, INDEX, { value: buckets, enumerable: false, configurable: true }),
+}
 
 function elementKey(el: any, cols: string[]): string | null {
   if (el === null || typeof el !== 'object') return null
@@ -170,12 +176,12 @@ function descend(holder: Holder, steps: Step[], keys: Record<string, unknown>): 
           throw new Error(`Cannot write an Array dimension at "${s.name}": the key holds a value`)
         }
       }
-      const vals = s.names.map((c) => keys[c])
-      const vk = valueKey(vals)
+      // single-column steps (the common case) skip the values array and the key concatenation
+      const vk = s.names.length === 1 ? String(keys[s.names[0]]) : valueKey(s.names.map((c) => keys[c]))
       let el = findKeyed(arr, s, vk)
       if (el === undefined) {
         el = {}
-        for (let k = 0; k < s.names.length; k++) el[s.names[k]] = vals[k]
+        for (let k = 0; k < s.names.length; k++) el[s.names[k]] = keys[s.names[k]]
         appendKeyed(arr, el)
       }
       node = el
@@ -321,7 +327,8 @@ export class Assembler {
       const out: Hook[] = []
       for (const use of uses) {
         const resolver = this.env.registry.directives.get(use.name)
-        if (resolver?.result) out.push({ use, resolver, owner, ownerPath, rowLevel })
+        // a plan hook that moved all of its work into SQL sets state.lowered; its result hook has nothing left to do
+        if (resolver?.result && use.state.lowered !== true) out.push({ use, resolver, owner, ownerPath, rowLevel })
       }
       return out
     }
