@@ -151,7 +151,7 @@ function buildFetch(field: FieldNode, defaultTable: string | null, doc: ParsedDo
     variables: vars,
   }
   for (const type of JOIN_TYPES) {
-    if (args[type] !== undefined) fetch.joins.push(toJoin(type, args[type] as Record<string, unknown>, alias ?? kind))
+    if (args[type] !== undefined) fetch.joins.push(toJoin(type, args[type] as Record<string, unknown>, alias ?? kind, strict))
   }
   // search terms from `filters: { search }` join the fetch-level registry so search metrics can find them
   const inFilters = fetch.filters?.search
@@ -201,11 +201,20 @@ function normalizeFilters(args: Record<string, unknown>): FilterExpr | null {
 /** join shorthand operators and their mirror when written on the joined-table side */
 const BY_OPS: Record<string, string> = { eq: 'eq', gt: 'lt', gte: 'lte', lt: 'gt', lte: 'gte' }
 
-function toJoin(type: JoinType, args: Record<string, unknown>, where: string): Join {
+function toJoin(type: JoinType, args: Record<string, unknown>, where: string, strict: boolean): Join {
   const table = args.table
   if (typeof table !== 'string') throw new GritqlError('ARGS', "Join function requires 'table' as argument", { path: [where] })
   let on = (args.on as FilterExpr | undefined) ?? {}
   const byKeys = Object.keys(args).filter((k) => k === 'by' || k.startsWith('by_'))
+  if (byKeys.length && strict) {
+    const k = byKeys[0]
+    const [left, right] = String(Array.isArray(args[k]) ? (args[k] as string[])[0] : args[k]).split(':')
+    const col = (right ?? 'joinedColumn').replace(/^@/, '')
+    const ref = left?.startsWith('@') ? left : `@${left ?? 'fetchColumn'}`
+    const op = k === 'by' ? 'eq' : k.slice(3)
+    const example = op === 'eq' ? `{ ${col}: "${ref}" }` : `{ ${col}: { ${BY_OPS[op] ?? op}: "${ref}" } }`
+    throw new GritqlError('ARGS', `Join shorthand '${k}' is a string grammar; write on: ${example} (or set strict: false)`, { path: [where] })
+  }
   if (byKeys.length) {
     on = { ...on }
     for (const k of byKeys) {
@@ -258,7 +267,7 @@ function buildNodes(selections: readonly SelectionNode[], ctx: BuildContext): No
       continue
     }
     if ((JOIN_TYPES as readonly string[]).includes(name) && sel.selectionSet) {
-      ctx.fetch.joins.push(toJoin(name as JoinType, argsToObject(sel.arguments, ctx.variables), ctx.path.join('.')))
+      ctx.fetch.joins.push(toJoin(name as JoinType, argsToObject(sel.arguments, ctx.variables), ctx.path.join('.'), ctx.strict))
       out.push(...buildNodes(sel.selectionSet.selections, ctx))
       continue
     }

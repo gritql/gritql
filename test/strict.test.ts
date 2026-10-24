@@ -63,6 +63,60 @@ describe('strict mode (default)', () => {
     })
   })
 
+  describe('object forms replace the string grammars', () => {
+    test('arithmetic operands: { fn: column } and { field: column }; "fn|column" is legacy', async () => {
+      const [sql] = await sqlOf(`query t { fetch { d { r: divide(a: { sum: revenue }, by: { count: orders }) p: diff(a: { field: price }, by: { field: prev_price }) q: subtract(a: revenue, by: 2) } } }`)
+      expect(sql).toContain('cast("sum"("revenue") as float)/NULLIF(cast("count"("orders") as float) + 1e-10, 0)::float4 as "r"')
+      expect(sql).toContain('cast("price" as float)/NULLIF(cast("prev_price" as float) + 1e-10, 0)::float4 - 1  as "p"')
+      expect(sql).toContain('cast("sum"("revenue") as float)-2::float4 as "q"')
+      await expect(sqlOf(`query t { fetch { d { r: divide(a: "sum|revenue", by: "|orders") } } }`)).rejects.toMatchObject({
+        code: 'ARGS',
+        message: expect.stringContaining('write { sum: revenue }'),
+      })
+      await expect(sqlOf(`query t { fetch { d { r: divide(a: revenue, by: "|orders") } } }`)).rejects.toThrow(/write \{ field: orders \}/)
+      const [legacy] = await loose(`query t { fetch { d { r: divide(a: "sum|revenue", by: "|orders") } } }`)
+      expect(legacy).toContain('cast("sum"("revenue") as float)/NULLIF(cast("orders" as float) + 1e-10, 0)::float4 as "r"')
+      await expect(sqlOf(`query t { fetch { d { r: divide(a: { sum: revenue, count: x }, by: 1) } } }`)).rejects.toThrow(/exactly one key/)
+    })
+
+    test('@filter / @groupOn take where: {}; field_op keys are legacy', async () => {
+      const rows = [
+        { channels: 'Social', value: 1 },
+        { channels: 'Organic', value: 3 },
+        { channels: 'Direct', value: 4 },
+      ]
+      const g = (strict: boolean) => gritql({ adapters: { pg: fixtureAdapter([rows]) }, strict })
+      await expect(g(true).run(`query t { fetch { channels @filter(where: { value: { gt: 1, lt: 4 } }) { value: sum(a: x) } } }`)).resolves.toEqual([{ channels: 'Organic', value: 3 }])
+      await expect(g(true).run(`query t { fetch { channels @filter(where: { channels: ["Social", "Direct"] }) { value: sum(a: x) } } }`)).resolves.toEqual([
+        { channels: 'Social', value: 1 },
+        { channels: 'Direct', value: 4 },
+      ])
+      await expect(g(true).run(`query t { fetch { channels @filter(value_gt: 1) { value: sum(a: x) } } }`)).rejects.toMatchObject({
+        code: 'ARGS',
+        message: expect.stringContaining('write where: { value: { gt: ... } }'),
+      })
+      await expect(g(true).run(`query t { fetch { channels @filter(where: { value: { between: 1 } }) { value: sum(a: x) } } }`)).rejects.toThrow(/Unknown operator 'between'/)
+      await expect(g(false).run(`query t { fetch { channels @filter(value_gt: 1) { value: sum(a: x) } } }`)).resolves.toEqual([
+        { channels: 'Organic', value: 3 },
+        { channels: 'Direct', value: 4 },
+      ])
+      // metric-level @filter compares the value with bare operators in both modes
+      await expect(g(true).run(`query t { fetch { channels { value: sum(a: x) @filter(gte: 3) } } }`)).resolves.toEqual([
+        { channels: 'Organic', value: 3 },
+        { channels: 'Direct', value: 4 },
+      ])
+    })
+
+    test('@parse takes an enum or an object; colon strings are legacy', async () => {
+      const g = (strict: boolean) => gritql({ adapters: { pg: fixtureAdapter([[{ d: 'mobile', a: 'ff' }]]) }, strict })
+      await expect(g(true).run(`query t { fetch { d { a: sum(a: x) @parse(as: { int: 16 }) } } }`)).resolves.toEqual([{ d: 'mobile', a: 255 }])
+      await expect(g(true).run(`query t { fetch { d { a: sum(a: x) @parse(as: "int:16") } } }`)).rejects.toThrow(/write as: \{ int: 16 \}/)
+      await expect(g(true).run(`query t { fetch { d { a: sum(a: x) @parse(as: "date:format:yyyy") } } }`)).rejects.toThrow(/write as: \{ date: \{ format: "yyyy" \} \}/)
+      await expect(g(true).run(`query t { fetch { d { a: sum(a: x) @parse(as: { date: { nope: 1 } }) } } }`)).rejects.toThrow(/only \{ date: \{ format/)
+      await expect(g(false).run(`query t { fetch { d { a: sum(a: x) @parse(as: "int:16") } } }`)).resolves.toEqual([{ d: 'mobile', a: 255 }])
+    })
+  })
+
   describe('variables', () => {
     test('an undeclared variable is a TYPE error; strict: false substitutes it', async () => {
       const q = `query t { fetch(where: { country: $country }) { v: sum(a: x) } }`

@@ -155,7 +155,7 @@ describe('merge', () => {
   })
 
   describe('@filter on a dimension', () => {
-    const query = `query t { fetch { channels @filter(value_gt: 1) { value: sum(a: x) } } }`
+    const query = `query t { fetch { channels @filter(where: { value: { gt: 1 } }) { value: sum(a: x) } } }`
     const row = (channels: string, value: number) => ({ channels, value })
 
     test.each([
@@ -171,7 +171,7 @@ describe('merge', () => {
 
     test('dropping the whole first element', async () => {
       const rows = [d('2022-01-01', 'mobile', 1), d('2022-01-01', 'desktop', 1), d('2022-01-02', 'mobile', 10), d('2022-01-02', 'desktop', 20), d('2022-01-03', 'mobile', 100)]
-      await expect(run([rows], `query t { fetch { date { device @filter(value_gt: 1) { value: sum(a: x) } } } }`)).resolves.toEqual([
+      await expect(run([rows], `query t { fetch { date { device @filter(where: { value: { gt: 1 } }) { value: sum(a: x) } } } }`)).resolves.toEqual([
         {
           date: '2022-01-02',
           device: [
@@ -185,7 +185,7 @@ describe('merge', () => {
 
     test('a late row for an earlier key lands in its own element', async () => {
       const rows = [d('2022-01-01', 'mobile', 1), d('2022-01-02', 'mobile', 10), d('2022-01-03', 'mobile', 100), d('2022-01-01', 'tablet', 3)]
-      await expect(run([rows], `query t { fetch { date { device @filter(value_gt: 1) { value: sum(a: x) } } } }`)).resolves.toEqual([
+      await expect(run([rows], `query t { fetch { date { device @filter(where: { value: { gt: 1 } }) { value: sum(a: x) } } } }`)).resolves.toEqual([
         { date: '2022-01-02', device: [{ device: 'mobile', value: 10 }] },
         { date: '2022-01-03', device: [{ device: 'mobile', value: 100 }] },
         { date: '2022-01-01', device: [{ device: 'tablet', value: 3 }] },
@@ -261,7 +261,7 @@ describe('merge', () => {
           [series, filteredPrev],
           `query t {
             series: fetch { date(type: Array) { value: sum(a: x) @diff(by: prev) } }
-            prev: fetch { date(type: Array) @filter(value_gt: 0) { value: sum(a: x) } }
+            prev: fetch { date(type: Array) @filter(where: { value: { gt: 0 } }) { value: sum(a: x) } }
           }`,
         ),
       ).resolves.toEqual({

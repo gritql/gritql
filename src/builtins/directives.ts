@@ -65,26 +65,44 @@ function fails(ops: string[], value: unknown, args: Record<string, unknown>): bo
   return ops.some((op) => !(operators[op] ?? operators.eq)(value, args[op]))
 }
 
-/** the field conditions of a directive's arguments, grouped by field: `value_gt: 1, value_lt: 9, name: "x"` → value [gt, lt], name [eq] */
+/**
+ * Field conditions of `@filter` / `@groupOn`, grouped by field.
+ * Object form: `where: { value: { gt: 1, lt: 9 }, name: "x", country: ["DE", "AT"] }` (scalar = eq, list = in).
+ * Legacy suffix form (`value_gt: 1`) is accepted with `strict: false`; strict names the object form.
+ */
 interface FieldConds {
   field: string
-  checks: { fn: (a: unknown, b: unknown) => boolean; argKey: string }[]
+  checks: { fn: (a: unknown, b: unknown) => boolean; value: unknown }[]
 }
-const condCache = new WeakMap<object, FieldConds[]>()
-function fieldConds(args: Record<string, unknown>, ignore?: string): FieldConds[] {
-  let conds = condCache.get(args)
-  if (conds) return conds
-  conds = []
-  for (const argKey of Object.keys(args)) {
-    if (argKey === ignore) continue
-    const i = argKey.lastIndexOf('_')
-    const suffix = i > 0 ? argKey.slice(i + 1) : ''
-    const [field, fn] = operators[suffix] ? [argKey.slice(0, i), operators[suffix]] : [argKey, operators.eq]
+function fieldConds(ctx: Ctx, ignore: string[]): FieldConds[] {
+  const conds: FieldConds[] = []
+  const add = (field: string, fn: (a: unknown, b: unknown) => boolean, value: unknown) => {
     let group = conds.find((c) => c.field === field)
     if (!group) conds.push((group = { field, checks: [] }))
-    group.checks.push({ fn, argKey })
+    group.checks.push({ fn, value })
   }
-  condCache.set(args, conds)
+  const where = ctx.args.where as Record<string, unknown> | undefined
+  if (where !== undefined) {
+    if (!where || typeof where !== 'object' || Array.isArray(where)) throw new GritqlError('ARGS', '`where` must be an object of { field: predicate }')
+    for (const [field, pred] of Object.entries(where)) {
+      if (pred !== null && typeof pred === 'object' && !Array.isArray(pred)) {
+        for (const [op, value] of Object.entries(pred as Record<string, unknown>)) {
+          if (!operators[op]) throw new GritqlError('ARGS', `Unknown operator '${op}' for ${field}`)
+          add(field, operators[op], value)
+        }
+      } else add(field, Array.isArray(pred) ? operators.in : operators.eq, pred)
+    }
+  }
+  for (const argKey of Object.keys(ctx.args)) {
+    if (argKey === 'where' || ignore.includes(argKey)) continue
+    const i = argKey.lastIndexOf('_')
+    const suffix = i > 0 ? argKey.slice(i + 1) : ''
+    const [field, op] = operators[suffix] ? [argKey.slice(0, i), suffix] : [argKey, 'eq']
+    if (ctx.strict) {
+      throw new GritqlError('ARGS', `'${argKey}' is a field_operator string; write where: { ${field}: { ${op}: ... } } (or set strict: false)`)
+    }
+    add(field, operators[op], ctx.args[argKey])
+  }
   return conds
 }
 
@@ -187,14 +205,19 @@ export const directives: Record<string, Resolver> = {
   },
 
   filter: {
-    plan: (_t, ctx) => need(Object.keys(ctx.args).length, 'Filter directive requires arguments'),
+    plan: (_t, ctx) => {
+      need(Object.keys(ctx.args).length, 'Filter directive requires arguments')
+      // metric-level `@filter(gt: 1)` compares the cell value; dimension-level conditions name fields
+      if (ctx.node?.kind === 'metric') {
+        for (const op of Object.keys(ctx.args)) need(operators[op], `Filter directive on a metric takes operators (gt, in, ...); unknown '${op}'`)
+      } else ctx.state.conds = fieldConds(ctx, [])
+    },
     result: (cell, ctx) => {
       if (!ctx.baseline) return undefined
-      const argKeys = Object.keys(ctx.args)
-      if (ctx.node?.kind === 'metric') return { skip: fails(argKeys, cell.value, ctx.args) }
+      if (ctx.node?.kind === 'metric') return { skip: fails(Object.keys(ctx.args), cell.value, ctx.args) }
       const obj = ownerOf(cell, ctx)
       if (!obj) return { skip: true, skipAll: true }
-      const skip = fieldConds(ctx.args).some((c) => c.field in obj && c.checks.some((k) => !k.fn(obj[c.field], ctx.args[k.argKey])))
+      const skip = (ctx.state.conds as FieldConds[]).some((c) => c.field in obj && c.checks.some((k) => !k.fn(obj[c.field], k.value)))
       return { skip, skipAll: skip }
     },
   },
@@ -202,13 +225,15 @@ export const directives: Record<string, Resolver> = {
   groupOn: {
     plan: (_t, ctx) => {
       need(Object.keys(ctx.args).length, 'GroupOn directive requires arguments')
-      need(Object.keys(ctx.args).some((k) => k !== 'replacers'), 'GroupOn directive requires at least one grouping condition')
+      const conds = fieldConds(ctx, ['replacers'])
+      need(conds.length, 'GroupOn directive requires at least one grouping condition')
+      ctx.state.conds = conds
     },
     result: (cell, ctx) => {
       if (!ctx.baseline) return undefined
       const obj = ownerOf(cell, ctx)
       if (!obj) return undefined
-      const matched = fieldConds(ctx.args, 'replacers').some((c) => c.field in obj && c.checks.every((k) => k.fn(obj[c.field], ctx.args[k.argKey])))
+      const matched = (ctx.state.conds as FieldConds[]).some((c) => c.field in obj && c.checks.every((k) => k.fn(obj[c.field], k.value)))
       if (!matched) return undefined
       const replacers = (ctx.args.replacers as Record<string, unknown>) ?? {}
       const res: CellResult = { keys: { ...cell.keys, ...replacers } }
@@ -231,8 +256,8 @@ export const directives: Record<string, Resolver> = {
 
   parse: {
     plan: (_t, ctx) => {
-      need(ctx.args.as, 'Parse directive requires `as` argument')
-      ctx.state.transform = parser(String(ctx.args.as))
+      need(ctx.args.as !== undefined, 'Parse directive requires `as` argument')
+      ctx.state.transform = parser(parseSpec(ctx.args.as, ctx.strict))
     },
     result: (cell, ctx) => {
       const transform = ctx.state.transform as (v: unknown) => unknown
@@ -243,8 +268,33 @@ export const directives: Record<string, Resolver> = {
   },
 }
 
-function parser(as: string): (v: unknown) => unknown {
-  const [kind, desc, semi] = as.split(':')
+/**
+ * `as` → [kind, descriptor, extra]. Enum form: `int`, `float`, `date`.
+ * Object form: `{ int: 16 }`, `{ float: 2 }`, `{ date: "iso-date" }`, `{ date: { format: "yyyy/MM" } }`.
+ * Legacy `"int:16"` / `"date:format:yyyy/MM"` strings are accepted with `strict: false`.
+ */
+function parseSpec(as: unknown, strict: boolean): [string, string | undefined, string | undefined] {
+  if (as !== null && typeof as === 'object') {
+    const entries = Object.entries(as as Record<string, unknown>)
+    if (entries.length !== 1) throw new GritqlError('ARGS', 'Parse directive `as` object has exactly one key: { int: radix } | { float: precision } | { date: format }')
+    const [kind, desc] = entries[0]
+    if (desc !== null && typeof desc === 'object') {
+      const format = (desc as Record<string, unknown>).format
+      if (kind !== 'date' || format === undefined) throw new GritqlError('ARGS', 'Parse directive: only { date: { format: "..." } } takes an object')
+      return [kind, 'format', String(format)]
+    }
+    return [kind, desc === undefined ? undefined : String(desc), undefined]
+  }
+  const text = String(as)
+  const [kind, desc, semi] = text.split(':')
+  if (strict && desc !== undefined) {
+    const object = semi !== undefined ? `{ ${kind}: { ${desc}: "${semi}" } }` : `{ ${kind}: ${/^\d+$/.test(desc) ? desc : `"${desc}"`} }`
+    throw new GritqlError('ARGS', `Parse directive: "${text}" is a colon grammar; write as: ${object} (or set strict: false)`)
+  }
+  return [kind, desc, semi]
+}
+
+function parser([kind, desc, semi]: [string, string | undefined, string | undefined]): (v: unknown) => unknown {
   if (kind === 'int') return (v) => parseInt(String(v), desc ? Number(desc) : 10)
   if (kind === 'float') return desc ? (v) => parseFloat(String(v)).toFixed(Number(desc)) : (v) => parseFloat(String(v))
   if (kind === 'date') {

@@ -113,11 +113,11 @@ describe('directives', () => {
     })
 
     test('int with radix on a metric', async () => {
-      await expect(parse('device { a: sum(a: x) @parse(as: "int:16") }', [{ device: 'mobile', a: 'ff' }])).resolves.toEqual([{ device: 'mobile', a: 255 }])
+      await expect(parse('device { a: sum(a: x) @parse(as: { int: 16 }) }', [{ device: 'mobile', a: 'ff' }])).resolves.toEqual([{ device: 'mobile', a: 255 }])
     })
 
     test('float with precision on a metric', async () => {
-      await expect(parse('device { a: sum(a: x) @parse(as: "float:2") }', [{ device: 'mobile', a: '1.23456' }])).resolves.toEqual([{ device: 'mobile', a: '1.23' }])
+      await expect(parse('device { a: sum(a: x) @parse(as: { float: 2 }) }', [{ device: 'mobile', a: '1.23456' }])).resolves.toEqual([{ device: 'mobile', a: '1.23' }])
     })
 
     // `iso` and `iso-time` carry the machine's UTC offset, as luxon did in v3.
@@ -126,19 +126,19 @@ describe('directives', () => {
 
     test.each([
       ['date', `2022-01-06T01:00:00.000${offset}`],
-      ['date:iso-date', '2022-01-06'],
-      ['date:iso-time', `01:00:00.000${offset}`],
-      ['date:iso-week-date', '2022-W01-4'],
-      ['date:format:yyyy/MM', '2022/01'],
+      ['{ date: "iso-date" }', '2022-01-06'],
+      ['{ date: "iso-time" }', `01:00:00.000${offset}`],
+      ['{ date: "iso-week-date" }', '2022-W01-4'],
+      ['{ date: { format: "yyyy/MM" } }', '2022/01'],
     ])('%s on a dimension', async (as, expected) => {
-      await expect(parse(`date(type: Array) @parse(as: "${as}") { a: sum(a: x) }`, [{ date: '2022-01-06 01:00:00', a: 1 }])).resolves.toEqual([
+      await expect(parse(`date(type: Array) @parse(as: ${as}) { a: sum(a: x) }`, [{ date: '2022-01-06 01:00:00', a: 1 }])).resolves.toEqual([
         { date: expected, a: 1 },
       ])
     })
 
     test('accepts Date objects and ISO strings', async () => {
       await expect(
-        parse(`date(type: Array) @parse(as: "date:iso-date") { a: sum(a: x) }`, [
+        parse(`date(type: Array) @parse(as: { date: "iso-date" }) { a: sum(a: x) }`, [
           { date: new Date(2022, 0, 6, 12), a: 1 },
           { date: '2022-01-07T12:00:00Z', a: 2 },
         ]),
@@ -150,7 +150,7 @@ describe('directives', () => {
 
     test('on a dimension with several metrics parses the row once', async () => {
       await expect(
-        parse(`date(type: Array) @parse(as: "date:iso-date") { a: sum(a: x) b: sum(a: y) }`, [
+        parse(`date(type: Array) @parse(as: { date: "iso-date" }) { a: sum(a: x) b: sum(a: y) }`, [
           { date: '2022-01-06 01:00:00', a: 1, b: 2 },
           { date: '2022-01-07 01:00:00', a: 3, b: 4 },
         ]),
@@ -214,8 +214,8 @@ describe('directives', () => {
             ],
           ],
           `query t {
-            series: fetch { channels @groupOn(value_gt: 0.5, replacers: { channels: "Other" }) { value: sum(a: x) } }
-            prevSeries: fetch { channels @groupOn(value_lt: 3, replacers: { channels: "Other" }) { value: sum(a: x) } }
+            series: fetch { channels @groupOn(where: { value: { gt: 0.5 } }, replacers: { channels: "Other" }) { value: sum(a: x) } }
+            prevSeries: fetch { channels @groupOn(where: { value: { lt: 3 } }, replacers: { channels: "Other" }) { value: sum(a: x) } }
           }`,
         ),
       ).resolves.toEqual({

@@ -62,7 +62,7 @@ describe('buildPlan', () => {
 
   test('join nodes fold into fetch.joins and lift their children', () => {
     const p = plan(`query t { fetch {
-      join(table: cat, by: "@product:@product", by: "@country:@country") {
+      join(table: cat, on: { product: "@product", country: "@country" }) {
         product(type: Array) { price: unique(a: price, from: cat) }
       }
     } }`)

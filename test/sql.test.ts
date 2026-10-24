@@ -54,7 +54,7 @@ describe('SQL shapes not covered by the v3 suites', () => {
       a: with(table: src) { product { v: sum(a: x) } }
       b: with(table: src2) { product { v: sum(a: x) } }
       u: unionall(table: a, table: b) { product { total: sum(a: v) } }
-      j: fetch(table: a) { join(table: b, by: "product:product") { product { v: sum(a: v) w: sum(a: v, from: b) } } }
+      j: fetch(table: a) { join(table: b, on: { product: "@product" }) { product { v: sum(a: v) w: sum(a: v, from: b) } } }
     }`)
     expect(sql).toHaveLength(2)
     expect(sql[0].indexOf('with "a" as')).toBeLessThan(sql[0].indexOf('"b" as'))
@@ -66,7 +66,7 @@ describe('SQL shapes not covered by the v3 suites', () => {
   test('a with referenced but not defined is a PLAN error', async () => {
     await expect(sqlOf(`query t { x: fetch(table: nowhere) { device { v: sum(a: x) } } }`)).resolves.toHaveLength(1)
     await expect(
-      sqlOf(`query t { a: with(table: src) { device { v: sum(a: x) } } x: fetch(table: a) { join(table: zz, by: "d:d") { device { v: sum(a: x) } } } }`),
+      sqlOf(`query t { a: with(table: src) { device { v: sum(a: x) } } x: fetch(table: a) { join(table: zz, on: { d: "@d" }) { device { v: sum(a: x) } } } }`),
     ).resolves.toHaveLength(1)
   })
 
@@ -147,15 +147,21 @@ describe('review findings', () => {
     expect(sql).toContain('PERCENTILE_CONT(0.5) WITHIN GROUP(ORDER BY "x") AS "q"')
   })
 
-  test('join shorthand inequalities read left to right; by_in is rejected', async () => {
-    const [sql] = await sqlOf(`query t { fetch { join(table: c, by: "@id:@pid", by_gt: "@a:@b") { v: sum(a: x) } } }`)
-    // written on the joined column, so `fetch.a > joined.b` prints as `c.b < t.a`
+  test('join conditions are written with on; the by shorthands are legacy (strict: false)', async () => {
+    const [sql] = await sqlOf(`query t { fetch { join(table: c, on: { pid: "@id", b: { lt: "@a" } }) { v: sum(a: x) } } }`)
     expect(sql).toContain('JOIN "c" ON ("c"."pid" = "t"."id") AND (("c"."b" < "t"."a"))')
-    const [same] = await sqlOf(`query t { fetch { join(table: c, by: "@id:@pid", by_gt: "@a:@pid") { v: sum(a: x) } } }`)
-    expect(same).toContain('JOIN "c" ON (("c"."pid" = "t"."id") AND ("c"."pid" < "t"."a"))')
-    await expect(sqlOf(`query t { fetch { join(table: c, by: "@a:@pid", by: "@b:@pid") { v: sum(a: x) } } }`)).rejects.toMatchObject({ code: 'ARGS' })
-    await expect(sqlOf(`query t { fetch { join(table: c, by_in: "@id:@pid") { v: sum(a: x) } } }`)).rejects.toMatchObject({ code: 'ARGS' })
-    await expect(sqlOf(`query t { fetch { join(table: c, by_like: "@n:@p") { v: sum(a: x) } } }`)).rejects.toMatchObject({ code: 'ARGS' })
+    await expect(sqlOf(`query t { fetch { join(table: c, by: "@id:@pid", by_gt: "@a:@b") { v: sum(a: x) } } }`)).rejects.toMatchObject({
+      code: 'ARGS',
+      message: expect.stringContaining('write on: { pid: "@id" }'),
+    })
+    await expect(sqlOf(`query t { fetch { join(table: c, by_gt: "@a:@b") { v: sum(a: x) } } }`)).rejects.toThrow(/write on: \{ b: \{ lt: "@a" \} \}/)
+    const loose = (q: string) => gritql({ adapters: { pg: fixtureAdapter([]) }, strict: false }).compile(q).then((c) => c.queries[0].text)
+    // written on the joined column, so `fetch.a > joined.b` prints as `c.b < t.a`
+    expect(await loose(`query t { fetch { join(table: c, by: "@id:@pid", by_gt: "@a:@b") { v: sum(a: x) } } }`)).toContain('JOIN "c" ON ("c"."pid" = "t"."id") AND (("c"."b" < "t"."a"))')
+    expect(await loose(`query t { fetch { join(table: c, by: "@id:@pid", by_gt: "@a:@pid") { v: sum(a: x) } } }`)).toContain('JOIN "c" ON (("c"."pid" = "t"."id") AND ("c"."pid" < "t"."a"))')
+    await expect(loose(`query t { fetch { join(table: c, by: "@a:@pid", by: "@b:@pid") { v: sum(a: x) } } }`)).rejects.toMatchObject({ code: 'ARGS' })
+    await expect(loose(`query t { fetch { join(table: c, by_in: "@id:@pid") { v: sum(a: x) } } }`)).rejects.toMatchObject({ code: 'ARGS' })
+    await expect(loose(`query t { fetch { join(table: c, by_like: "@n:@p") { v: sum(a: x) } } }`)).rejects.toMatchObject({ code: 'ARGS' })
   })
 
   test('a CTE chain lists every with once in the outer statement', async () => {

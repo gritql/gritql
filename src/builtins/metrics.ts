@@ -37,13 +37,30 @@ function aggregate(fn: string, uppercase = true): Resolver {
   }
 }
 
-/** `"fn|col"` → [fn, col]; `"|col"` → ['', col]; plain → [defaultFn, col] */
-function split(value: unknown, defaultFn: string): [string, string] {
+/**
+ * Operand of an arithmetic metric → [fn, col].
+ * Object form: `{ sum: col }` applies `sum`, `{ field: col }` reads the column as is.
+ * Plain name: `defaultFn`. Legacy `"fn|col"` / `"|col"` strings are accepted with `strict: false`.
+ */
+function split(value: unknown, defaultFn: string, ctx: Ctx): [string, string] {
+  if (value !== null && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+    if (entries.length !== 1) throw new GritqlError('ARGS', 'An operand object has exactly one key: { sum: column } or { field: column }')
+    const [fn, col] = entries[0]
+    return [fn === 'field' ? '' : fn, String(col)]
+  }
   if (typeof value !== 'string') return [defaultFn, String(value)]
   const i = value.indexOf('|')
   if (i === -1) return [defaultFn, value]
+  if (ctx.strict) {
+    const fn = value.slice(0, i)
+    const col = value.slice(i + 1)
+    throw new GritqlError('ARGS', `"${value}" mixes a function and a column in one string; write ${fn ? `{ ${fn}: ${col} }` : `{ field: ${col} }`} (or set strict: false)`)
+  }
   return [value.slice(0, i), value.slice(i + 1)]
 }
+
+const operandType = PropTypes.oneOfType([PropTypes.string, PropTypes.object])
 
 /** `cast(fn(col) as float)` or `cast(col as float)` with bindings */
 function castExpr(fn: string, col: string): [string, string[]] {
@@ -52,15 +69,15 @@ function castExpr(fn: string, col: string): [string, string[]] {
 
 function arithmetic(build: (A: string, B: string) => string): Resolver {
   return {
-    args: { a: PropTypes.string.isRequired, by: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired },
+    args: { a: operandType.isRequired, by: PropTypes.oneOfType([PropTypes.string, PropTypes.number, PropTypes.object]).isRequired },
     sql: (node, ctx) => {
-      const [fa, ca] = split(node.args.a, 'sum')
+      const [fa, ca] = split(node.args.a, 'sum', ctx)
       const from = node.args.from as string | undefined
       const [A, aBind] = castExpr(fa, ctx.col(ca, from))
       if (typeof node.args.by === 'number') {
         return ctx.knex.raw(`${build(A, '?::float4')} as ??`, [...aBind, node.args.by, node.alias])
       }
-      const [fb, cb] = split(node.args.by, 'sum')
+      const [fb, cb] = split(node.args.by, 'sum', ctx)
       const [B, bBind] = castExpr(fb, ctx.col(cb, from))
       return ctx.knex.raw(`${build(A, B)} as ??`, [...aBind, ...bBind, node.alias])
     },
