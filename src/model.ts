@@ -77,6 +77,8 @@ export interface Node {
   children: Node[]
   directives: DirectiveUse[]
   emit: boolean
+  /** output name → SQL column, for dimensions whose alias would shadow the source column they compute from (`ctx.out`) */
+  sqlNames?: Record<string, string>
 }
 
 export interface Plan {
@@ -209,6 +211,12 @@ export interface Ctx {
   path: string[]
   /** qualified column name honoring `@name` and `from` */
   col(name: string, from?: string): string
+  /**
+   * SQL alias for output column `name` of an expression dimension computed from `source`:
+   * `name` itself, or an internal `__dN` when it would shadow `source` (`date: groupBy(field: date)`),
+   * so GROUP BY can repeat the expression on every dialect. The assembler maps it back to `name`.
+   */
+  out(name: string, source: string): string
   /** compile a filter object to a raw predicate for the current statement */
   where(filter: FilterExpr): Knex.Raw
   baseline?: Output

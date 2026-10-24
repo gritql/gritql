@@ -38,16 +38,11 @@ export const dimensions: Record<string, Resolver> = {
     columns: (node) => [(node.args.alias as string) ?? (node.alias !== node.name ? node.alias : (node.args.field as string))],
     sql: (node, ctx) => {
       const col = ctx.col(node.args.field as string, node.args.from as string | undefined)
-      const alias = (node.args.alias as string) ?? (node.alias !== node.name ? node.alias : (node.args.field as string))
+      const name = (node.args.alias as string) ?? (node.alias !== node.name ? node.alias : (node.args.field as string))
       const expr = ctx.knex.raw('date_trunc(?, ??)', [String(node.args.by ?? 'day'), col])
-      // when the alias shadows the source column (`date: groupBy(field: date)`), ClickHouse reads the inner `date`
-      // as the alias (cyclic alias) and wants the alias in GROUP BY; PostgreSQL resolves that name to the input
-      // column instead, so every other dialect groups by the expression
-      const shadows = ctx.dialect === 'clickhouse' && alias === (node.args.field as string) && !node.args.from
-      return {
-        select: [ctx.knex.raw(`${expr.toQuery()} as ??`, [alias])],
-        groupBy: [shadows ? ctx.knex.raw('??', [alias]) : expr],
-      }
+      // `date: groupBy(field: date)`: the output name shadows the source column, so the SQL alias is internal and
+      // GROUP BY repeats the expression on every dialect (ClickHouse would otherwise read the inner `date` as the alias)
+      return { select: [ctx.knex.raw(`${expr.toQuery()} as ??`, [ctx.out(name, col)])], groupBy: [expr] }
     },
   },
 
@@ -58,7 +53,7 @@ export const dimensions: Record<string, Resolver> = {
     sql: (node, ctx) => {
       const col = ctx.col(node.args.field as string, node.args.from as string | undefined)
       const amount = parseFloat(String(node.args.each))
-      const alias = node.alias !== node.name ? node.alias : (node.args.field as string)
+      const alias = ctx.out(node.alias !== node.name ? node.alias : (node.args.field as string), col)
       return {
         select: [
           ctx.knex.raw(`(CAST(FLOOR(CEIL(??)/??) AS INT)*?? || '-' || CAST(FLOOR(CEIL(??)/??) AS INT)*??+??) AS ??`, [

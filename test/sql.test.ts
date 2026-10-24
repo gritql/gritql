@@ -40,12 +40,12 @@ describe('SQL shapes not covered by the v3 suites', () => {
     ])
   })
 
-  test('having addresses aggregate aliases unqualified', async () => {
+  test('having on output aliases is a WHERE on a derived table, so it works on every dialect', async () => {
     const [sql] = await sqlOf(
-      `query t { fetch(filters: { brand: "x", having: { value: { gt: 1 } } }) { device(having: { other: { lt: 5 } }) { value: sum(a: x) other: sum(a: y) } } }`,
+      `query t { fetch(filters: { brand: "x", having: { value: { gt: 1 } } }) { device(having: { other: { lt: 5 } }, sort_desc: value, limit: 3) { value: sum(a: x) other: sum(a: y) } } }`,
     )
     expect(sql).toBe(
-      `select "device", SUM("x") AS "value", SUM("y") AS "other" from "t" where ("t"."brand" = 'x') group by "device" having (("other" < 5)) and (("value" > 1))`,
+      `select "device", "value", "other" from (select "device", SUM("x") AS "value", SUM("y") AS "other" from "t" where ("t"."brand" = 'x') group by "device") as "__h" where (("other" < 5)) and (("value" > 1)) order by "value" desc limit 3`,
     )
   })
 
@@ -126,12 +126,24 @@ describe('review findings', () => {
     expect(sql).toBe('select COUNT(*) AS "n", COUNT(*) AS "m" from "t"')
   })
 
-  test('groupBy dimension whose alias shadows its column groups by the alias on ClickHouse only', async () => {
-    const q = `query t { fetch { date: groupBy(field: date, by: month) { v: sum(a: x) } } }`
-    const [pg] = await sqlOf(q)
-    expect(pg).toBe(`select date_trunc('month', "date") as "date", SUM("x") AS "v" from "t" group by date_trunc('month', "date")`)
+  test('a dimension alias that shadows its source column gets an internal SQL name on every dialect', async () => {
+    const q = `query t { fetch { date: groupBy(field: date, by: month, sort_desc: date) { v: sum(a: x) } } }`
+    const expected = `select date_trunc('month', "date") as "__d0", SUM("x") AS "v" from "t" group by date_trunc('month', "date") order by "__d0" desc`
+    const pg = await gritql({ adapters: { pg: fixtureAdapter([]) } }).compile(q, {})
+    expect(pg.queries[0].text).toBe(expected)
+    expect(pg.queries[0].columns).toEqual({ __d0: 'date' })
     const ch = await gritql({ adapters: { ch: fixtureAdapter([], 'clickhouse') } }).compile(q, {})
-    expect(ch.queries[0].text).toBe(`select date_trunc('month', "date") as "date", SUM("x") AS "v" from "t" group by "date"`)
+    expect(ch.queries[0].text).toBe(expected)
+    // a non-shadowing alias keeps its name
+    const [plain] = await sqlOf(`query t { fetch { month: groupBy(field: date, by: month) { v: sum(a: x) } } }`)
+    expect(plain).toBe(`select date_trunc('month', "date") as "month", SUM("x") AS "v" from "t" group by date_trunc('month', "date")`)
+    // rows come back under the SQL name and are assembled under the output name
+    const rows = [{ __d0: '2024-01-01', v: 1 }, { __d0: '2024-02-01', v: 2 }]
+    await expect(run([rows], `query t { fetch { date: groupBy(field: date, by: month) { v: sum(a: x) } } }`)).resolves.toEqual([
+      { date: '2024-01-01', v: 1 },
+      { date: '2024-02-01', v: 2 },
+    ])
+    await expect(run([rows], `query t { fetch { date: groupBy(field: date, by: month) @groupBy(by: year) { v: sum(a: x) } } }`)).resolves.toEqual([{ date: '2024-01-01', v: 3 }])
   })
 
   test('avg and median are plain aggregates unless partitioned', async () => {

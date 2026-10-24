@@ -2,13 +2,13 @@
 
 exports[`filters > having > as dimension argument 1`] = `
 [
-  "select "device", SUM("sessions") AS "value" from "t" group by "device" having (("value" > 10))",
+  "select "device", "value" from (select "device", SUM("sessions") AS "value" from "t" group by "device") as "__h" where (("value" > 10))",
 ]
 `;
 
 exports[`filters > having > filters on aggregated values 1`] = `
 [
-  "select "device", SUM("sessions") AS "value" from "t" where ("t"."brand" = 'a') group by "device" having (("value" > 10))",
+  "select "device", "value" from (select "device", SUM("sessions") AS "value" from "t" where ("t"."brand" = 'a') group by "device") as "__h" where (("value" > 10))",
 ]
 `;
 

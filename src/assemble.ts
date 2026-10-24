@@ -21,12 +21,17 @@ export interface AssembleEnv {
   keyed: boolean
   /** ctx for a result hook; `over` carries baseline/output/path/at */
   makeCtx(physical: Physical, node: Node | undefined, use: DirectiveUse | undefined, over: Partial<Ctx>): Ctx
+  /** SQL columns of a node (row keys) */
   columns(node: Node, physical: Physical): string[]
+  /** output names of a node's columns, same order as `columns` */
+  names(node: Node, physical: Physical): string[]
 }
 
 interface Step {
   /** row columns the step reads */
   cols: string[]
+  /** output names, used for keys, element properties and lookups */
+  names: string[]
   keySpec: string
   /** output property an Array step hangs off (the node alias) */
   name: string
@@ -54,7 +59,8 @@ interface MetricCell {
 
 interface Template {
   steps: Step[]
-  keyCols: string[]
+  /** row column → output name of every dimension key */
+  keyCols: [string, string][]
   cells: MetricCell[]
   hasHooks: boolean
 }
@@ -101,9 +107,9 @@ function bucketOf(arr: any[], step: Step): Bucket {
   }
   let b = buckets.get(step.keySpec)
   if (!b) {
-    b = { cols: step.cols, map: new Map() }
+    b = { cols: step.names, map: new Map() }
     for (const el of arr) {
-      const k = elementKey(el, step.cols)
+      const k = elementKey(el, step.names)
       if (k !== null && !b.map.has(k)) b.map.set(k, el)
     }
     buckets.set(step.keySpec, b)
@@ -125,6 +131,11 @@ function appendKeyed(arr: any[], el: any): void {
   }
 }
 
+/** a step for a metric or an unknown path segment: one column named like its output key */
+function plainStep(name: string, array: boolean): Step {
+  return { cols: [name], names: [name], keySpec: name, name, array, plain: !array }
+}
+
 function isEmptyObject(o: any): boolean {
   for (const _ in o) return false
   return true
@@ -135,8 +146,8 @@ function isEmptyObject(o: any): boolean {
 // ---------------------------------------------------------------------------
 
 function mapKey(step: Step, keys: Record<string, unknown>): string {
-  if (step.cols.length === 1) return String(keys[step.cols[0]])
-  return step.cols.map((c) => String(keys[c])).join(';')
+  if (step.names.length === 1) return String(keys[step.names[0]])
+  return step.names.map((c) => String(keys[c])).join(';')
 }
 
 /** descend (creating) to the object the cell is written into */
@@ -159,12 +170,12 @@ function descend(holder: Holder, steps: Step[], keys: Record<string, unknown>): 
           throw new Error(`Cannot write an Array dimension at "${s.name}": the key holds a value`)
         }
       }
-      const vals = s.cols.map((c) => keys[c])
+      const vals = s.names.map((c) => keys[c])
       const vk = valueKey(vals)
       let el = findKeyed(arr, s, vk)
       if (el === undefined) {
         el = {}
-        for (let k = 0; k < s.cols.length; k++) el[s.cols[k]] = vals[k]
+        for (let k = 0; k < s.names.length; k++) el[s.names[k]] = vals[k]
         appendKeyed(arr, el)
       }
       node = el
@@ -199,7 +210,7 @@ function readAt(root: any, steps: Step[], keys: Record<string, unknown>): any {
     } else if (s.array) {
       const arr = Array.isArray(node) ? node : node[s.name]
       if (!Array.isArray(arr)) return undefined
-      node = findKeyed(arr, s, valueKey(s.cols.map((c) => keys[c])))
+      node = findKeyed(arr, s, valueKey(s.names.map((c) => keys[c])))
     } else {
       const key = mapKey(s, keys)
       node = hasOwn(node, key) ? node[key] : undefined
@@ -265,8 +276,8 @@ export class Assembler {
         }
       }
       if (node && node.kind === 'dimension') steps.push(this.dimStep(node, owner!))
-      else if (node && node.args.type === 'Array') steps.push({ cols: [node.alias], keySpec: node.alias, name: node.alias, array: true }, { cols: [node.alias], keySpec: node.alias, name: node.alias, array: false, plain: true })
-      else steps.push({ cols: [path[i]], keySpec: path[i], name: path[i], array: false, plain: true })
+      else if (node && node.args.type === 'Array') steps.push(plainStep(node.alias, true), plainStep(node.alias, false))
+      else steps.push(plainStep(path[i], false))
     }
     this.stepCache.set(cacheKey, steps)
     byAlias.set(alias, steps)
@@ -275,7 +286,8 @@ export class Assembler {
 
   private dimStep(node: Node, fetch: Fetch): Step {
     const cols = this.env.columns(node, { fetch } as Physical)
-    return { cols, keySpec: cols.join(';'), name: node.alias, array: this.isArray(node) }
+    const names = this.env.names(node, { fetch } as Physical)
+    return { cols, names, keySpec: names.join(';'), name: node.alias, array: this.isArray(node) }
   }
 
   /** `type:` on the dimension wins; otherwise the instance output shape */
@@ -302,7 +314,7 @@ export class Assembler {
   private template(physical: Physical): Template {
     const { fetch, grain } = physical
     const steps = grain.map((d) => this.dimStep(d, fetch))
-    const keyCols = steps.flatMap((s) => s.cols)
+    const keyCols: [string, string][] = steps.flatMap((s) => s.cols.map((c, i) => [c, s.names[i]] as [string, string]))
     const grainPath = grain.map((d) => d.alias)
 
     const hooksOf = (uses: DirectiveUse[], owner: Node | undefined, ownerPath: string[], rowLevel: boolean): Hook[] => {
@@ -336,10 +348,10 @@ export class Assembler {
       const hooks = [...shared, ...resolverHook(m, path, false), ...hooksOf(m.directives, m, path, false)]
       for (const col of this.env.columns(m, physical)) {
         const cell: MetricCell = { node: m, col, path, hooks }
-        if (m.args.type === 'Array') cell.allSteps = [...steps, { cols: [col], keySpec: col, name: col, array: true }]
+        if (m.args.type === 'Array') cell.allSteps = [...steps, plainStep(col, true)]
         cells.push(cell)
       }
-      if (m.args.type === 'Array') keyCols.push(...this.env.columns(m, physical))
+      if (m.args.type === 'Array') keyCols.push(...this.env.columns(m, physical).map((c) => [c, c] as [string, string]))
     }
     // hidden nodes (`emit: false`) exist in the baseline only, so they force a second pass too
     const hidden = fetch.emit === false || grain.some((d) => d.emit === false) || physical.metrics.some((m) => m.emit === false)
@@ -410,7 +422,7 @@ export class Assembler {
     for (let j = 0; j < rows.length; j++) {
       const row = rows[j]
       const rowKeys: Record<string, unknown> = {}
-      for (const c of keyCols) rowKeys[c] = row[c]
+      for (const [col, name] of keyCols) rowKeys[name] = row[col]
 
       for (const m of cells) {
         if (!(m.col in row)) continue

@@ -55,7 +55,7 @@ describe('strict mode (default)', () => {
 
     test('having as a fetch argument is the aggregate filter', async () => {
       const [sql] = await sqlOf(`query t { fetch(having: { v: { gt: 10 } }) { d { v: sum(a: x) } } }`)
-      expect(sql).toContain(`having (("v" > 10))`)
+      expect(sql).toBe(`select "d", "v" from (select "d", SUM("x") AS "v" from "t" group by "d") as "__h" where (("v" > 10))`)
       await expect(sqlOf(`query t { fetch(having: { v: { gt: 10 } }, filters: { having: { v: { lt: 1 } } }) { d { v: sum(a: x) } } }`)).rejects.toMatchObject({
         code: 'ARGS',
         message: expect.stringContaining('both'),

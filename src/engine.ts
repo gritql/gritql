@@ -43,6 +43,8 @@ export interface CompiledQuery {
   params: unknown[]
   /** statement with inlined values, for logs and snapshots */
   text: string
+  /** SQL column → output name, for the columns that differ (`__d0` → `date`); empty when none do */
+  columns: Record<string, string>
 }
 
 export interface Compiled {
@@ -131,7 +133,9 @@ export class Gritql {
         throw withPath(toGritqlError('PLAN', e), [physical.fetch.alias ?? physical.fetch.kind, ...physical.path])
       }
       const req = adapter.compile ? adapter.compile(qb, physical) : native(qb)
-      queries.push({ physical, sql: req.sql, params: req.params, text: qb.toString() })
+      const columns: Record<string, string> = {}
+      for (const dim of physical.grain) for (const [name, col] of Object.entries(dim.sqlNames ?? {})) columns[col] = name
+      queries.push({ physical, sql: req.sql, params: req.params, text: qb.toString(), columns })
     }
     timings.sql = now() - t3
     return { plan, physicals, queries, timings }
@@ -161,6 +165,7 @@ export class Gritql {
       registry: this.registry,
       keyed: this.options.output === 'keyed',
       columns: (node, physical) => this.columns(node, physical, base),
+      names: (node, physical) => this.names(node, physical, base),
       makeCtx: (physical, node, use, over) => this.makeCtx(base, physical, node, use, over),
     })
     let output: Output
@@ -255,9 +260,16 @@ export class Gritql {
 
   // --- helpers ---------------------------------------------------------------
 
-  private columns(node: Node, physical: Physical, base: BaseCtx): string[] {
+  /** output names of a node's columns */
+  private names(node: Node, physical: Physical, base: BaseCtx): string[] {
     const resolver = node.kind === 'metric' ? this.registry.metric(node.name) : this.registry.dimension(node.name)
     return resolver.columns ? resolver.columns(node, this.makeCtx(base, physical, node)) : [node.alias]
+  }
+
+  /** SQL columns of a node, in the order of its output names */
+  private columns(node: Node, physical: Physical, base: BaseCtx): string[] {
+    const names = this.names(node, physical, base)
+    return node.sqlNames ? names.map((n) => node.sqlNames![n] ?? n) : names
   }
 
   private makeCtx(base: BaseCtx, physical?: Physical, node?: Node, use?: DirectiveUse, over: Partial<Ctx> = {}): Ctx {
@@ -282,6 +294,14 @@ export class Gritql {
       physical,
       path: physical?.grain ? physical.grain.map((d) => d.alias) : [],
       col: (name, from) => columnName(name, table, from),
+      out: (name, source) => {
+        const bare = source.replace(/^@/, '').slice(source.lastIndexOf('.') + 1)
+        if (bare !== name || !node) return name
+        const i = physical?.grain.indexOf(node) ?? -1
+        const internal = `__d${i < 0 ? 0 : i}`
+        ;(node.sqlNames ??= {})[name] = internal
+        return internal
+      },
       where: (filter: FilterExpr) => {
         const frag = buildFilter(filter, { table, joins: fetch?.joins.map((j) => j.table) ?? [], dialect: base.dialect, search: fetch?.search ?? {} })
         return knex.raw(frag.sql, frag.bindings)

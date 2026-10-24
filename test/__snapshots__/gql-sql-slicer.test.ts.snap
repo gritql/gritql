@@ -558,7 +558,7 @@ exports[`SQL > gqlBuilder request tuning > all together 1`] = `
 
 exports[`SQL > gqlBuilder request tuning > groupByEach 1`] = `
 [
-  "select (CAST(FLOOR(CEIL("price")/50) AS INT)*50 || '-' || CAST(FLOOR(CEIL("price")/50) AS INT)*50+49) AS "price", sum("sessions")/NULLIF(sum(sum("sessions")) OVER(), 0)::float4 as "share" from "ecom_benchmarking" where ("ecom_benchmarking"."category" = 'Travel_and_Tourism') AND ("ecom_benchmarking"."country" = 'US') AND (("ecom_benchmarking"."date" > '2020-10-13') AND ("ecom_benchmarking"."date" < '2021-04-13')) group by CAST(FLOOR(CEIL("price")/50) AS INT) order by "share" asc",
+  "select (CAST(FLOOR(CEIL("price")/50) AS INT)*50 || '-' || CAST(FLOOR(CEIL("price")/50) AS INT)*50+49) AS "__d0", sum("sessions")/NULLIF(sum(sum("sessions")) OVER(), 0)::float4 as "share" from "ecom_benchmarking" where ("ecom_benchmarking"."category" = 'Travel_and_Tourism') AND ("ecom_benchmarking"."country" = 'US') AND (("ecom_benchmarking"."date" > '2020-10-13') AND ("ecom_benchmarking"."date" < '2021-04-13')) group by CAST(FLOOR(CEIL("price")/50) AS INT) order by "share" asc",
 ]
 `;
 
@@ -634,7 +634,7 @@ exports[`SQL > gqlBuilder single query > distinct 1`] = `
 
 exports[`SQL > gqlBuilder single query > group date by month 1`] = `
 [
-  "select "device", date_trunc('month', "date") as "date", SUM("no_unique_products") AS "no_unique_products", SUM("no_brand_products") AS "no_brand_products" from "table" where ("table"."brand" = 'Adidas') AND ("table"."country" = 'US') AND (("table"."date" > '2020-1-1') AND ("table"."date" < '2021-7-12')) group by "device", date_trunc('month', "date")",
+  "select "device", date_trunc('month', "date") as "__d1", SUM("no_unique_products") AS "no_unique_products", SUM("no_brand_products") AS "no_brand_products" from "table" where ("table"."brand" = 'Adidas') AND ("table"."country" = 'US') AND (("table"."date" > '2020-1-1') AND ("table"."date" < '2021-7-12')) group by "device", date_trunc('month', "date")",
 ]
 `;
 

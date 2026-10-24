@@ -107,7 +107,7 @@ describe('filters', () => {
         withFilters('{ brand: "a", having: { value: { gt: 10 } } }'),
       )
 
-      expect(sql[0]).toContain('having')
+      expect(sql[0]).toContain('as "__h" where')
       expect(sql).toMatchSnapshot()
     })
 
@@ -116,7 +116,7 @@ describe('filters', () => {
         `query t { fetch { device(having: { value: { gt: 10 } }) { value: sum(a: sessions) } } }`,
       )
 
-      expect(sql[0]).toContain('having')
+      expect(sql[0]).toContain('as "__h" where')
       expect(sql).toMatchSnapshot()
     })
   })

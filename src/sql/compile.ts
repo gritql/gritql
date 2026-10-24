@@ -128,7 +128,10 @@ export function compilePhysical(physical: Physical, env: CompileEnv, asCte = fal
   const selects: Knex.Raw[] = []
   const groupBys: Knex.Raw[] = []
   const pre: Knex.Raw[] = []
+  /** HAVING predicates written by resolvers (real aggregate expressions) */
   const havings: Knex.Raw[] = []
+  /** `having:` predicates on output aliases: applied as WHERE on a derived table, since PostgreSQL rejects aliases in HAVING */
+  const aliasHavings: Knex.Raw[] = []
   const orderBys: { by: string; dir: 'asc' | 'desc' }[] = []
   let distinct = false
   let limit: number | undefined
@@ -156,7 +159,7 @@ export function compilePhysical(physical: Physical, env: CompileEnv, asCte = fal
     if (a.sort && a.field) orderBys.push({ by: columnName(a.field as string, table), dir: a.sort as 'asc' | 'desc' })
     if (a.having) {
       const h = buildFilter(a.having as any, { ...filterCtx, qualify: false })
-      if (h.sql) havings.push(raw(knex, h))
+      if (h.sql) aliasHavings.push(raw(knex, h))
     }
     if (a.limit !== undefined || a.offset !== undefined) {
       if (i === 0 || fetch.kind === 'fetchPlain' || fetch.kind === 'with') {
@@ -223,13 +226,26 @@ export function compilePhysical(physical: Physical, env: CompileEnv, asCte = fal
   else qb = qb.select(...uniqueSelects)
   if (uniqueGroupBys.length) qb = qb.groupBy(uniqueGroupBys as any)
   for (const h of havings) qb = qb.having(h)
-  if (having?.sql) qb = qb.having(raw(knex, having))
+  if (having?.sql) aliasHavings.push(raw(knex, having))
+
+  // an output name that got an internal SQL alias (`date: groupBy(field: date)` → `__d0`) is sorted by that alias
+  const sqlNames: Record<string, string> = Object.assign({}, ...physical.grain.map((d) => d.sqlNames ?? {}))
+  for (const o of orderBys) {
+    const bare = o.by.slice(o.by.lastIndexOf('.') + 1)
+    if (sqlNames[bare]) o.by = sqlNames[bare]
+  }
+  // wrapped statements see output columns only
+  const orderCols = orderBys.map((o) => ({ by: o.by.slice(o.by.lastIndexOf('.') + 1), dir: o.dir }))
+
+  if (aliasHavings.length) {
+    qb = knex.select(outputAliases(physical, registry, env)).from(qb.as('__h'))
+    for (const h of aliasHavings) qb = qb.where(h)
+  }
 
   // --- order / limit / offset -------------------------------------------
   if (nestedLimits.length) {
     // per-parent limit: rank the grouped rows inside each outer-dimension partition, then keep a window of ranks.
     // Window and ORDER BY see output columns only, so the grouped statement is wrapped first; one layer per bounded dimension.
-    const orderCols = orderBys.map((o) => ({ by: o.by.slice(o.by.lastIndexOf('.') + 1), dir: o.dir }))
     const outputs = outputAliases(physical, registry, env)
     for (const dim of nestedLimits) {
       const idx = physical.grain.indexOf(dim)
@@ -249,7 +265,7 @@ export function compilePhysical(physical: Physical, env: CompileEnv, asCte = fal
     if (limit !== undefined) qb = qb.limit(limit)
     if (offset !== undefined) qb = qb.offset(offset)
   } else {
-    for (const o of orderBys) qb = qb.orderBy(o.by, o.dir)
+    for (const o of aliasHavings.length ? orderCols : orderBys) qb = qb.orderBy(o.by, o.dir)
     if (limit !== undefined) qb = qb.limit(limit)
     if (offset !== undefined) qb = qb.offset(offset)
   }
@@ -270,18 +286,17 @@ export function compilePhysical(physical: Physical, env: CompileEnv, asCte = fal
   return qb
 }
 
+/** SQL columns of a grain dimension (output names mapped through `sqlNames`) */
 function dimColumns(dim: Node, physical: Physical, env: CompileEnv): string[] {
   const r = env.registry.dimension(dim.name)
-  return r.columns ? r.columns(dim, env.makeCtx(physical, dim)) : [dim.alias]
+  const names = r.columns ? r.columns(dim, env.makeCtx(physical, dim)) : [dim.alias]
+  return dim.sqlNames ? names.map((n) => dim.sqlNames![n] ?? n) : names
 }
 
-/** Every output column alias of a statement (dimension columns, then metric columns). */
+/** Every SQL output column of a statement (dimension columns, then metric columns). */
 export function outputAliases(physical: Physical, registry: Registry, env: CompileEnv): string[] {
   const out: string[] = []
-  for (const dim of physical.grain) {
-    const r = registry.dimension(dim.name)
-    out.push(...(r.columns ? r.columns(dim, env.makeCtx(physical, dim)) : [dim.alias]))
-  }
+  for (const dim of physical.grain) out.push(...dimColumns(dim, physical, env))
   for (const m of physical.metrics) {
     const r = registry.metric(m.name)
     out.push(...(r.columns ? r.columns(m, env.makeCtx(physical, m)) : [m.alias]))
