@@ -276,16 +276,19 @@ describe('directives', () => {
   })
 
   describe('@omit', () => {
-    test('keeps the value in baseline but not in the output', async () => {
+    test('keeps the column in the statement but not in the output', async () => {
+      const q = `query t { fetch { channels { value: sum(a: x) @divide(byField: rank) rank @omit } } }`
+      const [sql] = await sqlOf(q)
+      expect(sql).toContain(`cast("__cur"."value" as float) / NULLIF(cast("__cur"."rank" as float), 0) as "value", "__cur"."rank"`)
       await expect(
         run(
           [
             [
-              { channels: 'Social', value: 1, rank: 2 },
-              { channels: 'Organic', value: 3, rank: 2 },
+              { channels: 'Social', value: 0.5, rank: 2 },
+              { channels: 'Organic', value: 1.5, rank: 2 },
             ],
           ],
-          `query t { fetch { channels { value: sum(a: x) @divide(byField: rank) rank @omit } } }`,
+          q,
         ),
       ).resolves.toEqual([
         { channels: 'Social', value: 0.5 },

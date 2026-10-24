@@ -25,6 +25,18 @@ export function lower(plan: Plan): Physical[] {
     const ctes = dependencies(fetch, plan, withAliases)
     for (let i = before; i < out.length; i++) out[i].ctes = ctes
   }
+  // a lowered metric joins another fetch: that fetch's with dependencies (and itself, when it is a with) join the flat WITH list
+  for (const p of out) {
+    for (const m of p.metrics) {
+      const alias = m.lowered?.ref?.alias
+      if (alias === undefined) continue
+      for (const target of plan.fetches.filter((f) => f.alias === alias)) {
+        const extra = dependencies(target, plan, withAliases)
+        if (target.kind === 'with' && target.alias) extra.push(target.alias)
+        for (const c of extra) if (!p.ctes.includes(c)) p.ctes = [...p.ctes, c]
+      }
+    }
+  }
   return out
 }
 

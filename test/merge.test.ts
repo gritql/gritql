@@ -19,7 +19,7 @@ describe('dimension values named like prototype members', () => {
     expect(out.constructor).toEqual({ v: 3 })
     expect(({} as any).v).toBeUndefined()
     const diff = await run([rows, rows], `query t { a: fetch { country(type: Map) { v: sum(a: x) @subtract(by: b) } } b: fetch { country(type: Map) { v: sum(a: x) } } }`)
-    expect(Object.getOwnPropertyDescriptor((diff as any).a, '__proto__')!.value).toEqual({ v: 0 })
+    expect(Object.getOwnPropertyDescriptor((diff as any).a, '__proto__')!.value).toEqual({ v: 2 })
   })
 
   test('fetch aliases named like prototype members are ordinary keys', async () => {
@@ -154,8 +154,10 @@ describe('merge', () => {
     })
   })
 
-  describe('@filter on a dimension', () => {
-    const query = `query t { fetch { channels @filter(where: { value: { gt: 1 } }) { value: sum(a: x) } } }`
+  describe('a result hook that drops rows (the path @filter uses for operators SQL cannot express)', () => {
+    // skips every cell of the row (and the row's element) when the metric value is 1 or less
+    const dropLow: Resolver = { result: (cell, ctx) => (ctx.baseline ? { skip: (cell.value as number) <= 1, skipAll: (cell.value as number) <= 1 } : undefined) }
+    const ext = { directives: { dropLow } }
     const row = (channels: string, value: number) => ({ channels, value })
 
     test.each([
@@ -163,7 +165,7 @@ describe('merge', () => {
       ['keep, drop, keep', [row('Organic', 3), row('Social', 1), row('Direct', 4)]],
       ['keep, keep, drop', [row('Organic', 3), row('Direct', 4), row('Social', 1)]],
     ])('%s keeps every passing row', async (_, rows) => {
-      await expect(run([rows], query)).resolves.toEqual([
+      await expect(run([rows], `query t { fetch { channels @dropLow { value: sum(a: x) } } }`, {}, ext)).resolves.toEqual([
         { channels: 'Organic', value: 3 },
         { channels: 'Direct', value: 4 },
       ])
@@ -171,7 +173,7 @@ describe('merge', () => {
 
     test('dropping the whole first element', async () => {
       const rows = [d('2022-01-01', 'mobile', 1), d('2022-01-01', 'desktop', 1), d('2022-01-02', 'mobile', 10), d('2022-01-02', 'desktop', 20), d('2022-01-03', 'mobile', 100)]
-      await expect(run([rows], `query t { fetch { date { device @filter(where: { value: { gt: 1 } }) { value: sum(a: x) } } } }`)).resolves.toEqual([
+      await expect(run([rows], `query t { fetch { date { device @dropLow { value: sum(a: x) } } } }`, {}, ext)).resolves.toEqual([
         {
           date: '2022-01-02',
           device: [
@@ -185,22 +187,27 @@ describe('merge', () => {
 
     test('a late row for an earlier key lands in its own element', async () => {
       const rows = [d('2022-01-01', 'mobile', 1), d('2022-01-02', 'mobile', 10), d('2022-01-03', 'mobile', 100), d('2022-01-01', 'tablet', 3)]
-      await expect(run([rows], `query t { fetch { date { device @filter(where: { value: { gt: 1 } }) { value: sum(a: x) } } } }`)).resolves.toEqual([
+      await expect(run([rows], `query t { fetch { date { device @dropLow { value: sum(a: x) } } } }`, {}, ext)).resolves.toEqual([
         { date: '2022-01-02', device: [{ device: 'mobile', value: 10 }] },
         { date: '2022-01-03', device: [{ device: 'mobile', value: 100 }] },
         { date: '2022-01-01', device: [{ device: 'tablet', value: 3 }] },
       ])
     })
 
-    test('on a metric drops only that value', async () => {
+    test('on a metric drops the value; a record left without values is not emitted', async () => {
+      const dropOne: Resolver = { result: (cell, ctx) => (ctx.baseline ? { skip: cell.value === 1 } : undefined) }
       const rows = [d('2022-01-01', 'mobile', 1), d('2022-01-01', 'desktop', 2)]
-      await expect(run([rows], `query t { fetch { date { device { value: sum(a: x) @filter(gt: 1) } } } }`)).resolves.toEqual([
+      await expect(run([rows], `query t { fetch { date { device { value: sum(a: x) @dropOne } } } }`, {}, { directives: { dropOne } })).resolves.toEqual([
         { date: '2022-01-01', device: [{ device: 'desktop', value: 2 }] },
       ])
     })
   })
 
-  describe('directives reading another query', () => {
+  describe('a result hook reading another query through ctx.at', () => {
+    // what @diff did before it was lowered to SQL; extensions can still do this
+    const ratio: Resolver = {
+      result: (cell, ctx) => (ctx.baseline ? { value: (cell.value as number) / (ctx.at(ctx.args.by as string, cell.keys, cell.path) as number) - 1 } : undefined),
+    }
     const series = [
       { date: '2022-01-01', value: 2 },
       { date: '2022-01-02', value: 3 },
@@ -211,14 +218,16 @@ describe('merge', () => {
       { date: '2022-01-01', value: 1 },
     ]
 
-    test('@diff across Array dimensions', async () => {
+    test('looks the other query up by key, not position', async () => {
       await expect(
         run(
           [series, prev],
           `query t {
-            series: fetch { date(type: Array) { value: sum(a: x) @diff(by: prev) } }
-            prev: fetch { date(type: Array) { value: sum(a: x) } }
+            series: fetch { date { value: sum(a: x) @ratio(by: prev) } }
+            prev: fetch { date { value: sum(a: x) } }
           }`,
+          {},
+          { directives: { ratio } },
         ),
       ).resolves.toEqual({
         series: [
@@ -232,37 +241,21 @@ describe('merge', () => {
       })
     })
 
-    test('@subtract across Array dimensions', async () => {
-      await expect(
-        run(
-          [series, prev],
-          `query t {
-            series: fetch { date(type: Array) { value: sum(a: x) @subtract(by: prev) } }
-            prev: fetch { date(type: Array) { value: sum(a: x) } }
-          }`,
-        ),
-      ).resolves.toMatchObject({
-        series: [
-          { date: '2022-01-01', value: 1 },
-          { date: '2022-01-02', value: 1 },
-        ],
-      })
-    })
-
-    test('@diff with a filtered first element in the other query', async () => {
+    test('reads the other query before its own hooks ran (baseline)', async () => {
+      const dropZero: Resolver = { result: (cell, ctx) => (ctx.baseline ? { skip: cell.value === 0, skipAll: cell.value === 0 } : undefined) }
       const filteredPrev = [
         { date: '2022-01-01', value: 0 },
         { date: '2022-01-02', value: 2 },
       ]
-      // Directives read the other query's pre-directive data (baseline), so
-      // the filtered-out 0 is still what series is compared against.
       await expect(
         run(
           [series, filteredPrev],
           `query t {
-            series: fetch { date(type: Array) { value: sum(a: x) @diff(by: prev) } }
-            prev: fetch { date(type: Array) @filter(where: { value: { gt: 0 } }) { value: sum(a: x) } }
+            series: fetch { date { value: sum(a: x) @ratio(by: prev) } }
+            prev: fetch { date @dropZero { value: sum(a: x) } }
           }`,
+          {},
+          { directives: { ratio, dropZero } },
         ),
       ).resolves.toEqual({
         series: [
@@ -299,38 +292,13 @@ describe('merge', () => {
     })
   })
 
-  describe('@divide', () => {
-    const rows = [
-      { device: 'mobile', a: 10, b: 2 },
-      { device: 'desktop', a: 9, b: 3 },
-    ]
-
-    test('byField divides by a sibling metric of the same query', async () => {
-      await expect(run([rows], `query t { fetch { device { a: sum(a: x) @divide(byField: b) b: sum(a: y) } } }`)).resolves.toEqual([
+  describe('@divide (computed in SQL, see lowering.test.ts)', () => {
+    test('the computed column is assembled like any other', async () => {
+      const rows = [
         { device: 'mobile', a: 5, b: 2 },
         { device: 'desktop', a: 3, b: 3 },
-      ])
-    })
-
-    test('by another query', async () => {
-      await expect(
-        run(
-          [rows, rows],
-          `query t {
-            cur: fetch { device { a: sum(a: x) @divide(by: prev) } }
-            prev: fetch { device { a: sum(a: y) } }
-          }`,
-        ),
-      ).resolves.toEqual({
-        cur: [
-          { device: 'mobile', a: 1 },
-          { device: 'desktop', a: 1 },
-        ],
-        prev: [
-          { device: 'mobile', a: 10 },
-          { device: 'desktop', a: 9 },
-        ],
-      })
+      ]
+      await expect(run([rows], `query t { fetch { device { a: sum(a: x) @divide(byField: b) b: sum(a: y) } } }`)).resolves.toEqual(rows)
     })
   })
 

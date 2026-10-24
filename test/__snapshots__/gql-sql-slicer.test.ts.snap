@@ -123,8 +123,8 @@ exports[`SQL > fragments > Simple fragment 1`] = `
 
 exports[`SQL > gql directives > @diff directive 1`] = `
 [
-  "select "channels", SUM("sessions") AS "value" from "ecom_benchmarking" where ("ecom_benchmarking"."category" = 'Adult') AND ("ecom_benchmarking"."country" = 'DE') group by "channels"",
-  "select "channels", SUM("sessions") AS "value" from "ecom_benchmarking" where ("ecom_benchmarking"."category" = 'Adult') AND ("ecom_benchmarking"."country" = 'DE') group by "channels"",
+  "select "__cur"."channels", cast("__cur"."value" as float) / NULLIF(cast("__ref_0"."value" as float), 0) - 1 as "value" from (select "channels", SUM("sessions") AS "value" from "ecom_benchmarking" where ("ecom_benchmarking"."category" = 'Adult') AND ("ecom_benchmarking"."country" = 'DE') group by "channels") as "__cur" left join (select "channels", SUM("sessions") AS "value" from "ecom_benchmarking" where ("ecom_benchmarking"."category" = 'Adult') AND ("ecom_benchmarking"."country" = 'DE') group by "channels") as "__ref_0" on "__cur"."channels" = "__ref_0"."channels"",
+  "select "__cur"."channels", cast("__cur"."value" as float) / NULLIF(cast("__ref_0"."value" as float), 0) - 1 as "value" from (select "channels", SUM("sessions") AS "value" from "ecom_benchmarking" where ("ecom_benchmarking"."category" = 'Adult') AND ("ecom_benchmarking"."country" = 'DE') group by "channels") as "__cur" left join (select "channels", SUM("sessions") AS "value" from "ecom_benchmarking" where ("ecom_benchmarking"."category" = 'Adult') AND ("ecom_benchmarking"."country" = 'DE') group by "channels") as "__ref_0" on "__cur"."channels" = "__ref_0"."channels"",
 ]
 `;
 
@@ -132,18 +132,18 @@ exports[`SQL > gql directives > @diff directive 2`] = `
 {
   "prevSeries": {
     "Organic": {
-      "value": 0.6666666666666667,
+      "value": 5,
     },
     "Social": {
-      "value": 1,
+      "value": 2,
     },
   },
   "series": {
     "Organic": {
-      "value": -0.4,
+      "value": 3,
     },
     "Social": {
-      "value": -0.5,
+      "value": 1,
     },
   },
 }
@@ -151,8 +151,8 @@ exports[`SQL > gql directives > @diff directive 2`] = `
 
 exports[`SQL > gql directives > @divide directive on deep path 1`] = `
 [
-  "select "channels", "country", SUM("sessions") AS "value", "rank" from "ecom_benchmarking" where ("ecom_benchmarking"."category" = 'Adult') AND ("ecom_benchmarking"."country" = 'DE') group by "channels", "country"",
-  "select "channels", "country", SUM("sessions") AS "value", "rank" from "ecom_benchmarking" where ("ecom_benchmarking"."category" = 'Adult') AND ("ecom_benchmarking"."country" = 'DE') group by "channels", "country"",
+  "select "__cur"."channels", "__cur"."country", cast("__cur"."value" as float) / NULLIF(cast("__ref_0"."value" as float), 0) as "value", "__cur"."rank" from (select "channels", "country", SUM("sessions") AS "value", "rank" from "ecom_benchmarking" where ("ecom_benchmarking"."category" = 'Adult') AND ("ecom_benchmarking"."country" = 'DE') group by "channels", "country") as "__cur" left join (select "channels", "country", SUM("sessions") AS "value", "rank" from "ecom_benchmarking" where ("ecom_benchmarking"."category" = 'Adult') AND ("ecom_benchmarking"."country" = 'DE') group by "channels", "country") as "__ref_0" on "__cur"."channels" = "__ref_0"."channels" and "__cur"."country" = "__ref_0"."country"",
+  "select "__cur"."channels", "__cur"."country", cast("__cur"."value" as float) / NULLIF(cast("__ref_0"."value" as float), 0) as "value", "__cur"."rank" from (select "channels", "country", SUM("sessions") AS "value", "rank" from "ecom_benchmarking" where ("ecom_benchmarking"."category" = 'Adult') AND ("ecom_benchmarking"."country" = 'DE') group by "channels", "country") as "__cur" left join (select "channels", "country", SUM("sessions") AS "value", "rank" from "ecom_benchmarking" where ("ecom_benchmarking"."category" = 'Adult') AND ("ecom_benchmarking"."country" = 'DE') group by "channels", "country") as "__ref_0" on "__cur"."channels" = "__ref_0"."channels" and "__cur"."country" = "__ref_0"."country"",
 ]
 `;
 
@@ -165,7 +165,7 @@ exports[`SQL > gql directives > @divide directive on deep path 2`] = `
         {
           "country": "DE",
           "rank": 1,
-          "value": 1,
+          "value": 2,
         },
       ],
     },
@@ -175,7 +175,7 @@ exports[`SQL > gql directives > @divide directive on deep path 2`] = `
         {
           "country": "US",
           "rank": 2,
-          "value": 1,
+          "value": 5,
         },
       ],
     },
@@ -187,7 +187,7 @@ exports[`SQL > gql directives > @divide directive on deep path 2`] = `
         {
           "country": "DE",
           "rank": 2,
-          "value": 0.5,
+          "value": 1,
         },
       ],
     },
@@ -197,7 +197,7 @@ exports[`SQL > gql directives > @divide directive on deep path 2`] = `
         {
           "country": "DE",
           "rank": 2,
-          "value": NaN,
+          "value": 3,
         },
       ],
     },
@@ -207,14 +207,17 @@ exports[`SQL > gql directives > @divide directive on deep path 2`] = `
 
 exports[`SQL > gql directives > @filter directive 1`] = `
 [
-  "select "channels", SUM("sessions") AS "value" from "ecom_benchmarking" where ("ecom_benchmarking"."category" = 'Adult') AND ("ecom_benchmarking"."country" = 'DE') group by "channels"",
-  "select "channels", SUM("sessions") AS "value" from "ecom_benchmarking" where ("ecom_benchmarking"."category" = 'Adult') AND ("ecom_benchmarking"."country" = 'DE') group by "channels"",
+  "select "channels", "value" from (select "channels", SUM("sessions") AS "value" from "ecom_benchmarking" where ("ecom_benchmarking"."category" = 'Adult') AND ("ecom_benchmarking"."country" = 'DE') group by "channels") as "__h" where (("value" > 1))",
+  "select "channels", "value" from (select "channels", SUM("sessions") AS "value" from "ecom_benchmarking" where ("ecom_benchmarking"."category" = 'Adult') AND ("ecom_benchmarking"."country" = 'DE') group by "channels") as "__h" where (("value" < 4.99))",
 ]
 `;
 
 exports[`SQL > gql directives > @filter directive 2`] = `
 {
   "prevSeries": {
+    "Organic": {
+      "value": 5,
+    },
     "Social": {
       "value": 2,
     },
@@ -223,14 +226,17 @@ exports[`SQL > gql directives > @filter directive 2`] = `
     "Organic": {
       "value": 3,
     },
+    "Social": {
+      "value": 1,
+    },
   },
 }
 `;
 
 exports[`SQL > gql directives > @filter directive on metrics 1`] = `
 [
-  "select "channels", SUM("sessions") AS "value", "rank" from "ecom_benchmarking" where ("ecom_benchmarking"."category" = 'Adult') AND ("ecom_benchmarking"."country" = 'DE') group by "channels"",
-  "select "channels", SUM("sessions") AS "value", "rank" from "ecom_benchmarking" where ("ecom_benchmarking"."category" = 'Adult') AND ("ecom_benchmarking"."country" = 'DE') group by "channels"",
+  "select "channels", "value", "rank" from (select "channels", SUM("sessions") AS "value", "rank" from "ecom_benchmarking" where ("ecom_benchmarking"."category" = 'Adult') AND ("ecom_benchmarking"."country" = 'DE') group by "channels") as "__h" where (("value" > 1))",
+  "select "channels", "value", "rank" from (select "channels", SUM("sessions") AS "value", "rank" from "ecom_benchmarking" where ("ecom_benchmarking"."category" = 'Adult') AND ("ecom_benchmarking"."country" = 'DE') group by "channels") as "__h" where (("value" = 5))",
 ]
 `;
 
@@ -243,6 +249,7 @@ exports[`SQL > gql directives > @filter directive on metrics 2`] = `
     },
     "Social": {
       "rank": 1,
+      "value": 2,
     },
   },
   "series": {
@@ -252,6 +259,7 @@ exports[`SQL > gql directives > @filter directive on metrics 2`] = `
     },
     "Social": {
       "rank": 1,
+      "value": 1,
     },
   },
 }
@@ -406,8 +414,8 @@ exports[`SQL > gql directives > @omit directive 2`] = `
 
 exports[`SQL > gql directives > @subtract directive 1`] = `
 [
-  "select "channels", SUM("sessions") AS "value", "rank" from "ecom_benchmarking" where ("ecom_benchmarking"."category" = 'Adult') AND ("ecom_benchmarking"."country" = 'DE') group by "channels"",
-  "select "channels", SUM("sessions") AS "value", "rank" from "ecom_benchmarking" where ("ecom_benchmarking"."category" = 'Adult') AND ("ecom_benchmarking"."country" = 'DE') group by "channels"",
+  "select "__cur"."channels", "__cur"."value" - "__ref_0"."value" as "value", "__cur"."rank" from (select "channels", SUM("sessions") AS "value", "rank" from "ecom_benchmarking" where ("ecom_benchmarking"."category" = 'Adult') AND ("ecom_benchmarking"."country" = 'DE') group by "channels") as "__cur" left join (select "channels", SUM("sessions") AS "value", "rank" from "ecom_benchmarking" where ("ecom_benchmarking"."category" = 'Adult') AND ("ecom_benchmarking"."country" = 'DE') group by "channels") as "__ref_0" on "__cur"."channels" = "__ref_0"."channels"",
+  "select "__cur"."channels", "__cur"."value" - "__ref_0"."value" as "value", "__cur"."rank" from (select "channels", SUM("sessions") AS "value", "rank" from "ecom_benchmarking" where ("ecom_benchmarking"."category" = 'Adult') AND ("ecom_benchmarking"."country" = 'DE') group by "channels") as "__cur" left join (select "channels", SUM("sessions") AS "value", "rank" from "ecom_benchmarking" where ("ecom_benchmarking"."category" = 'Adult') AND ("ecom_benchmarking"."country" = 'DE') group by "channels") as "__ref_0" on "__cur"."channels" = "__ref_0"."channels"",
 ]
 `;
 
@@ -417,24 +425,24 @@ exports[`SQL > gql directives > @subtract directive 2`] = `
     {
       "channels": "Social",
       "rank": 1,
-      "value": 0,
+      "value": 2,
     },
     {
       "channels": "Organic",
       "rank": 2,
-      "value": 0,
+      "value": 5,
     },
   ],
   "series": [
     {
       "channels": "Social",
       "rank": 2,
-      "value": -1,
+      "value": 1,
     },
     {
       "channels": "Organic",
       "rank": 2,
-      "value": -2,
+      "value": 3,
     },
   ],
 }
@@ -442,8 +450,8 @@ exports[`SQL > gql directives > @subtract directive 2`] = `
 
 exports[`SQL > gql directives > @subtract directive on deep path 1`] = `
 [
-  "select "channels", "country", SUM("sessions") AS "value", "rank" from "ecom_benchmarking" where ("ecom_benchmarking"."category" = 'Adult') AND ("ecom_benchmarking"."country" = 'DE') group by "channels", "country"",
-  "select "channels", "country", SUM("sessions") AS "value", "rank" from "ecom_benchmarking" where ("ecom_benchmarking"."category" = 'Adult') AND ("ecom_benchmarking"."country" = 'DE') group by "channels", "country"",
+  "select "__cur"."channels", "__cur"."country", "__cur"."value" - "__ref_0"."value" as "value", "__cur"."rank" from (select "channels", "country", SUM("sessions") AS "value", "rank" from "ecom_benchmarking" where ("ecom_benchmarking"."category" = 'Adult') AND ("ecom_benchmarking"."country" = 'DE') group by "channels", "country") as "__cur" left join (select "channels", "country", SUM("sessions") AS "value", "rank" from "ecom_benchmarking" where ("ecom_benchmarking"."category" = 'Adult') AND ("ecom_benchmarking"."country" = 'DE') group by "channels", "country") as "__ref_0" on "__cur"."channels" = "__ref_0"."channels" and "__cur"."country" = "__ref_0"."country"",
+  "select "__cur"."channels", "__cur"."country", "__cur"."value" - "__ref_0"."value" as "value", "__cur"."rank" from (select "channels", "country", SUM("sessions") AS "value", "rank" from "ecom_benchmarking" where ("ecom_benchmarking"."category" = 'Adult') AND ("ecom_benchmarking"."country" = 'DE') group by "channels", "country") as "__cur" left join (select "channels", "country", SUM("sessions") AS "value", "rank" from "ecom_benchmarking" where ("ecom_benchmarking"."category" = 'Adult') AND ("ecom_benchmarking"."country" = 'DE') group by "channels", "country") as "__ref_0" on "__cur"."channels" = "__ref_0"."channels" and "__cur"."country" = "__ref_0"."country"",
 ]
 `;
 
@@ -456,7 +464,7 @@ exports[`SQL > gql directives > @subtract directive on deep path 2`] = `
         {
           "country": "DE",
           "rank": 1,
-          "value": 0,
+          "value": 2,
         },
       ],
     },
@@ -466,7 +474,7 @@ exports[`SQL > gql directives > @subtract directive on deep path 2`] = `
         {
           "country": "US",
           "rank": 2,
-          "value": 0,
+          "value": 5,
         },
       ],
     },
@@ -478,7 +486,7 @@ exports[`SQL > gql directives > @subtract directive on deep path 2`] = `
         {
           "country": "DE",
           "rank": 2,
-          "value": -1,
+          "value": 1,
         },
       ],
     },
@@ -488,7 +496,7 @@ exports[`SQL > gql directives > @subtract directive on deep path 2`] = `
         {
           "country": "DE",
           "rank": 2,
-          "value": NaN,
+          "value": 3,
         },
       ],
     },

@@ -79,6 +79,18 @@ export interface Node {
   emit: boolean
   /** output name → SQL column, for dimensions whose alias would shadow the source column they compute from (`ctx.out`) */
   sqlNames?: Record<string, string>
+  /** metric only: a post-aggregation expression lowered from `@diff` / `@subtract` / `@divide` (SPEC §6.7) */
+  lowered?: Lowered
+}
+
+/**
+ * `alias = f(this statement's column, B)` computed on an outer layer around the grouped statement.
+ * B is the same-named column of another fetch joined on the grain (`ref`), or a sibling column (`byField`).
+ */
+export interface Lowered {
+  op: 'diff' | 'subtract' | 'divide'
+  ref?: { alias: string | null; column: string }
+  byField?: string
 }
 
 export interface Plan {

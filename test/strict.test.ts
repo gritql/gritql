@@ -80,31 +80,19 @@ describe('strict mode (default)', () => {
     })
 
     test('@filter / @groupOn take where: {}; field_op keys are legacy', async () => {
-      const rows = [
-        { channels: 'Social', value: 1 },
-        { channels: 'Organic', value: 3 },
-        { channels: 'Direct', value: 4 },
-      ]
-      const g = (strict: boolean) => gritql({ adapters: { pg: fixtureAdapter([rows]) }, strict })
-      await expect(g(true).run(`query t { fetch { channels @filter(where: { value: { gt: 1, lt: 4 } }) { value: sum(a: x) } } }`)).resolves.toEqual([{ channels: 'Organic', value: 3 }])
-      await expect(g(true).run(`query t { fetch { channels @filter(where: { channels: ["Social", "Direct"] }) { value: sum(a: x) } } }`)).resolves.toEqual([
-        { channels: 'Social', value: 1 },
-        { channels: 'Direct', value: 4 },
-      ])
-      await expect(g(true).run(`query t { fetch { channels @filter(value_gt: 1) { value: sum(a: x) } } }`)).rejects.toMatchObject({
+      const [sql] = await sqlOf(`query t { fetch { channels @filter(where: { value: { gt: 1, lt: 4 }, channels: ["Social", "Direct"] }) { value: sum(a: x) } } }`)
+      expect(sql).toContain(`as "__h" where (("value" > 1) AND ("value" < 4)) AND (("channels" IN ('Social','Direct')))`)
+      await expect(sqlOf(`query t { fetch { channels @filter(value_gt: 1) { value: sum(a: x) } } }`)).rejects.toMatchObject({
         code: 'ARGS',
         message: expect.stringContaining('write where: { value: { gt: ... } }'),
       })
-      await expect(g(true).run(`query t { fetch { channels @filter(where: { value: { between: 1 } }) { value: sum(a: x) } } }`)).rejects.toThrow(/Unknown operator 'between'/)
-      await expect(g(false).run(`query t { fetch { channels @filter(value_gt: 1) { value: sum(a: x) } } }`)).resolves.toEqual([
-        { channels: 'Organic', value: 3 },
-        { channels: 'Direct', value: 4 },
-      ])
+      await expect(sqlOf(`query t { fetch { channels @groupOn(value_gt: 1, replacers: { channels: "x" }) { value: sum(a: x) } } }`)).rejects.toThrow(/write where: \{ value: \{ gt: \.\.\. \} \}/)
+      await expect(sqlOf(`query t { fetch { channels @filter(where: { value: { between: 1 } }) { value: sum(a: x) } } }`)).rejects.toThrow(/Unknown operator 'between'/)
+      const [legacy] = await loose(`query t { fetch { channels @filter(value_gt: 1) { value: sum(a: x) } } }`)
+      expect(legacy).toContain(`as "__h" where (("value" > 1))`)
       // metric-level @filter compares the value with bare operators in both modes
-      await expect(g(true).run(`query t { fetch { channels { value: sum(a: x) @filter(gte: 3) } } }`)).resolves.toEqual([
-        { channels: 'Organic', value: 3 },
-        { channels: 'Direct', value: 4 },
-      ])
+      const [metric] = await sqlOf(`query t { fetch { channels { value: sum(a: x) @filter(gte: 3) } } }`)
+      expect(metric).toContain(`as "__h" where (("value" >= 3))`)
     })
 
     test('@parse takes an enum or an object; colon strings are legacy', async () => {

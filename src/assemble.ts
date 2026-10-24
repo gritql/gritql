@@ -362,16 +362,18 @@ export class Assembler {
     const templates = new Map<Physical, Template>()
     for (const rs of rowSets) templates.set(rs.physical, this.template(rs.physical))
 
-    const out1 = this.pass(rowSets, templates, undefined)
+    // without result hooks nothing reads a baseline: one pass that leaves hidden nodes out directly
+    const anyHooks = [...templates.values()].some((t) => t.cells.some((c) => c.hooks.length > 0))
+    const out1 = this.pass(rowSets, templates, undefined, undefined, !anyHooks)
     const needsPass2 = new Set<string>()
-    for (const rs of rowSets) if (templates.get(rs.physical)!.hasHooks) needsPass2.add(groupKey(rs.physical.fetch))
-    const out = needsPass2.size ? this.pass(rowSets, templates, out1, needsPass2) : out1
+    if (anyHooks) for (const rs of rowSets) if (templates.get(rs.physical)!.hasHooks) needsPass2.add(groupKey(rs.physical.fetch))
+    const out = needsPass2.size ? this.pass(rowSets, templates, out1, needsPass2, true) : out1
 
     const keys = Object.keys(out)
     return keys.length === 1 && keys[0] === '' ? out[''] : out
   }
 
-  private pass(rowSets: RowSet[], templates: Map<Physical, Template>, baseline: Output | undefined, only?: Set<string>): Output {
+  private pass(rowSets: RowSet[], templates: Map<Physical, Template>, baseline: Output | undefined, only: Set<string> | undefined, hide: boolean): Output {
     const out: Record<string, any> = baseline && only ? { ...baseline } : {}
     if (only) for (const k of only) delete out[k]
     const at = this.reader(baseline)
@@ -379,15 +381,15 @@ export class Assembler {
     for (const { physical, rows } of rowSets) {
       const key = groupKey(physical.fetch)
       if (only && !only.has(key)) continue
-      // pass 2 leaves hidden fetches and hidden grains out of the output
-      if (baseline && (physical.fetch.emit === false || physical.grain.some((d) => d.emit === false))) continue
+      // the output leaves hidden fetches and hidden grains out
+      if (hide && (physical.fetch.emit === false || physical.grain.some((d) => d.emit === false))) continue
       if (physical.fetch.kind === 'fetchPlain') {
         if (!hasOwn(out, key)) setOwn(out, key, [])
         out[key].push(rows)
         continue
       }
       if (!hasOwn(out, key)) setOwn(out, key, {})
-      this.fill({ obj: out, key }, physical, rows, templates.get(physical)!, baseline, out, at)
+      this.fill({ obj: out, key }, physical, rows, templates.get(physical)!, baseline, out, at, hide)
     }
     return out
   }
@@ -400,6 +402,7 @@ export class Assembler {
     baseline: Output | undefined,
     output: Output,
     at: Ctx['at'],
+    hide: boolean,
   ): void {
     const { steps, keyCols, cells } = tpl
     const ctxs = new Map<DirectiveUse, Ctx>()
@@ -426,7 +429,7 @@ export class Assembler {
 
       for (const m of cells) {
         if (!(m.col in row)) continue
-        if (baseline && m.node.emit === false) continue
+        if (hide && m.node.emit === false) continue
         let value = row[m.col]
         let keys = rowKeys
         let skip = false

@@ -4,8 +4,8 @@
  * result-stage hooks transform cells while assembling.
  */
 import { GritqlError } from '../errors'
-import type { Cell, CellResult, Ctx, Fetch, Node, Resolver } from '../model'
-import { walkNodes } from '../plan/helpers'
+import type { Cell, CellResult, Ctx, Fetch, Lowered, Node, Resolver } from '../model'
+import { nodeAt, walkNodes } from '../plan/helpers'
 import { groupStart, parseDateValue, toIso, toIsoDate, toIsoTime, toIsoWeekDate, formatDate } from './dates'
 
 // ---------------------------------------------------------------------------
@@ -72,14 +72,14 @@ function fails(ops: string[], value: unknown, args: Record<string, unknown>): bo
  */
 interface FieldConds {
   field: string
-  checks: { fn: (a: unknown, b: unknown) => boolean; value: unknown }[]
+  checks: { op: string; fn: (a: unknown, b: unknown) => boolean; value: unknown }[]
 }
 function fieldConds(ctx: Ctx, ignore: string[]): FieldConds[] {
   const conds: FieldConds[] = []
-  const add = (field: string, fn: (a: unknown, b: unknown) => boolean, value: unknown) => {
+  const add = (field: string, op: string, value: unknown) => {
     let group = conds.find((c) => c.field === field)
     if (!group) conds.push((group = { field, checks: [] }))
-    group.checks.push({ fn, value })
+    group.checks.push({ op, fn: operators[op], value })
   }
   const where = ctx.args.where as Record<string, unknown> | undefined
   if (where !== undefined) {
@@ -88,9 +88,9 @@ function fieldConds(ctx: Ctx, ignore: string[]): FieldConds[] {
       if (pred !== null && typeof pred === 'object' && !Array.isArray(pred)) {
         for (const [op, value] of Object.entries(pred as Record<string, unknown>)) {
           if (!operators[op]) throw new GritqlError('ARGS', `Unknown operator '${op}' for ${field}`)
-          add(field, operators[op], value)
+          add(field, op, value)
         }
-      } else add(field, Array.isArray(pred) ? operators.in : operators.eq, pred)
+      } else add(field, Array.isArray(pred) ? 'in' : 'eq', pred)
     }
   }
   for (const argKey of Object.keys(ctx.args)) {
@@ -101,7 +101,7 @@ function fieldConds(ctx: Ctx, ignore: string[]): FieldConds[] {
     if (ctx.strict) {
       throw new GritqlError('ARGS', `'${argKey}' is a field_operator string; write where: { ${field}: { ${op}: ... } } (or set strict: false)`)
     }
-    add(field, operators[op], ctx.args[argKey])
+    add(field, op, ctx.args[argKey])
   }
   return conds
 }
@@ -121,6 +121,73 @@ function conditionalTarget(ctx: Ctx, kind: 'Include' | 'Skip'): boolean {
 const ownerOf = (cell: Cell, ctx: Ctx) => ctx.at(ctx.fetch!.alias, cell.keys, ctx.path) as Record<string, unknown> | undefined
 
 const isDirectChild = (cell: Cell, ctx: Ctx) => cell.path.length === ctx.path.length + 1
+
+/** dimensions above the node the directive sits on */
+function ancestors(ctx: Ctx): Node[] {
+  const out: Node[] = []
+  for (let i = 1; i < ctx.path.length; i++) {
+    const dim = nodeAt(ctx.fetch!, ctx.path.slice(0, i))
+    if (dim) out.push(dim)
+  }
+  return out
+}
+
+/** marks a metric for SQL lowering; a regrouping ancestor makes the arithmetic meaningless after assembly, so that is an error */
+function lower(node: Node, ctx: Ctx, lowered: Lowered): void {
+  need(node.kind === 'metric', `@${lowered.op} applies to metrics`)
+  need(!node.lowered, `Metric '${node.alias}' carries more than one of @diff, @subtract, @divide`)
+  const regroup = ancestors(ctx).find((d) => d.directives.some((x) => x.name === 'groupBy' || x.name === 'groupOn'))
+  if (regroup) {
+    const other = regroup.directives.find((x) => x.name === 'groupBy' || x.name === 'groupOn')!.name
+    throw new GritqlError('PLAN', `@${lowered.op} on '${node.alias}' is computed in SQL and cannot sit under '${regroup.alias}' @${other}: the regrouped rows would sum a ${lowered.op === 'subtract' ? 'difference' : 'ratio'}. Compute it on a with() over the grouped result instead.`)
+  }
+  node.lowered = lowered
+}
+
+/** SQL-expressible operators of a `where` predicate; others keep the result-time hook */
+const SQL_OPS: Record<string, string> = { eq: 'eq', neq: 'ne', gt: 'gt', gte: 'gte', lt: 'lt', lte: 'lte', in: 'in', nin: 'nin' }
+
+/**
+ * Turns `@filter` conditions into `having:` on the dimension (or the fetch) so the database drops the rows
+ * before limit applies. Returns false when a condition needs a result-time operator (array ops).
+ */
+function lowerFilter(target: Node | Fetch, ctx: Ctx): boolean {
+  const node = ctx.node
+  const having: Record<string, Record<string, unknown>> = {}
+  const put = (field: string, op: string, value: unknown) => ((having[field] ??= {})[SQL_OPS[op]] = value)
+  if (node?.kind === 'metric') {
+    for (const [op, value] of Object.entries(ctx.args)) {
+      if (!SQL_OPS[op]) return false
+      put(node.alias, op, value)
+    }
+  } else {
+    // the conditions fieldConds parsed (object form, or legacy suffix form with strict: false)
+    const conds = ctx.state.conds as FieldConds[]
+    if (!conds.length) return false
+    for (const c of conds) {
+      for (const k of c.checks) {
+        if (!SQL_OPS[k.op]) return false
+        put(c.field, k.op, k.value)
+      }
+    }
+  }
+  // the owner of the predicates: the dimension (metric filter → its parent dimension), or the fetch for root metrics
+  const owner = node?.kind === 'metric' ? (ctx.path.length > 1 ? nodeAt(ctx.fetch!, ctx.path.slice(0, -1)) : undefined) : (target as Node)
+  const existing = owner ? (owner.args.having as Record<string, unknown> | undefined) : ((ctx.fetch!.filters?.having as Record<string, unknown> | undefined) ?? undefined)
+  const merged = mergeHaving(existing, having)
+  if (owner) owner.args.having = merged
+  else ctx.fetch!.filters = { ...(ctx.fetch!.filters ?? {}), having: merged }
+  return true
+}
+
+function mergeHaving(a: Record<string, unknown> | undefined, b: Record<string, Record<string, unknown>>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...(a ?? {}) }
+  for (const [field, ops] of Object.entries(b)) {
+    const prev = out[field]
+    out[field] = prev !== null && typeof prev === 'object' && !Array.isArray(prev) ? { ...(prev as object), ...ops } : ops
+  }
+  return out
+}
 
 export const directives: Record<string, Resolver> = {
   include: {
@@ -149,30 +216,35 @@ export const directives: Record<string, Resolver> = {
     },
   },
 
+  /** hidden from the output, still selected (other fetches may compare against it); `full` drops the node */
   omit: {
-    result: (_cell, ctx) => ({ skip: !!ctx.args.full || ctx.baseline !== undefined }),
+    plan: (target, ctx) => {
+      if (ctx.args.full) ctx.remove()
+      else target!.emit = false
+    },
   },
 
+  // @diff / @subtract / @divide are lowered to SQL (SPEC §6.7): the metric keeps its own expression in the
+  // grouped statement and an outer layer computes `cur.alias <op> other.alias`, joined on the grain.
   diff: {
-    plan: (_t, ctx) => need(ctx.args.by, "Diff directive requires 'by' argument"),
-    result: (cell, ctx) =>
-      ctx.baseline ? { value: (cell.value as number) / (ctx.at(ctx.args.by as string, cell.keys, cell.path) as number) - 1 } : undefined,
+    plan: (t, ctx) => {
+      need(ctx.args.by, "Diff directive requires 'by' argument")
+      lower(t as Node, ctx, { op: 'diff', ref: { alias: String(ctx.args.by), column: (t as Node).alias } })
+    },
   },
 
   subtract: {
-    plan: (_t, ctx) => need(ctx.args.by, "Subtract directive requires 'by' argument"),
-    result: (cell, ctx) =>
-      ctx.baseline ? { value: (cell.value as number) - (ctx.at(ctx.args.by as string, cell.keys, cell.path) as number) } : undefined,
+    plan: (t, ctx) => {
+      need(ctx.args.by, "Subtract directive requires 'by' argument")
+      lower(t as Node, ctx, { op: 'subtract', ref: { alias: String(ctx.args.by), column: (t as Node).alias } })
+    },
   },
 
   divide: {
-    plan: (_t, ctx) => need(ctx.args.by || ctx.args.byField, "Diff directive requires 'by' or 'byField' argument"),
-    result: (cell, ctx) => {
-      if (!ctx.baseline) return undefined
-      const ref = ctx.args.by
-        ? ctx.at(ctx.args.by as string, cell.keys, cell.path)
-        : ctx.at(ctx.fetch!.alias, cell.keys, [...cell.path.slice(0, -1), ctx.args.byField as string])
-      return { value: (cell.value as number) / (ref as number) }
+    plan: (t, ctx) => {
+      need(ctx.args.by || ctx.args.byField, "Diff directive requires 'by' or 'byField' argument")
+      const node = t as Node
+      lower(node, ctx, ctx.args.by ? { op: 'divide', ref: { alias: String(ctx.args.by), column: node.alias } } : { op: 'divide', byField: String(ctx.args.byField) })
     },
   },
 
@@ -205,15 +277,17 @@ export const directives: Record<string, Resolver> = {
   },
 
   filter: {
-    plan: (_t, ctx) => {
+    plan: (t, ctx) => {
       need(Object.keys(ctx.args).length, 'Filter directive requires arguments')
       // metric-level `@filter(gt: 1)` compares the cell value; dimension-level conditions name fields
       if (ctx.node?.kind === 'metric') {
         for (const op of Object.keys(ctx.args)) need(operators[op], `Filter directive on a metric takes operators (gt, in, ...); unknown '${op}'`)
       } else ctx.state.conds = fieldConds(ctx, [])
+      // SQL-expressible conditions become HAVING (SPEC §6.7); the result hook then has nothing left to do
+      ctx.state.lowered = lowerFilter(t!, ctx)
     },
     result: (cell, ctx) => {
-      if (!ctx.baseline) return undefined
+      if (!ctx.baseline || ctx.state.lowered) return undefined
       if (ctx.node?.kind === 'metric') return { skip: fails(Object.keys(ctx.args), cell.value, ctx.args) }
       const obj = ownerOf(cell, ctx)
       if (!obj) return { skip: true, skipAll: true }

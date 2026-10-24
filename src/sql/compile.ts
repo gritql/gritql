@@ -108,7 +108,12 @@ function raw(knex: Knex, frag: Frag): Knex.Raw {
   return knex.raw(frag.sql, frag.bindings)
 }
 
-export function compilePhysical(physical: Physical, env: CompileEnv, asCte = false): Knex.QueryBuilder {
+/**
+ * @param asCte      body of a WITH: attaches no CTE list of its own
+ * @param reference  the statement another fetch compares against: its grouped values, without its own arithmetic layer
+ *                   (v3 compared baselines, so mutual and self references are well defined)
+ */
+export function compilePhysical(physical: Physical, env: CompileEnv, asCte = false, reference = false): Knex.QueryBuilder {
   const { knex, registry } = env
   const { fetch } = physical
   const table = tableOf(fetch)
@@ -237,16 +242,22 @@ export function compilePhysical(physical: Physical, env: CompileEnv, asCte = fal
   // wrapped statements see output columns only
   const orderCols = orderBys.map((o) => ({ by: o.by.slice(o.by.lastIndexOf('.') + 1), dir: o.dir }))
 
-  if (aliasHavings.length) {
-    qb = knex.select(outputAliases(physical, registry, env)).from(qb.as('__h'))
+  const outputs = outputAliases(physical, registry, env)
+  const lowered = reference ? [] : physical.metrics.filter((m) => m.lowered)
+  let wrapped = false
+
+  // having on output aliases: WHERE on a derived table. With an arithmetic layer the predicates move onto it,
+  // since they may name a lowered column.
+  if (aliasHavings.length && !lowered.length) {
+    qb = knex.select(outputs).from(qb.as('__h'))
     for (const h of aliasHavings) qb = qb.where(h)
+    wrapped = true
   }
 
-  // --- order / limit / offset -------------------------------------------
   if (nestedLimits.length) {
     // per-parent limit: rank the grouped rows inside each outer-dimension partition, then keep a window of ranks.
     // Window and ORDER BY see output columns only, so the grouped statement is wrapped first; one layer per bounded dimension.
-    const outputs = outputAliases(physical, registry, env)
+    wrapped = true
     for (const dim of nestedLimits) {
       const idx = physical.grain.indexOf(dim)
       const partition = physical.grain.slice(0, idx).flatMap((d) => dimColumns(d, physical, env))
@@ -261,14 +272,19 @@ export function compilePhysical(physical: Physical, env: CompileEnv, asCte = fal
       if (dim.args.limit !== undefined) outer = outer.where('__rn', '<=', lo + Number(dim.args.limit))
       qb = outer
     }
-    for (const o of orderCols) qb = qb.orderBy(o.by, o.dir)
-    if (limit !== undefined) qb = qb.limit(limit)
-    if (offset !== undefined) qb = qb.offset(offset)
-  } else {
-    for (const o of aliasHavings.length ? orderCols : orderBys) qb = qb.orderBy(o.by, o.dir)
-    if (limit !== undefined) qb = qb.limit(limit)
-    if (offset !== undefined) qb = qb.offset(offset)
   }
+
+  // --- lowered arithmetic (SPEC §6.7): outermost layer, so ORDER BY / LIMIT see the computed columns ---
+  if (lowered.length) {
+    qb = arithmeticLayer(qb, physical, lowered, outputs, env)
+    for (const h of aliasHavings) qb = qb.where(h)
+    wrapped = true
+  }
+
+  // --- order / limit / offset -------------------------------------------
+  for (const o of wrapped ? orderCols : orderBys) qb = qb.orderBy(o.by, o.dir)
+  if (limit !== undefined) qb = qb.limit(limit)
+  if (offset !== undefined) qb = qb.offset(offset)
 
   // --- escape hatch -------------------------------------------------------
   for (const { resolver, node } of queryHooks) qb = resolver.query!(qb, physical, env.makeCtx(physical, node))
@@ -284,6 +300,72 @@ export function compilePhysical(physical: Physical, env: CompileEnv, asCte = fal
   }
 
   return qb
+}
+
+const CUR = '__cur'
+
+/**
+ * `select cur.*, cur.a <op> other.a as a from (grouped) as __cur left join (other fetch at the same grain) on grain`.
+ * A missing other fetch (dropped by @include) yields NULL; divisions cast to float and NULLIF the denominator.
+ */
+function arithmeticLayer(core: Knex.QueryBuilder, physical: Physical, lowered: Node[], outputs: string[], env: CompileEnv): Knex.QueryBuilder {
+  const { knex } = env
+  const grainCols = physical.grain.flatMap((d) => dimColumns(d, physical, env))
+  const joins = new Map<string | null, string | null>()
+  const operand = (m: Node): string | null => {
+    const { ref, byField } = m.lowered!
+    if (byField) return `${CUR}.${byField}`
+    const name = joins.get(ref!.alias)
+    return name ? `${name}.${ref!.column}` : null
+  }
+  let qb = knex.from(core.as(CUR))
+  for (const m of lowered) {
+    const ref = m.lowered!.ref
+    if (!ref || joins.has(ref.alias)) continue
+    const target = refTarget(physical, ref, env)
+    if (!target) {
+      joins.set(ref.alias, null)
+      continue
+    }
+    const name = `__ref_${joins.size}`
+    joins.set(ref.alias, name)
+    const targetCols = target.grain.flatMap((d) => dimColumns(d, target, env))
+    const on = function (this: Knex.JoinClause) {
+      grainCols.forEach((c, i) => this.on(`${CUR}.${c}`, '=', `${name}.${targetCols[i]}`))
+    }
+    qb = target.fetch.kind === 'with' ? qb.leftJoin({ [name]: target.fetch.alias as string }, on) : qb.leftJoin(compilePhysical(target, env, true, true).as(name), on)
+  }
+  const byAlias = new Map(lowered.map((m) => [m.alias, m]))
+  const selects = outputs.map((c) => {
+    const m = byAlias.get(c)
+    if (!m) return `${CUR}.${c}`
+    const b = operand(m)
+    if (b === null) return knex.raw('NULL as ??', [m.alias])
+    const a = `${CUR}.${m.alias}`
+    switch (m.lowered!.op) {
+      case 'diff':
+        return knex.raw('cast(?? as float) / NULLIF(cast(?? as float), 0) - 1 as ??', [a, b, m.alias])
+      case 'divide':
+        return knex.raw('cast(?? as float) / NULLIF(cast(?? as float), 0) as ??', [a, b, m.alias])
+      case 'subtract':
+        return knex.raw('?? - ?? as ??', [a, b, m.alias])
+    }
+  })
+  return qb.select(selects as any)
+}
+
+/** the other fetch's statement at this statement's grain; undefined when the fetch is not in the plan */
+function refTarget(physical: Physical, ref: { alias: string | null; column: string }, env: CompileEnv): Physical | undefined {
+  const fetches = env.plan.fetches.filter((f) => f.alias === ref.alias)
+  if (!fetches.length) return undefined
+  const grain = physical.grain.map((d) => d.alias)
+  const where = `${physical.fetch.alias ?? physical.fetch.kind}.${[...grain, ref.column].join('.')}`
+  const level = grain.length ? `'${grain.join('.')}'` : 'the root'
+  const candidates = env.physicals.filter((p) => fetches.includes(p.fetch) && p.grain.length === grain.length && p.grain.every((d, i) => d.alias === grain[i]))
+  if (!candidates.length) throw new GritqlError('PLAN', `${where}: '${ref.alias}' has no ${level} level to compare with`)
+  const target = candidates.find((p) => outputAliases(p, env.registry, env).includes(ref.column))
+  if (!target) throw new GritqlError('PLAN', `${where}: '${ref.alias}' has no '${ref.column}' at ${level}`)
+  return target
 }
 
 /** SQL columns of a grain dimension (output names mapped through `sqlNames`) */

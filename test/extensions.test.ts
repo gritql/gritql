@@ -227,8 +227,17 @@ describe('review findings', () => {
         ;(node as Node).emit = false
       },
     }
-    const out = await run([[{ device: 'm', a: 10, b: 2 }]], `query t { fetch { device { a: sum(a: x) @divide(byField: b) b: sum(a: y) @hide } } }`, {}, { directives: { hide } })
+    const out = await run([[{ device: 'm', a: 5, b: 2 }]], `query t { fetch { device { a: sum(a: x) b: sum(a: y) @hide } } }`, {}, { directives: { hide } })
     expect(out).toEqual([{ device: 'm', a: 5 }])
+    // a hook on another fetch can still read the hidden value through the baseline
+    const peek: Resolver = { result: (cell, ctx) => (ctx.baseline ? { value: ctx.at('other', cell.keys, [...cell.path.slice(0, -1), 'b']) } : undefined) }
+    const two = await run(
+      [[{ device: 'm', a: 1 }], [{ device: 'm', b: 7, c: 3 }]],
+      `query t { fetch { device { a: sum(a: x) @peek } } other: fetch { device { b: sum(a: y) @hide c: sum(a: z) } } }`,
+      {},
+      { directives: { hide, peek } },
+    )
+    expect(two).toEqual({ '': [{ device: 'm', a: 7 }], other: [{ device: 'm', c: 3 }] })
   })
 
   test('a row-level hook that returns nothing for one cell still runs for the next', async () => {
@@ -247,13 +256,18 @@ describe('review findings', () => {
   })
 
   test('ctx.at resolves the shape through every fetch sharing the alias', async () => {
+    const minus: Resolver = {
+      result: (cell, ctx) => (ctx.baseline ? { value: (cell.value as number) - (ctx.at(ctx.args.by as string, cell.keys, cell.path) as number) } : undefined),
+    }
     const out = await run(
       [[{ device: 'm', v: 10 }], [{ country: 'DE', v: 1 }], [{ device: 'm', v: 3 }]],
       `query t {
-        cur: fetch { device(type: Array) { v: sum(a: x) @subtract(by: prev) } }
+        cur: fetch { device { v: sum(a: x) @minus(by: prev) } }
         prev: fetch { country { v: sum(a: x) } }
-        prev: fetch { device(type: Array) { v: sum(a: x) } }
+        prev: fetch { device { v: sum(a: x) } }
       }`,
+      {},
+      { directives: { minus } },
     )
     expect(out.cur).toEqual([{ device: 'm', v: 7 }])
   })
