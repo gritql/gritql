@@ -171,12 +171,10 @@ function lowerFilter(target: Node | Fetch, ctx: Ctx): boolean {
       }
     }
   }
-  // the owner of the predicates: the dimension (metric filter → its parent dimension), or the fetch for root metrics
-  const owner = node?.kind === 'metric' ? (ctx.path.length > 1 ? nodeAt(ctx.fetch!, ctx.path.slice(0, -1)) : undefined) : (target as Node)
-  const existing = owner ? (owner.args.having as Record<string, unknown> | undefined) : ((ctx.fetch!.filters?.having as Record<string, unknown> | undefined) ?? undefined)
-  const merged = mergeHaving(existing, having)
-  if (owner) owner.args.having = merged
-  else ctx.fetch!.filters = { ...(ctx.fetch!.filters ?? {}), having: merged }
+  // the owner of the predicates: the dimension (a metric filter → its parent dimension); the fetch for root metrics and fetch-level filters
+  const owner = node?.kind === 'metric' ? (ctx.path.length > 1 ? nodeAt(ctx.fetch!, ctx.path.slice(0, -1)) : undefined) : node ? (target as Node) : undefined
+  const holder: Node | Fetch = owner ?? ctx.fetch!
+  holder.loweredHaving = mergeHaving(holder.loweredHaving as Record<string, unknown> | undefined, having)
   return true
 }
 

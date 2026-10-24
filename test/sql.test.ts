@@ -153,6 +153,21 @@ describe('review findings', () => {
     expect(root).toContain(`as "__h" where (("__d0" > '2024-01-01'))`)
   })
 
+  test('a with() keeps its output names, so readers and comparisons see "date", not the internal name', async () => {
+    const body = `select "__d0" as "date", "v" from (select date_trunc('month', "date") as "__d0", SUM("x") AS "v" from "t" group by date_trunc('month', "date")) as "__w"`
+    const [reader] = await sqlOf(`query t { prev: with { date: groupBy(field: date, by: month) { v: sum(a: x) } } data: fetch(table: prev) { date { total: sum(a: v) } } }`)
+    expect(reader).toBe(`with "prev" as (${body}) select "date", SUM("v") AS "total" from "prev" group by "date"`)
+    const [compared] = await sqlOf(`query t { prev: with { date: groupBy(field: date, by: month) { v: sum(a: x) } } data: fetch { date: groupBy(field: date, by: month) { v: sum(a: x) @diff(by: prev) } } }`)
+    expect(compared).toContain(`left join "prev" as "__ref_0" on "__cur"."__d0" = "__ref_0"."date"`)
+  })
+
+  test('having: with a query-hook metric wraps the rewritten statement', async () => {
+    const [sql] = await sqlOf(`query t { fetch(having: { d: "a" }) { d { x: aggrAverage(to: a, by: b) } } }`)
+    expect(sql).toBe(
+      `select "d", "x_aggrAverage" from (select "d", sum("aggrAverage")/max("b")::float4  as "x_aggrAverage" from (select "d", "x", sum("a") as "a", sum("b") as "b", "x" * sum("a") as "aggrAverage", sum("b") as "b" from "t" group by "d", "x") as "middleTable" group by "d") as "__h" where ("d" = 'a')`,
+    )
+  })
+
   test('avg and median are plain aggregates unless partitioned', async () => {
     const [sql] = await sqlOf(`query t { fetch { d { m: avg(a: s) w: avg(a: s, by: d) md: median(a: s, from: "@") } } }`)
     expect(sql).toContain('avg("s")::float4 as "m"')

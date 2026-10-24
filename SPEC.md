@@ -111,7 +111,7 @@ Op          := eq ne gt gte lt lte in nin like ilike isNULL search hasAny hasAll
 Logical     := and: [Filter] | or: [Filter] | nor: [Filter] | not: Filter | having: Filter | from: table
 ```
 
-A scalar predicate is `eq`; a list is `in` (an empty list matches nothing; an empty `nin` matches everything). An operator key without a field (`or: [{ gte: 1 }]`) is an `ARGS` error. `having` holds predicates on output aliases (metric aliases and dimension output keys). A `having` that names only real columns and aggregate expressions compiles to HAVING; one that names an output alias wraps the grouped statement as a derived table and filters it (§6.4), so it works the same on every dialect. `from` qualifies the following fields with a table. A value string starting with `@` is a column reference (used in join `on`). Operators with non-GraphQL names (`RegExp~`) are reachable only through variables. `hasAny`/`hasAll` are ClickHouse only; `search` and the search metrics are PostgreSQL only.
+A scalar predicate is `eq`; a list is `in` (an empty list matches nothing; an empty `nin` matches everything). An operator key without a field (`or: [{ gte: 1 }]`) is an `ARGS` error. `having` holds predicates on output names (metric aliases and dimension output keys). It is applied as WHERE on a derived table over the grouped statement (§6.4), so it works the same on every dialect and may name computed columns. `from` qualifies the following fields with a table. A value string starting with `@` is a column reference (used in join `on`). Operators with non-GraphQL names (`RegExp~`) are reachable only through variables. `hasAny`/`hasAll` are ClickHouse only; `search` and the search metrics are PostgreSQL only.
 
 ### 2.7 Joins
 
@@ -140,12 +140,14 @@ interface Fetch {
   kind: 'fetch' | 'with' | 'fetchPlain' | 'unionall'
   source: string | string[]        // table name, `with` alias, or tables for unionall
   filters: FilterExpr | null       // normalized filter object (2.6)
+  where: FilterExpr | null         // `where:` argument: every top-level key is a column (2.3)
   search: Record<string, string>
   joins: Join[]
   tree: Node[]
   directives: DirectiveUse[]
   emit: boolean                    // false for `with` and anything a plan hook hides (present in baseline, absent from output)
   variables: Record<string, unknown>  // every $var after defaults
+  loweredHaving?: FilterExpr       // predicates a fetch-level or root-metric @filter lowered to SQL (6.7)
 }
 
 interface Node {
@@ -156,6 +158,9 @@ interface Node {
   children: Node[]                 // dimensions only
   directives: DirectiveUse[]
   emit: boolean
+  sqlNames?: Record<string, string>  // output name → internal SQL column when the alias shadows its source (6.4)
+  lowered?: Lowered                // metric: { op: 'diff' | 'subtract' | 'divide', ref?: { alias, column }, byField? } (6.7)
+  loweredHaving?: FilterExpr       // dimension: predicates @filter lowered to SQL, its own or a child metric's (6.7)
 }
 
 interface DirectiveUse { name: string; args: Record<string, unknown>; state: Record<string, unknown> }
@@ -224,11 +229,13 @@ interface Ctx {
   chain: { value?: unknown }       // shared by the directives of one node in the plan stage (`@compare` → `@include`)
   remove(): void                   // plan stage: drop the node or fetch the directive sits on
   variables: Record<string, unknown>
+  strict: boolean                  // the instance option (1): resolvers reject legacy string forms when true
   adapter: Adapter
   dialect: string
   knex: Knex                       // builder for the active dialect, no connection
   physical?: Physical              // stage 4 only: grain, table, column helpers
   col(name: string, from?: string): string          // qualified column name honoring `@` and `from`
+  out(name: string, source: string): string         // stage 4, dimensions: SELECT alias for an output name; `__d<i>` when it shadows `source` (6.4)
   where(filter: FilterExpr): Knex.Raw               // compile a filter object to a raw predicate
   baseline?: Output                // stage 6, pass 2 only: output of pass 1 keyed by fetch alias; read-only by contract (not frozen, for throughput)
   output?: Output                  // stage 6 only: the output being written, keyed by fetch alias
@@ -318,7 +325,7 @@ Each dimension contributes `columns()` (default: its own column aliased to `node
 
 ### 6.4 WHERE / HAVING
 
-Fetch `filters` and `where` compile to one predicate each (ANDed), legacy inline args (`strict: false`) to `AND`ed predicates, `search` to the dialect's full text predicate. `having` from `filters.having`, the `having:` fetch argument and dimension `having:` args compile to HAVING when they name real columns or aggregate expressions. When a `having` names an **output alias**, the grouped statement is wrapped: `select <output columns> from (<grouped statement>) as "__h" where <predicates on the aliases>`, which every dialect accepts (PostgreSQL rejects aliases in HAVING). Both kinds may appear in one statement.
+Fetch `filters` and `where` compile to one predicate each (ANDed), legacy inline args (`strict: false`) to `AND`ed predicates, `search` to the dialect's full text predicate. Every `having` object (`filters.having`, the `having:` fetch argument, dimension `having:` args, lowered `@filter` conditions) is applied on a wrapper: `select <output columns> from (<grouped statement>) as "__h" where <predicates on the output names>`, which every dialect accepts (PostgreSQL rejects aliases in HAVING) and which sees the arithmetic layer's computed columns (§6.7). Only `having` fragments returned by a resolver's `sql` (`SqlParts.having`, real aggregate expressions) compile to HAVING. A predicate that names a column the current grain does not select (`country @filter(where: { total: { gt: 5 } }) { total device { value } }`: the `country, device` statement has no `total`) becomes a semi-join on the statement of the dimension that carries it, `where "country" in (select "country" from (<that statement, filtered>) as "__p")` (a row constructor for several grain columns), so the parents that pass survive in every grain. A fetch-level `having` picks the longest prefix grain that selects its columns. A column no statement at that level selects is a `PLAN` error (`having on 'c' names 'nothere', which no statement at that level selects`; v3 ignored the condition).
 
 **Output names vs SQL names.** A dimension's output key may equal its source column while its expression differs (`date: groupBy(field: date, by: month)` → `date_trunc('month', "date") as "date"`). Grouping or filtering by that alias would be ambiguous (or, on ClickHouse, cyclic), so when an output name shadows its own source column the dimension resolver asks `ctx.out(name, source)` for the SELECT alias, which returns an internal name `__d<i>` (`i` = position in the grain) and records it in `node.sqlNames`. Everything downstream maps through it: `GROUP BY`, `ORDER BY`, nested-limit partitions, the `__h` wrapper, the arithmetic layer, and the assembler, which reads `__d0` from the row and writes `date` to the output. `CompiledQuery.columns` lists the mapping for consumers of `compile()`. Names that do not shadow a column are used as written. A filter object carrying `inherited: false` drops its predicates whose `from: t` names neither the fetch table nor a joined table (v3 behaviour, kept for filter objects written for a `with` and reused on a fetch reading it). `from: "@"` means the fetch table.
 
@@ -346,12 +353,13 @@ order by "revenue" desc limit 10
 ```
 
 - The **reference** is the physical query of the fetch `other` whose grain has the same dimension aliases, joined on every grain column (through `sqlNames`). Several fetches may share the alias; the one with the matching grain is used. One join per distinct referenced alias (`__ref_0`, `__ref_1`, ...), shared by every metric that references it.
-- A `with` target is joined by its CTE name (`left join "prev" as "__ref_0"`) and its dependencies bubble into the statement's `ctes`. A `fetch` target is embedded as a derived table in **reference mode**: its grouped statement without an arithmetic layer of its own, which is what v3 compared against (the other fetch's baseline) and which makes mutual (`series` ↔ `prev`) and self references terminate. A `fetch` that is also emitted therefore executes twice (once for its output, once inside the join); a baseline that is not output belongs in a `with`.
-- Expressions: `diff` → `cast(a as float) / NULLIF(cast(b as float), 0) - 1`; `divide` → the same without `- 1`; `subtract` → `a - b`. A missing row on the reference side yields `NULL` (LEFT JOIN), as does a zero divisor; v3 produced `NaN`/`Infinity` there.
+- A `with` target is joined by its CTE name (`left join "prev" as "__ref_0"`) and its dependencies bubble into the statement's `ctes`. A `with` exposes its **output names**: when one of its dimensions got an internal name (§6.4) its body is wrapped once, `with "prev" as (select "__d0" as "date", "v" from (<grouped>) as "__w")`, so `fetch(table: prev)` readers select `date` and the join reads `"__ref_0"."date"`. A `fetch` target is embedded as a derived table in **reference mode**: its grouped statement without an arithmetic layer of its own, which is what v3 compared against (the other fetch's baseline) and which makes mutual (`series` ↔ `prev`) and self references terminate. A `fetch` that is also emitted therefore executes twice (once for its output, once inside the join); a baseline that is not output belongs in a `with`.
+- Expressions: `diff` → `cast(a as float) / NULLIF(cast(b as float), 0) - 1`; `divide` → the same without `- 1`; `subtract` → `a - b`; passthrough columns are selected as `"__cur"."c" as "c"`. A missing row on the reference side yields `NULL` (LEFT JOIN), as does a zero divisor; v3 produced `NaN`/`Infinity` there. On ClickHouse the casts are `Float64` and `clickhouseAdapter` appends `SETTINGS join_use_nulls = 1` to statements with a LEFT JOIN, since ClickHouse otherwise fills unmatched rows with type defaults. `@divide(byField: w)` requires `w` to be selected in the same statement (`PLAN`: `cur.d.v: no sibling 'w' at 'd'`).
+- The reference is read as v3 read baselines: with its explicit `having:` applied, but **before its own `@filter`** (lowered `@filter` conditions are skipped in reference mode) and before its own arithmetic. It also carries the target's `sort`/`limit`, so a reference with `d(limit: 5)` compares against the top five and yields `NULL` elsewhere. Grains match by dimension **alias** only: `cur { date: groupBy(field: date, by: month) }` against `prev { date }` joins monthly to daily rows without complaint, as v3's key match did. Metrics with several output columns (`aggrAverage`) cannot be lowered.
 - A reference removed from the plan (`@include`/`@skip`) compiles to `NULL as alias`. A reference fetch without the grain is a `PLAN` error (`'prev' has no 'domain' level to compare with`); one without the column too (`'prev' has no 'growth' at 'domain'`). A metric carrying more than one of the three is an `ARGS` error. A lowered metric under a dimension with `@groupBy`/`@groupOn` is a `PLAN` error: the regrouped rows would sum a ratio or a difference; compute it on a `with` over the grouped result instead.
-- The layer sits directly over the grouped rows. Alias `having` (including lowered `@filter` predicates) wraps it as the `__h` derived table, so a predicate on the computed column is unambiguous (`"__cur"."v"` and `"__ref_0"."v"` both exist inside the join); nested-limit `row_number()` layers rank the computed values; `ORDER BY`, `LIMIT`/`OFFSET` apply last. Join columns use the internal names (`__d0`) of both sides, which exist once the target's dimension resolvers have run, so the target is compiled first. At the root level (no grain) the single rows are joined `on 1 = 1`. A `with` that compares against another `with`, or an embedded `fetch` baseline that reads a `with`, carries that dependency into the consumer's WITH list through the ordinary dependency walk; two `with` fetches comparing against each other are a circular dependency (`PLAN`). Statements of other grains of the same fetch are untouched.
+- The layer sits directly over the grouped rows (resolver `query` hooks such as `aggrAverage` have already rewritten them). `having` (including lowered `@filter` predicates) wraps it as the `__h` derived table, so a predicate on the computed column is unambiguous (`"__cur"."v"` and `"__ref_0"."v"` both exist inside the join); nested-limit `row_number()` layers rank the computed values; `ORDER BY`, `LIMIT`/`OFFSET` apply last. Join columns use the internal names (`__d0`) of both sides, which exist once the target's dimension resolvers have run, so the target is compiled first. At the root level (no grain) the single rows are joined `on 1 = 1`. A `with` that compares against another `with`, or an embedded `fetch` baseline that reads a `with`, carries that dependency into the consumer's WITH list through the ordinary dependency walk; two `with` fetches comparing against each other are a circular dependency (`PLAN`). Statements of other grains of the same fetch are untouched.
 
-**`@filter`.** Conditions whose operator SQL can express (`eq neq gt gte lt lte in nin`) are folded into `having:` of the dimension the directive sits on (a metric filter into its parent dimension's, a root metric's into the fetch's `filters.having`), merged with any `having:` already written there, so the database drops the rows and `limit` applies to the survivors. The plan hook then marks its occurrence as lowered (`use.state.lowered = true`) and the assembler attaches no result hook for it; a document whose directives are all lowered assembles in a single pass. A condition with an array operator (`contains`, `of`, `startsWith`, ...) cannot be expressed and keeps the result-time hook of §7.1 for the whole occurrence.
+**`@filter`.** Conditions whose operator SQL can express (`eq neq gt gte lt lte in nin`) are folded into `having:` of the dimension the directive sits on (a metric filter into its parent dimension's, a root metric's into the fetch's `filters.having`), merged with any `having:` already written there, so the database drops the rows and `limit` applies to the survivors. The plan hook then marks its occurrence as lowered (`use.state.lowered = true`) and the assembler attaches no result hook for it; a document whose directives are all lowered assembles in a single pass. A condition with an array operator (`contains`, `of`, `startsWith`, ...) cannot be expressed and keeps the result-time hook of §7.1 for the whole occurrence. A lowered `@filter` on a dimension that also carries `@groupBy`/`@groupOn` filters the rows **before** regrouping (`date @groupBy(by: month) @filter(where: { value: { gt: 100 } })` keeps the days over 100, not the months), as the pre-lowering baseline did.
 
 **`@omit`.** Sets `emit: false` on the node (`full: true` removes it from the plan). The column stays in the statement, so it can be referenced (`@divide(byField: rank)` with `rank @omit`), and the assembler leaves it out of the output.
 
@@ -376,7 +384,7 @@ Location rules (these are the v3 `progressive` path semantics restated):
 - Several fetches with the same alias, or several unaliased fetches, write into one tree.
 - Values are not coerced; database drivers decide the JS type (`@parse` converts).
 
-The output object maps fetch aliases to trees. An unaliased fetch's tree is the output itself when every fetch is unaliased; otherwise the unaliased trees form one tree stored under the key `''`.
+The output object maps fetch aliases to trees. An unaliased fetch's tree is the output itself when every fetch is unaliased; otherwise the unaliased trees form one tree stored under the key `''`. A tree whose every statement starts with an array dimension is an array even when no row arrives (`[]`, `{ a: [] }`); one with a root metric or keyed dimensions is `{}`.
 
 ### 7.1 Two passes, baseline and result hooks
 

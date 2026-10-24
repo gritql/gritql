@@ -84,12 +84,13 @@ export function buildPlan(doc: ParsedDocument, variables: Variables, opts: Build
   return plan
 }
 
-/** strict: every `$var` used must be declared by an operation or a fragment (`fragment F($a: String!)`) */
+/**
+ * strict: every `$var` used in an operation must be declared by that operation; one used in a fragment by the
+ * fragment (`fragment F($a: String!)`) or by any operation, since a fragment may be spread in any of them
+ */
 function checkDeclaredVariables(doc: ParsedDocument): void {
-  const declared = new Set<string>()
-  for (const op of doc.operations) for (const d of op.variableDefinitions ?? []) declared.add(d.variable.name.value)
-  for (const f of Object.values(doc.fragments)) for (const d of f.variableDefinitions) declared.add(d.variable.name.value)
-  const check = (root: any, where: string) =>
+  const names = (defs: readonly { variable: { name: { value: string } } }[] | undefined) => (defs ?? []).map((d) => d.variable.name.value)
+  const check = (root: any, declared: Set<string>, where: string) =>
     visit(root, {
       Variable(node: any) {
         if (!declared.has(node.name.value)) {
@@ -97,8 +98,9 @@ function checkDeclaredVariables(doc: ParsedDocument): void {
         }
       },
     })
-  for (const op of doc.operations) check(op.selectionSet, `operation '${op.name?.value ?? 'query'}'`)
-  for (const [name, f] of Object.entries(doc.fragments)) check(f.definition.selectionSet, `fragment '${name}'`)
+  const everyOperation = doc.operations.flatMap((op) => names(op.variableDefinitions))
+  for (const op of doc.operations) check(op.selectionSet, new Set(names(op.variableDefinitions)), `operation '${op.name?.value ?? 'query'}'`)
+  for (const [name, f] of Object.entries(doc.fragments)) check(f.definition.selectionSet, new Set([...everyOperation, ...names(f.variableDefinitions)]), `fragment '${name}'`)
 }
 
 function directives(nodes: readonly DirectiveNode[] | undefined, vars: Variables): DirectiveUse[] {

@@ -4,6 +4,15 @@ import { run } from './harness'
 
 const d = (date: string, device: string, value: number) => ({ date, device, value })
 
+describe('empty results', () => {
+  test('a tree of records is an empty array; one with a root metric or keyed dimensions is an empty object', async () => {
+    await expect(run([[]], `query t { fetch { d { v: sum(a: x) } } }`)).resolves.toEqual([])
+    await expect(run([[]], `query t { a: fetch { d { v: sum(a: x) } } }`)).resolves.toEqual({ a: [] })
+    await expect(run([[], []], `query t { fetch { total: sum(a: x) d { v: sum(a: x) } } }`)).resolves.toEqual({})
+    await expect(run([[]], `query t { fetch { d(type: Map) { v: sum(a: x) } } }`)).resolves.toEqual({})
+  })
+})
+
 describe('dimension values named like prototype members', () => {
   test('are ordinary keys and never touch Object.prototype', async () => {
     const rows = [

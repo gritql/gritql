@@ -122,6 +122,11 @@ describe('strict mode (default)', () => {
       expect(sql).toContain(`SUM("DE") AS "w"`)
     })
 
+    test('a variable declared by another operation does not count', async () => {
+      const q = `query a($x: String) { f1: fetch(table: t, where: { c: $x }) { v: sum(a: x) } } query b { f2: fetch(table: t, where: { c: $x }) { v: sum(a: x) } }`
+      await expect(sqlOf(q, { x: 'q' })).rejects.toThrow(/\$x is not declared by operation 'b'/)
+    })
+
     test('an undeclared variable inside a fragment names the fragment', async () => {
       const q = `fragment F on Any { v: sum(a: $col) }  query t { fetch { ...F } }`
       await expect(sqlOf(q, { col: 'x' })).rejects.toThrow(/\$col is not declared by fragment 'F'/)

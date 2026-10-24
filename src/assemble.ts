@@ -386,6 +386,14 @@ export class Assembler {
     const out: Record<string, any> = baseline && only ? { ...baseline } : {}
     if (only) for (const k of only) delete out[k]
     const at = this.reader(baseline)
+    // a tree whose every statement starts with an array dimension is an array, also when no row arrives
+    const rootArray = new Map<string, boolean>()
+    for (const { physical } of rowSets) {
+      if (physical.fetch.kind === 'fetchPlain') continue
+      const steps = templates.get(physical)!.steps
+      const key = groupKey(physical.fetch)
+      rootArray.set(key, (rootArray.get(key) ?? true) && steps.length > 0 && steps[0].array)
+    }
 
     for (const { physical, rows } of rowSets) {
       const key = groupKey(physical.fetch)
@@ -397,7 +405,7 @@ export class Assembler {
         out[key].push(rows)
         continue
       }
-      if (!hasOwn(out, key)) setOwn(out, key, {})
+      if (!hasOwn(out, key)) setOwn(out, key, rootArray.get(key) ? [] : {})
       this.fill({ obj: out, key }, physical, rows, templates.get(physical)!, baseline, out, at, hide)
     }
     return out

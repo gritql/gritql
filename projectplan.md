@@ -135,3 +135,15 @@ Verdict "needs-attention", seven findings, all reproduced and fixed in one commi
 5. Nested limits ranked the raw metric before `@divide(byField)`; the arithmetic layer now sits directly over the grouped rows, under having, ranking and ORDER BY.
 6. `having: { date: ... }` on a `__d0` dimension addressed the output name inside `__h`; having keys are renamed through `sqlNames` (and/or/not recursed).
 7. Records mode lost `__proto__` dimension values (prototype setter). Record and key writes use own-property assignment; reads use own-property lookup.
+
+### 6.8 Review round (Fable, `.review/fable-phase6.md`)
+
+Verdict "NOT SATISFIED": three blocking, nine should-fix, nits. Everything below fixed in one commit with regression tests; suite 434.
+- B1 `@filter`/`having` on a column a child grain does not select produced invalid SQL (`where "total" > 5` on the `country, device` statement). Now a semi-join on the parent statement's survivors; a column no statement at that level selects is a PLAN error (also closes S8, where v3 silently ignored the condition).
+- B2 fetch-level `@filter` crashed (`owner.args` on a Fetch). Lowered conditions now live in `loweredHaving` on the dimension or the fetch, separate from the user's `having:`.
+- B3 a `with` whose alias shadows its column exposed `__d0` to `fetch(table: alias)` readers. The CTE body is wrapped once to alias internal names back; comparisons join such a `with` on its output name.
+- S1 empty records result was `{}`; now `[]` when every statement of the tree starts with an array dimension.
+- S2 `having:` with `aggrAverage`/`weightAvg` produced invalid SQL; resolver `query` hooks now run on the grouped statement before the wrapping layers (v3 snapshots unchanged).
+- S3 `@divide(byField:)` on an unselected column → PLAN error. S5 reference mode skips the target's lowered `@filter` (v3 baseline reading) but keeps its explicit `having:`. S6 ClickHouse: `Float64` casts, `SETTINGS join_use_nulls = 1` appended by `clickhouseAdapter.compile` to statements with a LEFT JOIN. S7 passthrough columns aliased (`"__cur"."c" as "c"`). S9 variables scoped per operation (fragments see their own plus every operation's).
+- S4 and the doc nits: SPEC §2.6/§6.4/§6.7/§7, interface listings (Fetch.where/loweredHaving, Node.sqlNames/lowered/loweredHaving, Ctx.strict/out), COMPAT entries for the having wrapper, empty `[]`, `@omit` on a dimension, reference carrying the target's limit.
+- Code nits: dead `named` WeakSet removed; `having*` locals renamed (`resolverHavings`, `havingObjects`, `havingPredicates`). Declined: folding `dimColumns`/`outputAliases`/engine `columns()` into one helper (three call sites with different inputs; left as is), a PLAN error for two fetches sharing an alias with different `type:` on one dimension (pre-existing, rare).

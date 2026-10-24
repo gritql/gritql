@@ -50,7 +50,11 @@ export function clickhouseAdapter(client: ClickhouseClientLike, opts: { knex?: K
     name: opts.name ?? 'clickhouse',
     dialect: 'clickhouse',
     knex: opts.knex ?? knexFactory({ client: 'pg' }),
-    compile: (qb) => ({ sql: qb.toString(), params: [] }),
+    compile: (qb) => {
+      const sql = qb.toString()
+      // unmatched LEFT JOIN rows are type defaults (0, '') on ClickHouse unless asked for NULL, which SPEC §6.7 promises
+      return { sql: /\bleft join\b/i.test(sql) ? `${sql} SETTINGS join_use_nulls = 1` : sql, params: [] }
+    },
     async execute({ sql }) {
       const rs = await client.query({ query: sql, format: 'JSONEachRow' })
       return rs.json()

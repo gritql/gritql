@@ -126,18 +126,17 @@ export function compilePhysical(physical: Physical, env: CompileEnv, asCte = fal
   const inFilters = (fetch.filters?.search as Record<string, unknown> | undefined) ?? {}
   const argSearch = Object.fromEntries(Object.entries(fetch.search).filter(([k]) => !(k in inFilters)))
   const searchOnly = Object.keys(argSearch).length ? buildFilter({ search: argSearch }, filterCtx) : null
-  /** `having:` objects on output aliases (fetch filters + dimension args), compiled once the internal names are known */
-  const havingArgs: unknown[] = []
-
+  /** `having` objects on output names, compiled once the internal names are known; `at` = grain index of the dimension carrying it */
+  const havingObjects: { expr: unknown; at?: number }[] = []
 
   // --- collect parts from resolvers -------------------------------------
   const selects: Knex.Raw[] = []
   const groupBys: Knex.Raw[] = []
   const pre: Knex.Raw[] = []
   /** HAVING predicates written by resolvers (real aggregate expressions) */
-  const havings: Knex.Raw[] = []
-  /** `having:` predicates on output aliases: applied as WHERE on a derived table, since PostgreSQL rejects aliases in HAVING */
-  const aliasHavings: Knex.Raw[] = []
+  const resolverHavings: Knex.Raw[] = []
+  /** predicates on output names: WHERE on the `__h` derived table, since PostgreSQL rejects aliases in HAVING */
+  const havingPredicates: Knex.Raw[] = []
   const orderBys: { by: string; dir: 'asc' | 'desc' }[] = []
   let distinct = false
   let limit: number | undefined
@@ -149,7 +148,6 @@ export function compilePhysical(physical: Physical, env: CompileEnv, asCte = fal
 
   physical.grain.forEach((dim, i) => {
     const resolver = registry.dimension(dim.name)
-    if (i === physical.grain.length - 1) named.add(physical)
     validateArgs(resolver, dim, DIMENSION_COMMON_ARGS)
     const ctx = env.makeCtx(physical, dim)
     const parts = resolveSql(resolver, dim, ctx)
@@ -157,14 +155,16 @@ export function compilePhysical(physical: Physical, env: CompileEnv, asCte = fal
     groupBys.push(...(parts.groupBy ?? []))
     grainGroups.push(parts.groupBy ?? [])
     pre.push(...(parts.pre ?? []))
-    havings.push(...(parts.having ?? []))
+    resolverHavings.push(...(parts.having ?? []))
     if (resolver.query) queryHooks.push({ resolver, node: dim })
 
     const a = dim.args
     if (a.sort_desc) orderBys.push({ by: columnName(a.sort_desc as string, table), dir: 'desc' })
     if (a.sort_asc) orderBys.push({ by: columnName(a.sort_asc as string, table), dir: 'asc' })
     if (a.sort && a.field) orderBys.push({ by: columnName(a.field as string, table), dir: a.sort as 'asc' | 'desc' })
-    if (a.having) havingArgs.push(a.having)
+    if (a.having) havingObjects.push({ expr: a.having, at: i })
+    // a comparison target is read as v3 read baselines: before its @filter ran
+    if (dim.loweredHaving && !reference) havingObjects.push({ expr: dim.loweredHaving, at: i })
     if (a.limit !== undefined || a.offset !== undefined) {
       if (i === 0 || fetch.kind === 'fetchPlain' || fetch.kind === 'with') {
         if (a.limit !== undefined) limit = Number(a.limit)
@@ -183,7 +183,7 @@ export function compilePhysical(physical: Physical, env: CompileEnv, asCte = fal
     selects.push(...(parts.select ?? []))
     groupBys.push(...(parts.groupBy ?? []))
     pre.push(...(parts.pre ?? []))
-    havings.push(...(parts.having ?? []))
+    resolverHavings.push(...(parts.having ?? []))
     if (resolver.group) groupBys.push(...(parts.select ?? []).map(() => knex.raw('??', [metric.alias])))
     if (resolver.distinct) distinct = true
     if (resolver.query) queryHooks.push({ resolver, node: metric })
@@ -229,18 +229,16 @@ export function compilePhysical(physical: Physical, env: CompileEnv, asCte = fal
   if (distinct) qb = qb.distinct(...uniqueSelects)
   else qb = qb.select(...uniqueSelects)
   if (uniqueGroupBys.length) qb = qb.groupBy(uniqueGroupBys as any)
-  for (const h of havings) qb = qb.having(h)
+  for (const h of resolverHavings) qb = qb.having(h)
+  // resolver query hooks rewrite the grouped statement (aggrAverage, weightAvg); the layers below wrap the result
+  for (const { resolver, node } of queryHooks) qb = resolver.query!(qb, physical, env.makeCtx(physical, node))
 
   // an output name that got an internal SQL alias (`date: groupBy(field: date)` → `__d0`) is sorted and filtered by that alias
   const sqlNames: Record<string, string> = Object.assign({}, ...physical.grain.map((d) => d.sqlNames ?? {}))
+  const sqlName = (f: string) => sqlNames[f] ?? f
   for (const o of orderBys) {
     const bare = o.by.slice(o.by.lastIndexOf('.') + 1)
     if (sqlNames[bare]) o.by = sqlNames[bare]
-  }
-  if (fetch.filters?.having) havingArgs.push(fetch.filters.having)
-  for (const h of havingArgs) {
-    const f = buildFilter(renameFields(h, sqlNames) as any, { ...filterCtx, qualify: false })
-    if (f.sql) aliasHavings.push(raw(knex, f))
   }
   // wrapped statements see output columns only
   const orderCols = orderBys.map((o) => ({ by: o.by.slice(o.by.lastIndexOf('.') + 1), dir: o.dir }))
@@ -248,6 +246,38 @@ export function compilePhysical(physical: Physical, env: CompileEnv, asCte = fal
   const outputs = outputAliases(physical, registry, env)
   const lowered = reference ? [] : physical.metrics.filter((m) => m.lowered)
   let wrapped = false
+
+  if (fetch.filters?.having) havingObjects.push({ expr: fetch.filters.having })
+  if (fetch.loweredHaving && !reference) havingObjects.push({ expr: fetch.loweredHaving })
+  for (const { expr, at } of havingObjects) {
+    const fields = fieldsOf(expr)
+    if (fields.every((f) => outputs.includes(sqlName(f)))) {
+      const f = buildFilter(renameFields(expr, sqlNames) as any, { ...filterCtx, qualify: false })
+      if (f.sql) havingPredicates.push(raw(knex, f))
+      continue
+    }
+    // the predicate names a column this grain does not select (`country @filter(where: { total: ... }) { total device { v } }`):
+    // keep the parents that pass, through a semi-join on the statement of the dimension that carries the predicate
+    const parents = env.physicals.filter(
+      (p) =>
+        p.fetch === fetch &&
+        p.grain.length >= 1 &&
+        p.grain.length < physical.grain.length &&
+        (at === undefined || p.grain.length === at + 1) &&
+        p.grain.every((d, k) => d === physical.grain[k]) &&
+        fields.every((f) => outputAliases(p, registry, env).includes(sqlName(f))),
+    )
+    const parent = parents[parents.length - 1]
+    if (!parent) {
+      const owner = at === undefined ? `having on ${fetch.alias ?? fetch.kind}` : `having on '${physical.grain[at].alias}'`
+      const missing = fields.find((f) => !outputs.includes(sqlName(f)))
+      throw new GritqlError('PLAN', `${owner} names '${missing}', which no statement at that level selects`, { path: [fetch.alias ?? fetch.kind, ...physical.path] })
+    }
+    const cols = parent.grain.flatMap((d) => dimColumns(d, parent, env))
+    const survivors = knex.select(cols).from(compilePhysical(parent, env, true).as('__p'))
+    const list = cols.map(() => '??').join(', ')
+    havingPredicates.push(knex.raw(`${cols.length > 1 ? `(${list})` : list} in ?`, [...cols, survivors]))
+  }
 
   // --- lowered arithmetic (SPEC §6.7): directly over the grouped rows, so having, ranking and ORDER BY see the computed columns ---
   if (lowered.length) {
@@ -257,9 +287,9 @@ export function compilePhysical(physical: Physical, env: CompileEnv, asCte = fal
 
   // having on output aliases: WHERE on a derived table (PostgreSQL rejects aliases in HAVING, and after the
   // arithmetic join a bare alias would be ambiguous)
-  if (aliasHavings.length) {
+  if (havingPredicates.length) {
     qb = knex.select(outputs).from(qb.as('__h'))
-    for (const h of aliasHavings) qb = qb.where(h)
+    for (const h of havingPredicates) qb = qb.where(h)
     wrapped = true
   }
 
@@ -288,8 +318,13 @@ export function compilePhysical(physical: Physical, env: CompileEnv, asCte = fal
   if (limit !== undefined) qb = qb.limit(limit)
   if (offset !== undefined) qb = qb.offset(offset)
 
+  // a with() is read by name, so its columns carry the output names: an internal name is aliased back on a wrapper
+  if (fetch.kind === 'with' && Object.keys(sqlNames).length) {
+    const inverse = Object.fromEntries(Object.entries(sqlNames).map(([n, s]) => [s, n]))
+    qb = knex.select(outputs.map((c) => (inverse[c] ? knex.raw('?? as ??', [c, inverse[c]]) : c)) as any).from(qb.as('__w'))
+  }
+
   // --- escape hatch -------------------------------------------------------
-  for (const { resolver, node } of queryHooks) qb = resolver.query!(qb, physical, env.makeCtx(physical, node))
   for (const mw of registry.middleware) if (mw.query) qb = mw.query(qb, physical, env.makeCtx(physical))
 
   // --- CTEs (the outer statement lists every transitive dependency in order; bodies attach none) ---
@@ -306,10 +341,17 @@ export function compilePhysical(physical: Physical, env: CompileEnv, asCte = fal
 
 const CUR = '__cur'
 
-/** physicals whose dimension resolvers have run, so their `sqlNames` are known */
-const named = new WeakSet<Physical>()
-
 const LOGICAL = new Set(['and', 'or', 'nor'])
+/** output names a `having` object refers to */
+function fieldsOf(expr: unknown, out: string[] = []): string[] {
+  if (!expr || typeof expr !== 'object' || Array.isArray(expr)) return out
+  for (const [k, v] of Object.entries(expr as Record<string, unknown>)) {
+    if (LOGICAL.has(k) && Array.isArray(v)) v.forEach((x) => fieldsOf(x, out))
+    else if (k === 'not') fieldsOf(v, out)
+    else if (!out.includes(k)) out.push(k)
+  }
+  return out
+}
 /** a `having` object with its output names replaced by the internal SQL names the statement selects */
 function renameFields(expr: unknown, names: Record<string, string>): unknown {
   if (!expr || typeof expr !== 'object' || Array.isArray(expr)) return expr
@@ -328,11 +370,15 @@ function renameFields(expr: unknown, names: Record<string, string>): unknown {
  */
 function arithmeticLayer(core: Knex.QueryBuilder, physical: Physical, lowered: Node[], outputs: string[], env: CompileEnv): Knex.QueryBuilder {
   const { knex } = env
+  const FLOAT = env.dialect === 'clickhouse' ? 'Float64' : 'float'
   const grainCols = physical.grain.flatMap((d) => dimColumns(d, physical, env))
   const joins = new Map<string | null, string | null>()
   const operand = (m: Node): string | null => {
     const { ref, byField } = m.lowered!
-    if (byField) return `${CUR}.${byField}`
+    if (byField) {
+      if (!outputs.includes(byField)) throw new GritqlError('PLAN', `${place(physical, m.alias)}: no sibling '${byField}' at ${levelOf(physical)}`)
+      return `${CUR}.${byField}`
+    }
     const name = joins.get(ref!.alias)
     return name ? `${name}.${ref!.column}` : null
   }
@@ -349,7 +395,8 @@ function arithmeticLayer(core: Knex.QueryBuilder, physical: Physical, lowered: N
     joins.set(ref.alias, name)
     // compile the target first: its internal column names (`__d0`) exist only once its dimension resolvers ran
     const sub = compilePhysical(target, env, true, true)
-    const targetCols = target.grain.flatMap((d) => dimColumns(d, target, env))
+    // a with() exposes its output names (its wrapper aliases internal names back); an embedded fetch keeps them
+    const targetCols = target.grain.flatMap((d) => (target.fetch.kind === 'with' ? dimNames(d, target, env) : dimColumns(d, target, env)))
     const on = function (this: Knex.JoinClause) {
       if (!grainCols.length) this.on(knex.raw('1') as any, '=', knex.raw('1') as any) // root level: one row each side
       grainCols.forEach((c, i) => this.on(`${CUR}.${c}`, '=', `${name}.${targetCols[i]}`))
@@ -359,15 +406,15 @@ function arithmeticLayer(core: Knex.QueryBuilder, physical: Physical, lowered: N
   const byAlias = new Map(lowered.map((m) => [m.alias, m]))
   const selects = outputs.map((c) => {
     const m = byAlias.get(c)
-    if (!m) return `${CUR}.${c}`
+    if (!m) return knex.raw('?? as ??', [`${CUR}.${c}`, c])
     const b = operand(m)
     if (b === null) return knex.raw('NULL as ??', [m.alias])
     const a = `${CUR}.${m.alias}`
     switch (m.lowered!.op) {
       case 'diff':
-        return knex.raw('cast(?? as float) / NULLIF(cast(?? as float), 0) - 1 as ??', [a, b, m.alias])
+        return knex.raw(`cast(?? as ${FLOAT}) / NULLIF(cast(?? as ${FLOAT}), 0) - 1 as ??`, [a, b, m.alias])
       case 'divide':
-        return knex.raw('cast(?? as float) / NULLIF(cast(?? as float), 0) as ??', [a, b, m.alias])
+        return knex.raw(`cast(?? as ${FLOAT}) / NULLIF(cast(?? as ${FLOAT}), 0) as ??`, [a, b, m.alias])
       case 'subtract':
         return knex.raw('?? - ?? as ??', [a, b, m.alias])
     }
@@ -380,8 +427,8 @@ function refTarget(physical: Physical, ref: { alias: string | null; column: stri
   const fetches = env.plan.fetches.filter((f) => f.alias === ref.alias)
   if (!fetches.length) return undefined
   const grain = physical.grain.map((d) => d.alias)
-  const where = `${physical.fetch.alias ?? physical.fetch.kind}.${[...grain, ref.column].join('.')}`
-  const level = grain.length ? `'${grain.join('.')}'` : 'the root'
+  const where = place(physical, ref.column)
+  const level = levelOf(physical)
   const candidates = env.physicals.filter((p) => fetches.includes(p.fetch) && p.grain.length === grain.length && p.grain.every((d, i) => d.alias === grain[i]))
   if (!candidates.length) throw new GritqlError('PLAN', `${where}: '${ref.alias}' has no ${level} level to compare with`)
   const target = candidates.find((p) => outputAliases(p, env.registry, env).includes(ref.column))
@@ -389,10 +436,19 @@ function refTarget(physical: Physical, ref: { alias: string | null; column: stri
   return target
 }
 
+/** `alias.grain.column`, for error messages */
+const place = (physical: Physical, column: string) => `${physical.fetch.alias ?? physical.fetch.kind}.${[...physical.grain.map((d) => d.alias), column].join('.')}`
+const levelOf = (physical: Physical) => (physical.grain.length ? `'${physical.grain.map((d) => d.alias).join('.')}'` : 'the root')
+
+/** output names of a grain dimension */
+function dimNames(dim: Node, physical: Physical, env: CompileEnv): string[] {
+  const r = env.registry.dimension(dim.name)
+  return r.columns ? r.columns(dim, env.makeCtx(physical, dim)) : [dim.alias]
+}
+
 /** SQL columns of a grain dimension (output names mapped through `sqlNames`) */
 function dimColumns(dim: Node, physical: Physical, env: CompileEnv): string[] {
-  const r = env.registry.dimension(dim.name)
-  const names = r.columns ? r.columns(dim, env.makeCtx(physical, dim)) : [dim.alias]
+  const names = dimNames(dim, physical, env)
   return dim.sqlNames ? names.map((n) => dim.sqlNames![n] ?? n) : names
 }
 

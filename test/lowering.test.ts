@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { fixtureAdapter, gritql } from '../src'
+import { clickhouseAdapter, fixtureAdapter, gritql } from '../src'
 import { run, sqlOf } from './harness'
 
 const period = { f: { date: { gte: '2024-02-01' } }, p: { date: { gte: '2024-01-01' } } }
@@ -17,7 +17,7 @@ describe('cross-fetch arithmetic is computed in SQL (SPEC §6.7)', () => {
     const cur = `select "domain", SUM("revenue") AS "revenue", SUM("revenue") AS "growth" from "sales" where (("sales"."date" >= '2024-02-01')) group by "domain"`
     const prev = `select "domain", SUM("revenue") AS "revenue", SUM("revenue") AS "growth" from "sales" where (("sales"."date" >= '2024-01-01')) group by "domain"`
     expect(sql[0]).toBe(
-      `select "__cur"."domain", "__cur"."revenue", cast("__cur"."growth" as float) / NULLIF(cast("__ref_0"."growth" as float), 0) - 1 as "growth" from (${cur}) as "__cur" left join (${prev}) as "__ref_0" on "__cur"."domain" = "__ref_0"."domain" order by "revenue" desc limit 10`,
+      `select "__cur"."domain" as "domain", "__cur"."revenue" as "revenue", cast("__cur"."growth" as float) / NULLIF(cast("__ref_0"."growth" as float), 0) - 1 as "growth" from (${cur}) as "__cur" left join (${prev}) as "__ref_0" on "__cur"."domain" = "__ref_0"."domain" order by "revenue" desc limit 10`,
     )
     // the other fetch still runs for its own output (an emitted baseline executes twice; use with() when it is not output)
     expect(sql[1]).toBe(prev)
@@ -36,7 +36,7 @@ describe('cross-fetch arithmetic is computed in SQL (SPEC §6.7)', () => {
   test('@divide(byField:) divides by a sibling column on the outer layer', async () => {
     const [sql] = await sqlOf(`query t { fetch { device { a: sum(a: x) @divide(byField: b) b: sum(a: y) } } }`)
     expect(sql).toBe(
-      `select "__cur"."device", cast("__cur"."a" as float) / NULLIF(cast("__cur"."b" as float), 0) as "a", "__cur"."b" from (select "device", SUM("x") AS "a", SUM("y") AS "b" from "t" group by "device") as "__cur"`,
+      `select "__cur"."device" as "device", cast("__cur"."a" as float) / NULLIF(cast("__cur"."b" as float), 0) as "a", "__cur"."b" as "b" from (select "device", SUM("x") AS "a", SUM("y") AS "b" from "t" group by "device") as "__cur"`,
     )
   })
 
@@ -99,7 +99,7 @@ describe('cross-fetch arithmetic is computed in SQL (SPEC §6.7)', () => {
       }`,
       { have: false },
     )
-    expect(sql).toBe(`select "__cur"."d", NULL as "v" from (select "d", SUM("x") AS "v" from "t" group by "d") as "__cur"`)
+    expect(sql).toBe(`select "__cur"."d" as "d", NULL as "v" from (select "d", SUM("x") AS "v" from "t" group by "d") as "__cur"`)
   })
 
   test('a baseline without the grain or the column is a PLAN error', async () => {
@@ -127,7 +127,7 @@ describe('cross-fetch arithmetic is computed in SQL (SPEC §6.7)', () => {
     expect(sql).toHaveLength(2)
     // joined statements carry no arithmetic layer of their own, so there is no recursion
     expect(sql[0]).toBe(
-      `select "__cur"."c", cast("__cur"."v" as float) / NULLIF(cast("__ref_0"."v" as float), 0) - 1 as "v" from (select "c", SUM("x") AS "v" from "t" group by "c") as "__cur" left join (select "c", SUM("x") AS "v", SUM("y") AS "w" from "t" group by "c") as "__ref_0" on "__cur"."c" = "__ref_0"."c"`,
+      `select "__cur"."c" as "c", cast("__cur"."v" as float) / NULLIF(cast("__ref_0"."v" as float), 0) - 1 as "v" from (select "c", SUM("x") AS "v" from "t" group by "c") as "__cur" left join (select "c", SUM("x") AS "v", SUM("y") AS "w" from "t" group by "c") as "__ref_0" on "__cur"."c" = "__ref_0"."c"`,
     )
     // one join per referenced fetch: series as __ref_0, prev itself as __ref_1
     expect(sql[1]).toContain(`left join (select "c", SUM("x") AS "v" from "t" group by "c") as "__ref_0" on "__cur"."c" = "__ref_0"."c"`)
@@ -182,18 +182,64 @@ describe('@filter is lowered to HAVING (SPEC §6.7)', () => {
   test('nested limits rank the computed column, not the raw one', async () => {
     const [sql] = await sqlOf(`query t { fetch { country { device(limit: 1, sort_desc: v) { v: sum(a: x) @divide(byField: w) w: sum(a: y) } } } }`)
     expect(sql).toBe(
-      `select "country", "device", "v", "w" from (select *, row_number() over (partition by "country" order by "v" desc) as "__rn" from (select "__cur"."country", "__cur"."device", cast("__cur"."v" as float) / NULLIF(cast("__cur"."w" as float), 0) as "v", "__cur"."w" from (select "country", "device", SUM("x") AS "v", SUM("y") AS "w" from "t" group by "country", "device") as "__cur") as "__g") as "__r" where "__rn" <= 1 order by "v" desc`,
+      `select "country", "device", "v", "w" from (select *, row_number() over (partition by "country" order by "v" desc) as "__rn" from (select "__cur"."country" as "country", "__cur"."device" as "device", cast("__cur"."v" as float) / NULLIF(cast("__cur"."w" as float), 0) as "v", "__cur"."w" as "w" from (select "country", "device", SUM("x") AS "v", SUM("y") AS "w" from "t" group by "country", "device") as "__cur") as "__g") as "__r" where "__rn" <= 1 order by "v" desc`,
     )
   })
 
-  test('explicit having: and @filter conditions on one dimension are merged', async () => {
+  test('explicit having: and @filter conditions on one dimension both apply', async () => {
     const [sql] = await sqlOf(`query t { fetch { c(having: { v: { lt: 100 } }) @filter(where: { v: { gt: 1 } }) { v: sum(a: x) } } }`)
-    expect(sql).toContain(`where (("v" < 100) AND ("v" > 1))`)
+    expect(sql).toContain(`where (("v" < 100)) and (("v" > 1))`)
   })
 
   test('an operator SQL cannot express keeps the result-time hook', async () => {
     const [sql] = await sqlOf(`query t { fetch { c @filter(where: { tags: { contains: "a" } }) { tags: distinct(type: Array) } } }`)
     expect(sql).not.toContain('__h')
+  })
+
+  test('a predicate on a column a child grain does not select becomes a semi-join on the parent statement', async () => {
+    const dim = await sqlOf(`query t { fetch { country @filter(where: { total: { gt: 5 } }) { total: sum(a: x) device { value: sum(a: y) } } } }`)
+    expect(dim[0]).toBe(`select "country", "total" from (select "country", SUM("x") AS "total" from "t" group by "country") as "__h" where (("total" > 5))`)
+    expect(dim[1]).toBe(
+      `select "country", "device", "value" from (select "country", "device", SUM("y") AS "value" from "t" group by "country", "device") as "__h" where "country" in (select "country" from (${dim[0]}) as "__p")`,
+    )
+    // a metric filter lands on its parent dimension and propagates the same way
+    const metric = await sqlOf(`query t { fetch { channels { value: sum(a: x) @filter(gt: 1) device { w: sum(a: y) } } } }`)
+    expect(metric[1]).toContain(`where "channels" in (select "channels" from (`)
+    // fetch-level having too; several grain columns use a row constructor
+    const fetchLevel = await sqlOf(`query t { fetch(having: { total: { gt: 1 } }) { d { e { total: sum(a: x) device { v: sum(a: y) } } } } }`)
+    expect(fetchLevel[1]).toContain(`where ("d", "e") in (select "d", "e" from (`)
+    // a column no statement at that level selects is a PLAN error (v3 silently ignored the condition)
+    await expect(sqlOf(`query t { fetch { c @filter(where: { nothere: { gt: 100 } }) { value: sum(a: x) } } }`)).rejects.toMatchObject({
+      code: 'PLAN',
+      message: "having on 'c' names 'nothere', which no statement at that level selects",
+    })
+  })
+
+  test('@filter on the fetch itself filters the root grain', async () => {
+    const [sql] = await sqlOf(`query t { fetch @filter(where: { v: { gt: 1 } }) { d { v: sum(a: x) } } }`)
+    expect(sql).toBe(`select "d", "v" from (select "d", SUM("x") AS "v" from "t" group by "d") as "__h" where (("v" > 1))`)
+  })
+
+  test('a comparison target is read before its own @filter, but after its explicit having:', async () => {
+    const sql = await sqlOf(`query t {
+      cur: fetch { d { v: sum(a: x) @diff(by: prev) } }
+      prev: fetch { d(having: { v: { lt: 100 } }) @filter(where: { v: { gt: 10 } }) { v: sum(a: x) @diff(by: cur) } }
+    }`)
+    expect(sql[0]).toContain(`left join (select "d", "v" from (select "d", SUM("x") AS "v" from "t" group by "d") as "__h" where (("v" < 100))) as "__ref_0"`)
+    expect(sql[1]).toMatch(/as "__h" where \(\("v" < 100\)\) and \(\("v" > 10\)\)$/)
+  })
+
+  test('@divide(byField:) on a column the statement does not select is a PLAN error', async () => {
+    await expect(sqlOf(`query t { cur: fetch { d { v: sum(a: x) @divide(byField: w) } } }`)).rejects.toMatchObject({ code: 'PLAN', message: "cur.d.v: no sibling 'w' at 'd'" })
+  })
+
+  test('ClickHouse: Float64 casts and NULLs for unmatched join rows', async () => {
+    const ch = gritql({ adapters: { ch: clickhouseAdapter({ query: async () => ({ json: async () => [] }) }) } })
+    const { queries } = await ch.compile(`query t { cur: fetch { d { v: sum(a: x) @diff(by: prev) } } prev: fetch { d { v: sum(a: x) } } }`)
+    expect(queries[0].text).toContain(`cast("__cur"."v" as Float64) / NULLIF(cast("__ref_0"."v" as Float64), 0) - 1 as "v"`)
+    // the adapter's compile adds the setting to the statement it executes (`sql`), not to the printed `text`
+    expect(queries[0].sql.endsWith(' SETTINGS join_use_nulls = 1')).toBe(true)
+    expect(queries[1].sql).not.toContain('SETTINGS')
   })
 
   test('@omit hides the column from the output but keeps it in the statement; full drops it', async () => {

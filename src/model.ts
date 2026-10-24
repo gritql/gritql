@@ -63,6 +63,8 @@ export interface Fetch {
   emit: boolean
   /** every `$var` after defaults, for resolvers that need them */
   variables: Record<string, unknown>
+  /** `having` predicates a fetch-level or root-metric `@filter` lowered to SQL; skipped when the fetch is a comparison target (SPEC §6.7) */
+  loweredHaving?: FilterExpr
 }
 
 export type NodeKind = 'metric' | 'dimension'
@@ -81,6 +83,8 @@ export interface Node {
   sqlNames?: Record<string, string>
   /** metric only: a post-aggregation expression lowered from `@diff` / `@subtract` / `@divide` (SPEC §6.7) */
   lowered?: Lowered
+  /** dimension only: `having` predicates `@filter` lowered to SQL (its own, or a child metric's); skipped in reference mode */
+  loweredHaving?: FilterExpr
 }
 
 /**
