@@ -33,7 +33,11 @@ export interface FilterContext {
   qualify?: boolean
   /** collects `search: { col: text }` so search metrics can find their query */
   search?: Record<string, string>
+  /** `where:` object: top-level `from`, `having`, `search`, `inherited` are columns, not keywords */
+  where?: boolean
 }
+
+const WHERE_COLUMNS = new Set(['from', 'having', 'search', 'inherited'])
 
 const OPERATORS = new Set([
   'and',
@@ -202,16 +206,13 @@ function predicate(ctx: FilterContext, field: string | null, op: string | null, 
     default: {
       // `field: value` or `field: { op: value, ... }`
       if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+        const mods = value as Record<string, unknown>
+        // `from` / `inherited` modify every operator of this field, wherever they are written
+        if ('from' in mods) ctx = { ...ctx, from: mods.from as string }
+        if ('inherited' in mods) ctx = { ...ctx, inherited: mods.inherited as boolean }
         let acc = EMPTY
-        for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-          if (k === 'from') {
-            ctx = { ...ctx, from: v as string }
-            continue
-          }
-          if (k === 'inherited') {
-            ctx = { ...ctx, inherited: v as boolean }
-            continue
-          }
+        for (const [k, v] of Object.entries(mods)) {
+          if (k === 'from' || k === 'inherited') continue
           if (!isOp(k)) throw new GritqlError('ARGS', `Unknown filter operator '${k}' for ${field}`)
           acc = combine(acc, predicate(ctx, field, k, v))
         }
@@ -227,16 +228,19 @@ export function buildFilter(filter: FilterExpr | null | undefined, ctx: FilterCo
   if (!filter) return EMPTY
   let acc = EMPTY
   for (const [key, value] of Object.entries(filter)) {
-    if (key === 'from') {
-      ctx = { ...ctx, from: value as string }
-      continue
+    const column = ctx.where && WHERE_COLUMNS.has(key)
+    if (!column) {
+      if (key === 'from') {
+        ctx = { ...ctx, from: value as string }
+        continue
+      }
+      if (key === 'inherited') {
+        ctx = { ...ctx, inherited: value as boolean }
+        continue
+      }
+      if (key === 'having') continue // compiled separately by the caller
     }
-    if (key === 'inherited') {
-      ctx = { ...ctx, inherited: value as boolean }
-      continue
-    }
-    if (key === 'having') continue // compiled separately by the caller
-    const op = isOp(key) ? key : null
+    const op = !column && isOp(key) ? key : null
     const field = op ? null : key
     acc = combine(acc, predicate(ctx, field, op, value))
   }

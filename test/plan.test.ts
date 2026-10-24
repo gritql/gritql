@@ -41,8 +41,10 @@ describe('buildPlan', () => {
     expect(device.children[0].directives[0]).toMatchObject({ name: 'diff', args: { by: 'prev' } })
   })
 
-  test('legacy inline args and filters object merge into one filter', () => {
-    const p = plan(`query t { fetch(brand: Adidas, date_gt: "2020-1-1", date_lt: "2021", cat_in: "a|b", filters: { price: { gte: 1 } }) { v } }`)
+  test('legacy inline args and filters object merge into one filter (strict: false)', () => {
+    const q = `query t { fetch(brand: Adidas, date_gt: "2020-1-1", date_lt: "2021", cat_in: "a|b", filters: { price: { gte: 1 } }) { v } }`
+    expect(() => plan(q)).toThrow(/Unknown fetch argument 'brand'/)
+    const p = buildPlan(parseDocument(q), {}, { strict: false })
     expect(p.fetches[0].filters).toEqual({
       brand: 'Adidas',
       date: { gt: '2020-1-1', lt: '2021' },

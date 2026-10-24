@@ -10,6 +10,7 @@ import type {
   SelectionNode,
   VariableDefinitionNode,
 } from '@0no-co/graphql.web'
+import { visit } from '@0no-co/graphql.web'
 import { GritqlError, toGritqlError } from '../errors'
 import type { DirectiveUse, Fetch, FetchKind, FilterExpr, Join, JoinType, Node, Plan } from '../model'
 import { JOIN_TYPES } from '../model'
@@ -19,7 +20,33 @@ import { checkPropTypes, PropTypes } from '../types'
 import { typeNodeChecker } from '../parse/types'
 
 const FETCH_KINDS: readonly FetchKind[] = ['fetch', 'with', 'fetchPlain', 'unionall']
-const RESERVED_FETCH_ARGS = new Set(['table', 'filters', 'search', ...JOIN_TYPES])
+const RESERVED_FETCH_ARGS = new Set(['table', 'filters', 'where', 'having', 'search', ...JOIN_TYPES])
+
+/** closest candidate within two edits, for "did you mean" hints */
+export function suggest(name: string, candidates: Iterable<string>): string | undefined {
+  let best: string | undefined
+  let bestD = 3
+  for (const c of candidates) {
+    const d = editDistance(name.toLowerCase(), c.toLowerCase())
+    if (d < bestD) (bestD = d), (best = c)
+  }
+  return best
+}
+
+function editDistance(a: string, b: string): number {
+  if (Math.abs(a.length - b.length) > 2) return 3
+  const prev = Array.from({ length: b.length + 1 }, (_, i) => i)
+  for (let i = 1; i <= a.length; i++) {
+    let diag = prev[0]
+    prev[0] = i
+    for (let j = 1; j <= b.length; j++) {
+      const tmp = prev[j]
+      prev[j] = Math.min(prev[j] + 1, prev[j - 1] + 1, diag + (a[i - 1] === b[j - 1] ? 0 : 1))
+      diag = tmp
+    }
+  }
+  return prev[b.length]
+}
 const LEGACY_SUFFIXES: [string, string][] = [
   ['_gte', 'gte'],
   ['_lte', 'lte'],
@@ -34,6 +61,7 @@ interface BuildContext {
   variables: Variables
   fetch: Fetch
   path: string[]
+  strict: boolean
 }
 
 export interface BuildOptions {
@@ -43,29 +71,58 @@ export interface BuildOptions {
 
 export function buildPlan(doc: ParsedDocument, variables: Variables, opts: BuildOptions = {}): Plan {
   const strict = opts.strict !== false
+  if (strict) checkDeclaredVariables(doc)
   const plan: Plan = { fetches: [], variables }
   for (const op of doc.operations) {
     const vars = resolveVariables(op, variables, doc.types)
     const defaultTable = op.name?.value ?? null
     for (const sel of op.selectionSet.selections) {
       if (sel.kind !== 'Field') throw new GritqlError('PLAN', 'Only fetch, with, fetchPlain or unionall are allowed at the top level')
-      plan.fetches.push(buildFetch(sel, defaultTable, doc, vars))
+      plan.fetches.push(buildFetch(sel, defaultTable, doc, vars, strict))
     }
   }
   return plan
+}
+
+/** strict: every `$var` used must be declared by an operation or a fragment (`fragment F($a: String!)`) */
+function checkDeclaredVariables(doc: ParsedDocument): void {
+  const declared = new Set<string>()
+  for (const op of doc.operations) for (const d of op.variableDefinitions ?? []) declared.add(d.variable.name.value)
+  for (const f of Object.values(doc.fragments)) for (const d of f.variableDefinitions) declared.add(d.variable.name.value)
+  const check = (root: any, where: string) =>
+    visit(root, {
+      Variable(node: any) {
+        if (!declared.has(node.name.value)) {
+          throw new GritqlError('TYPE', `Variable $${node.name.value} is not declared by ${where}; declare it or set strict: false`)
+        }
+      },
+    })
+  for (const op of doc.operations) check(op.selectionSet, `operation '${op.name?.value ?? 'query'}'`)
+  for (const [name, f] of Object.entries(doc.fragments)) check(f.definition.selectionSet, `fragment '${name}'`)
 }
 
 function directives(nodes: readonly DirectiveNode[] | undefined, vars: Variables): DirectiveUse[] {
   return (nodes ?? []).map((d) => ({ name: d.name.value, args: argsToObject(d.arguments, vars), state: {} }))
 }
 
-function buildFetch(field: FieldNode, defaultTable: string | null, doc: ParsedDocument, vars: Variables): Fetch {
+function buildFetch(field: FieldNode, defaultTable: string | null, doc: ParsedDocument, vars: Variables, strict: boolean): Fetch {
   const kind = field.name.value as FetchKind
   if (!FETCH_KINDS.includes(kind)) {
     throw new GritqlError('PLAN', `Cant find fetch in the payload: '${kind}' is not fetch, with, fetchPlain or unionall`)
   }
   const args = argsToObject(field.arguments, vars)
   const alias = field.alias?.value ?? null
+  if (strict) {
+    for (const k of Object.keys(args)) {
+      if (RESERVED_FETCH_ARGS.has(k)) continue
+      const near = suggest(k, RESERVED_FETCH_ARGS)
+      const hint = near ? `did you mean '${near}'?` : `column predicates go in \`where: { ${k}: ... }\`; limit/offset/sort belong on a dimension`
+      throw new GritqlError('ARGS', `Unknown fetch argument '${k}': ${hint}`, { path: [alias ?? kind] })
+    }
+    if (args.having !== undefined && args.filters && typeof args.filters === 'object' && 'having' in (args.filters as object)) {
+      throw new GritqlError('ARGS', '`having` is given both as a fetch argument and inside `filters`', { path: [alias ?? kind] })
+    }
+  }
 
   let source: string | string[]
   if (kind === 'unionall') {
@@ -85,6 +142,7 @@ function buildFetch(field: FieldNode, defaultTable: string | null, doc: ParsedDo
     kind,
     source,
     filters: normalizeFilters(args),
+    where: args.where && typeof args.where === 'object' ? (args.where as FilterExpr) : null,
     search: (args.search as Record<string, string>) ?? {},
     joins: [],
     tree: [],
@@ -107,14 +165,18 @@ function buildFetch(field: FieldNode, defaultTable: string | null, doc: ParsedDo
   if (!field.selectionSet?.selections.length) {
     throw new GritqlError('PLAN', 'The query is empty, you need specify metrics or dimensions', { path: [alias ?? kind] })
   }
-  fetch.tree = buildNodes(field.selectionSet.selections, { doc, variables: vars, fetch, path: [alias ?? ''] })
+  fetch.tree = buildNodes(field.selectionSet.selections, { doc, variables: vars, fetch, path: [alias ?? ''], strict })
   return fetch
 }
 
-/** `filters: {...}` plus legacy inline args (`brand: Adidas`, `date_gt: "2020"`) → one filter object. */
+/** `filters: {...}`, the `having:` fetch argument, plus legacy inline args (`brand: Adidas`, `date_gt: "2020"`) → one filter object. */
 function normalizeFilters(args: Record<string, unknown>): FilterExpr | null {
   const out: FilterExpr = {}
   let any = false
+  if (args.having !== undefined) {
+    out.having = args.having
+    any = true
+  }
   for (const [key, value] of Object.entries(args)) {
     if (RESERVED_FETCH_ARGS.has(key)) continue
     any = true

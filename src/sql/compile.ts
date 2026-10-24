@@ -116,6 +116,7 @@ export function compilePhysical(physical: Physical, env: CompileEnv, asCte = fal
 
   // --- WHERE / HAVING (compiled first so filter errors surface before resolver errors) ---
   const where = buildFilter(fetch.filters, filterCtx)
+  const whereArg = fetch.where ? buildFilter(fetch.where, { ...filterCtx, where: true }) : null
   // search terms given as the `search` fetch argument (those inside `filters` are compiled with the filters)
   const inFilters = (fetch.filters?.search as Record<string, unknown> | undefined) ?? {}
   const argSearch = Object.fromEntries(Object.entries(fetch.search).filter(([k]) => !(k in inFilters)))
@@ -202,6 +203,7 @@ export function compilePhysical(physical: Physical, env: CompileEnv, asCte = fal
       q = q.joinRaw(`${JOIN_KEYWORDS[join.type]} ?? ON ${on.sql}`, [join.table, ...on.bindings] as Knex.Value[])
     }
     if (where.sql) q = q.where(raw(knex, where))
+    if (whereArg?.sql) q = q.where(raw(knex, whereArg))
     if (searchOnly?.sql) q = q.where(raw(knex, searchOnly))
     return q
   }

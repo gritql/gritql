@@ -52,7 +52,10 @@ export interface Fetch {
   kind: FetchKind
   /** table, `with` alias, or the tables of a unionall */
   source: string | string[]
+  /** `filters:` (v3 object: `from`, `having`, `search`, `inherited` are keywords) plus legacy inline arguments */
   filters: FilterExpr | null
+  /** `where:`: every top-level key is a column, including `from`, `having`, `search`, `inherited` */
+  where: FilterExpr | null
   search: Record<string, string>
   joins: Join[]
   tree: Node[]
