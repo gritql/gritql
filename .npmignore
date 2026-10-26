@@ -1,0 +1,11 @@
+src
+test
+bench
+coverage
+.bench-build
+projectplan.md
+SPEC.md
+COMPAT.md
+vitest.config.mts
+tsconfig*.json
+.claude

@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(git -C /Users/edjafarov/work/gritql remote -v)",
+      "Bash(git clone:*)",
+      "Bash(git init:*)",
+      "Bash(git remote add:*)",
+      "Bash(git fetch:*)"
+    ],
+    "deny": []
+  }
+}
