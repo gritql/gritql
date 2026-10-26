@@ -4,32 +4,48 @@ Write analytics queries in a GraphQL-like shape. gritql turns them into SQL, run
 
 ```graphql
 query sales($from: String!) {
-  fetch(where: { date: { gte: $from }, country: "DE" }) {
-    device(sort_desc: revenue, limit: 5) {
-      revenue: sum(a: revenue)
-      orders: count(a: order_id)
+  fetch(where: { date: { gte: $from } }) {
+    country {
+      device(sort_desc: revenue) {
+        revenue: sum(a: revenue)
+        orders: count(a: order_id)
+      }
     }
   }
 }
 ```
 
-becomes
+becomes one SQL statement (values are sent as bound parameters; shown inline here)
 
 ```sql
-select "device", SUM("revenue") AS "revenue", COUNT("order_id") AS "orders"
+select "country", "device", SUM("revenue") AS "revenue", COUNT("order_id") AS "orders"
 from "sales"
-where (("sales"."date" >= '2024-01-01')) AND ("sales"."country" = 'DE')
-group by "device"
+where (("sales"."date" >= '2024-01-01'))
+group by "country", "device"
 order by "revenue" desc
-limit 5
 ```
 
-and returns
+The database answers with flat rows:
 
 ```json
 [
-  { "device": "mobile",  "revenue": 120, "orders": 10 },
-  { "device": "desktop", "revenue": 300, "orders": 12 }
+  { "country": "DE", "device": "desktop", "revenue": 300, "orders": 12 },
+  { "country": "DE", "device": "mobile",  "revenue": 120, "orders": 10 },
+  { "country": "FR", "device": "mobile",  "revenue": 90,  "orders": 7 }
+]
+```
+
+and gritql nests them by the dimensions of the query before returning:
+
+```json
+[
+  { "country": "DE", "device": [
+    { "device": "desktop", "revenue": 300, "orders": 12 },
+    { "device": "mobile",  "revenue": 120, "orders": 10 }
+  ] },
+  { "country": "FR", "device": [
+    { "device": "mobile", "revenue": 90, "orders": 7 }
+  ] }
 ]
 ```
 
@@ -74,19 +90,25 @@ const result = await g.run(
 
 ## Output shape
 
-Each dimension is an array of records that carry their own value:
+The rows from the database are never returned as they are. gritql groups them by the dimensions of the query. By default each dimension is an array of records that carry their own value (the example above):
 
 ```json
 [{ "country": "DE", "device": [{ "device": "mobile", "revenue": 1 }, { "device": "desktop", "revenue": 2 }] }]
 ```
 
-If you prefer objects keyed by value, say so on the dimension with `type: Map`, or for the whole instance with `gritql({ ..., output: 'keyed' })`:
+For objects keyed by value instead, there are two switches. `type: Map` on one dimension keys only that level, e.g. `country(type: Map) { device { ... } }`:
 
 ```json
 { "DE": [{ "device": "mobile", "revenue": 1 }, { "device": "desktop", "revenue": 2 }] }
 ```
 
-Several fetches in one query are returned under their aliases: `{ data: [...], totals: {...} }`.
+`gritql({ ..., output: 'keyed' })` keys every dimension level (the v3 shape):
+
+```json
+{ "DE": { "mobile": { "revenue": 1 }, "desktop": { "revenue": 2 } } }
+```
+
+A fetch with no dimension returns one object: `{ "revenue": 3 }`. Several fetches in one query are returned under their aliases: `{ data: [...], totals: {...} }`.
 
 ## Comparing periods
 
